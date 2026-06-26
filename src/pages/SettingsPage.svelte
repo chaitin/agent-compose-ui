@@ -126,6 +126,9 @@
     topicPrefix: 'webhook.',
     token: '',
     clearToken: false,
+    signatureType: '',
+    signatureSecret: '',
+    clearSignature: false,
     bodyLimitBytes: '',
   };
 
@@ -529,6 +532,9 @@
       topicPrefix: 'webhook.',
       token: '',
       clearToken: false,
+      signatureType: '',
+      signatureSecret: '',
+      clearSignature: false,
       bodyLimitBytes: '',
     };
   }
@@ -552,6 +558,9 @@
       topicPrefix: source.topicPrefix,
       token: '',
       clearToken: false,
+      signatureType: source.signatureType,
+      signatureSecret: '',
+      clearSignature: false,
       bodyLimitBytes: source.bodyLimitBytes > 0 ? String(source.bodyLimitBytes) : '',
     };
     webhookEditorOpen = true;
@@ -567,6 +576,10 @@
 
   function selectedWebhookSourceHasToken(): boolean {
     return selectedWebhookSource()?.hasToken ?? false;
+  }
+
+  function selectedWebhookSourceHasSignatureSecret(): boolean {
+    return selectedWebhookSource()?.hasSignatureSecret ?? false;
   }
 
   function validateWebhookForm(): { sourceId: string; bodyLimitBytes: number } | null {
@@ -597,6 +610,9 @@
         topicPrefix: webhookForm.topicPrefix,
         token: webhookForm.clearToken ? '' : webhookForm.token,
         clearToken: existingWebhookSourceSelected() && webhookForm.clearToken,
+        signatureType: webhookForm.signatureType,
+        signatureSecret: webhookForm.clearSignature ? '' : webhookForm.signatureSecret,
+        clearSignature: existingWebhookSourceSelected() && webhookForm.clearSignature,
         bodyLimitBytes: validated.bodyLimitBytes,
       });
       webhookSources = [saved, ...webhookSources.filter((source) => source.id !== saved.id)];
@@ -815,11 +831,16 @@
           <label class="form-item"><span>平台</span><input bind:value={webhookForm.provider} placeholder="github"></label>
           <label class="form-item"><span>主题前缀</span><input bind:value={webhookForm.topicPrefix} placeholder="webhook.github."></label>
           <label class="form-item"><span>访问令牌</span><input bind:value={webhookForm.token} type="password" disabled={webhookForm.clearToken} placeholder={webhookForm.clearToken ? '保存后清空令牌' : existingWebhookSourceSelected() ? '不修改请留空' : '请输入访问令牌'}></label>
+          <label class="form-item"><span>签名类型</span><input bind:value={webhookForm.signatureType} placeholder="github_sha256"></label>
+          <label class="form-item"><span>签名密钥</span><input bind:value={webhookForm.signatureSecret} type="password" disabled={webhookForm.clearSignature} placeholder={webhookForm.clearSignature ? '保存后清空签名密钥' : existingWebhookSourceSelected() ? '不修改请留空' : '可选'}></label>
           <label class="form-item"><span>请求体上限</span><input bind:value={webhookForm.bodyLimitBytes} inputmode="numeric" placeholder="1048576"></label>
           <div class="webhook-switches">
             <label><input type="checkbox" bind:checked={webhookForm.enabled}> 启用</label>
             {#if existingWebhookSourceSelected() && selectedWebhookSourceHasToken()}
               <label><input type="checkbox" bind:checked={webhookForm.clearToken}> 清空令牌</label>
+            {/if}
+            {#if existingWebhookSourceSelected() && selectedWebhookSourceHasSignatureSecret()}
+              <label><input type="checkbox" bind:checked={webhookForm.clearSignature}> 清空签名密钥</label>
             {/if}
           </div>
         </div>
@@ -838,6 +859,10 @@
               <div class="webhook-source-meta">
                 <span class="chip {source.enabled ? 'green' : 'amber'}">{source.enabled ? '已启用' : '已停用'}</span>
                 <span class="chip {source.hasToken ? 'blue' : 'gray'}">令牌{source.hasToken ? '已设置' : '未设置'}</span>
+                <span class="chip {source.hasSignatureSecret ? 'blue' : 'gray'}">签名{source.hasSignatureSecret ? '已设置' : '未设置'}</span>
+                {#if source.signatureType}
+                  <span class="chip gray">{source.signatureType}</span>
+                {/if}
                 <span class="chip gray">上限 {source.bodyLimitBytes || '-'}</span>
               </div>
             </div>

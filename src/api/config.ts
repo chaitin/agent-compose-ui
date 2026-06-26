@@ -115,6 +115,8 @@ export type WebhookSource = {
   provider: string;
   topicPrefix: string;
   hasToken: boolean;
+  signatureType: string;
+  hasSignatureSecret: boolean;
   bodyLimitBytes: number;
   createdAt: string;
   updatedAt: string;
@@ -127,6 +129,9 @@ export type WebhookSourceInput = {
   topicPrefix: string;
   token: string;
   clearToken: boolean;
+  signatureType: string;
+  signatureSecret: string;
+  clearSignature: boolean;
   bodyLimitBytes: number;
 };
 
@@ -137,6 +142,8 @@ type WebhookSourceResponseItem = {
   provider: string;
   topic_prefix: string;
   has_token: boolean;
+  signature_type?: string;
+  has_signature_secret?: boolean;
   body_limit_bytes: number;
   created_at: string;
   updated_at: string;
@@ -264,6 +271,9 @@ export async function saveWebhookSource(id: string, input: WebhookSourceInput): 
         topic_prefix: input.topicPrefix.trim(),
         token: input.token,
         clear_token: input.clearToken,
+        signature_type: input.signatureType.trim(),
+        signature_secret: input.signatureSecret,
+        clear_signature: input.clearSignature,
         body_limit_bytes: input.bodyLimitBytes,
       }),
     },
@@ -298,6 +308,8 @@ function webhookSourceFromResponse(item: WebhookSourceResponseItem): WebhookSour
     provider: item.provider,
     topicPrefix: item.topic_prefix,
     hasToken: item.has_token,
+    signatureType: item.signature_type ?? '',
+    hasSignatureSecret: item.has_signature_secret ?? false,
     bodyLimitBytes: item.body_limit_bytes,
     createdAt: item.created_at,
     updatedAt: item.updated_at,
