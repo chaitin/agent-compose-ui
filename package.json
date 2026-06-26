@@ -1,0 +1,25 @@
+{
+  "name": "agent-compose-ui",
+  "private": true,
+  "license": "AGPL-3.0",
+  "type": "module",
+  "scripts": {
+    "build:ui": "vite build",
+    "dev:ui": "vite",
+    "check:ui": "vite build"
+  },
+  "dependencies": {
+    "@ant-design/icons-svg": "^4.4.2",
+    "@chaitin-ai/agent-compose-client": "^0.1.0",
+    "@connectrpc/connect": "^1.7.0",
+    "@connectrpc/connect-web": "^1.7.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "svelte": "^5.38.10",
+    "xterm": "^5.3.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^6.2.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.9"
+  }
+}
