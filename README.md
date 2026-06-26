@@ -29,4 +29,4 @@ Set `AGENT_COMPOSE_BASE` to host the app under a sub-path (default `/`).
 
 `nginx/Dockerfile` builds the static UI and serves it via nginx, reverse-proxying
 the API and Jupyter routes to the daemon. CI publishes the image to
-`ghcr.io/chaitin/agent-compose-frontend`.
+`ghcr.io/chaitin/agent-compose-ui`.
