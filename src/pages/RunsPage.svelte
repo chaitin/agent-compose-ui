@@ -2345,6 +2345,11 @@
     return run.type === 'work_session' && run.status === '运行中';
   }
 
+  function openDebugRun(run: ProductRun): void {
+    if (!canOpenDebug(run)) return;
+    dispatch('debug', run.id);
+  }
+
   function messageInputHint(run: ProductRun): string {
     if (isReplyPending(run)) return '等待当前回复完成';
     if (run.status === '等待中') return '运行启动中';
@@ -3963,6 +3968,7 @@
                       </div>
                       <div class="toolbar">
                         <span class={`home-pill ${displayStatusClass(selectedChatRun)}`}>{displayStatus(selectedChatRun)}</span>
+                        <button disabled={!canOpenDebug(selectedChatRun)} on:click={() => openDebugRun(selectedChatRun)}>调试终端</button>
                         <button class:waiting={sessionAction?.runId === selectedChatRun.id} disabled={chatRunActionDisabled(selectedChatRun)} on:click={() => handleChatRunAction(selectedChatRun)}>{chatRunActionLabel(selectedChatRun)}</button>
                       </div>
                     </div>
@@ -4257,6 +4263,7 @@
                                         </div>
                                       {:else if canContinueManualConversation(detailRun)}
                                         <div class="timeline-run-actions">
+                                          <button type="button" disabled={!canOpenDebug(detailRun)} on:click|stopPropagation={() => openDebugRun(detailRun)}>调试终端</button>
                                           <button type="button" on:click|stopPropagation={() => continueManualConversation(detailRun)}>继续对话</button>
                                         </div>
                                       {/if}

@@ -3,6 +3,7 @@
 
   import { getProjectRunDebugTarget } from '../api/runs';
   import { getWorkSession, type WorkSessionDetail } from '../api/sessions';
+  import RuntimeCommandTerminal from '../components/RuntimeCommandTerminal.svelte';
   import { formatBeijingTime } from '../time';
 
   export let runId = '';
@@ -16,10 +17,14 @@
   let debugStatus = '未知';
   let debugMessage = '';
   let sessionId = '';
+  let terminalAvailable = false;
+  let terminalDisabledReason = '';
 
   $: notebookUrl = statusLabel(session?.status || '') === '运行中' ? session?.notebookUrl || '' : '';
   $: debugStatus = statusLabel(session?.status || '');
   $: debugMessage = debugEnvironmentMessage(session, notebookUrl);
+  $: terminalAvailable = Boolean(sessionId && statusLabel(session?.status || '') === '运行中');
+  $: terminalDisabledReason = terminalUnavailableMessage(session, sessionId);
 
   onMount(() => {
     void load();
@@ -81,6 +86,17 @@
     return '当前会话状态暂不支持打开调试入口。';
   }
 
+  function terminalUnavailableMessage(value: WorkSessionDetail | null, id: string): string {
+    if (loading) return '正在连接调试环境';
+    if (!id || !value) return '未找到可调试会话';
+    const normalized = statusLabel(value.status);
+    if (normalized === '运行中') return '';
+    if (normalized === '启动中') return '会话启动后可执行命令';
+    if (normalized === '已停止') return '会话已停止';
+    if (normalized === '启动失败') return '会话启动失败';
+    return `当前状态不可执行命令：${normalized || '未知'}`;
+  }
+
   function formatTime(value: string | undefined): string {
     return value ? formatBeijingTime(value) : '-';
   }
@@ -104,56 +120,66 @@
   </div>
 </div>
 
-<div class="debug-layout">
-  <section class="debug-card">
-    <div class="debug-card-head">
-      <h3>调试环境</h3>
-    </div>
-    <div class="descriptions-small debug-descriptions">
-      <div><span>runId</span><b>{#if runId}<span class="mono-text">{runId}</span>{:else}<span class="muted">-</span>{/if}</b></div>
-      <div><span>sessionId</span><b>{#if sessionId}<span class="mono-text">{sessionId}</span>{:else}<span class="muted">-</span>{/if}</b></div>
-      <div>
-        <span>Jupyter 状态</span>
-        <b><em class={`home-pill ${statusTone(session?.status || '')}`}>{debugStatus}</em></b>
-      </div>
-      <div>
-        <span>访问入口</span>
-        <b>
-          {#if notebookUrl}
-            <a class="button-link primary" href={notebookUrl} target="_blank" rel="noreferrer">打开 Jupyter</a>
-          {:else}
-            <span class="muted">等待后端返回 Jupyter URL</span>
-          {/if}
-        </b>
-      </div>
-      <div><span>状态说明</span><b>{debugMessage}</b></div>
-    </div>
+<div class="debug-workbench">
+  <section class="debug-card debug-terminal-panel">
+    <RuntimeCommandTerminal
+      sessionId={sessionId}
+      disabled={!terminalAvailable}
+      disabledReason={terminalDisabledReason}
+    />
   </section>
 
-  <section class="debug-card">
-    <div class="debug-card-head">
-      <h3>会话信息</h3>
-    </div>
-    <div class="descriptions-small debug-descriptions">
-      <div><span>代理路径</span><b>{#if session?.proxyPath}<span class="mono-text">{session.proxyPath}</span>{:else}<span class="muted">-</span>{/if}</b></div>
-      <div><span>运行环境</span><b>{session ? `${session.driver || '-'} · ${session.guestImage || '-'}` : '-'}</b></div>
-      <div><span>创建时间</span><b>{formatTime(session?.createdAt)}</b></div>
-      <div><span>更新时间</span><b>{formatTime(session?.updatedAt)}</b></div>
-    </div>
-  </section>
+  <aside class="debug-side-panel">
+    <section class="debug-card debug-side-card">
+      <div class="debug-card-head">
+        <h3>调试环境</h3>
+      </div>
+      <div class="descriptions-small debug-descriptions">
+        <div><span>runId</span><b>{#if runId}<span class="mono-text">{runId}</span>{:else}<span class="muted">-</span>{/if}</b></div>
+        <div><span>sessionId</span><b>{#if sessionId}<span class="mono-text">{sessionId}</span>{:else}<span class="muted">-</span>{/if}</b></div>
+        <div>
+          <span>Jupyter 状态</span>
+          <b><em class={`home-pill ${statusTone(session?.status || '')}`}>{debugStatus}</em></b>
+        </div>
+        <div>
+          <span>访问入口</span>
+          <b>
+            {#if notebookUrl}
+              <a class="button-link primary" href={notebookUrl} target="_blank" rel="noreferrer">打开 Jupyter</a>
+            {:else}
+              <span class="muted">等待后端返回 Jupyter URL</span>
+            {/if}
+          </b>
+        </div>
+        <div><span>状态说明</span><b>{debugMessage}</b></div>
+      </div>
+    </section>
 
-  <section class="debug-card wide">
-    <div class="debug-card-head">
-      <h3>上下文摘要</h3>
-    </div>
-    <div class="descriptions-small debug-descriptions">
-      <div><span>运行基础信息</span><b>{session ? `${session.title || session.id} · 工作会话 · ${debugStatus}` : '未找到运行记录'}</b></div>
-      <div><span>自动化任务</span><b>{tagValue('loader_id') !== '-' ? tagValue('loader_id') : '仅自动化运行进入调试工具'}</b></div>
-      <div><span>任务输入快照</span><b>{#if tagValue('task_input') !== '-'}<pre>{tagValue('task_input')}</pre>{:else}<span class="muted">-</span>{/if}</b></div>
-      <div><span>触发上下文</span><b>{#if tagValue('trigger_context') !== '-'}<pre>{tagValue('trigger_context')}</pre>{:else}<span class="muted">-</span>{/if}</b></div>
-      <div><span>工作文件来源</span><b>{#if session?.workspacePath}<span class="mono-text">{session.workspacePath}</span>{:else}<span class="muted">-</span>{/if}</b></div>
-      <div><span>能力接入事实</span><b>{tagValue('capability_gateway') !== '-' ? tagValue('capability_gateway') : '-'}</b></div>
-      <div><span>Secret 规则</span><b>Secret 只展示已设置，不在页面、URL、日志或错误信息中明文展示。</b></div>
-    </div>
-  </section>
+    <section class="debug-card debug-side-card">
+      <div class="debug-card-head">
+        <h3>会话信息</h3>
+      </div>
+      <div class="descriptions-small debug-descriptions">
+        <div><span>代理路径</span><b>{#if session?.proxyPath}<span class="mono-text">{session.proxyPath}</span>{:else}<span class="muted">-</span>{/if}</b></div>
+        <div><span>运行环境</span><b>{session ? `${session.driver || '-'} · ${session.guestImage || '-'}` : '-'}</b></div>
+        <div><span>创建时间</span><b>{formatTime(session?.createdAt)}</b></div>
+        <div><span>更新时间</span><b>{formatTime(session?.updatedAt)}</b></div>
+      </div>
+    </section>
+
+    <section class="debug-card debug-side-card">
+      <div class="debug-card-head">
+        <h3>上下文摘要</h3>
+      </div>
+      <div class="descriptions-small debug-descriptions">
+        <div><span>运行基础信息</span><b>{session ? `${session.title || session.id} · 工作会话 · ${debugStatus}` : '未找到运行记录'}</b></div>
+        <div><span>自动化任务</span><b>{tagValue('loader_id') !== '-' ? tagValue('loader_id') : '仅自动化运行进入调试工具'}</b></div>
+        <div><span>任务输入快照</span><b>{#if tagValue('task_input') !== '-'}<pre>{tagValue('task_input')}</pre>{:else}<span class="muted">-</span>{/if}</b></div>
+        <div><span>触发上下文</span><b>{#if tagValue('trigger_context') !== '-'}<pre>{tagValue('trigger_context')}</pre>{:else}<span class="muted">-</span>{/if}</b></div>
+        <div><span>工作文件来源</span><b>{#if session?.workspacePath}<span class="mono-text">{session.workspacePath}</span>{:else}<span class="muted">-</span>{/if}</b></div>
+        <div><span>能力接入事实</span><b>{tagValue('capability_gateway') !== '-' ? tagValue('capability_gateway') : '-'}</b></div>
+        <div><span>Secret 规则</span><b>Secret 只展示已设置，不在页面、URL、日志或错误信息中明文展示。</b></div>
+      </div>
+    </section>
+  </aside>
 </div>

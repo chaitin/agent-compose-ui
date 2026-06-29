@@ -29,6 +29,7 @@
   } from '../api/sessions';
   import { CellType } from '@chaitin-ai/agent-compose-client/agentcompose/v1/agentcompose_pb.js';
   import { mapLoaderRunStatus, mapSessionStatus, statusTone } from '../model/runs';
+  import { appPath } from '../paths';
   import { formatBeijingTime } from '../time';
 
   export let eventId = '';
@@ -315,6 +316,10 @@
     return Boolean(traceSessionId(trace)) && trace !== null && sessionStatus(trace) === '运行中' && !jupyterOpeningSessionId;
   }
 
+  function canOpenTerminal(trace: SessionTrace | null): boolean {
+    return Boolean(traceSessionId(trace)) && trace !== null && sessionStatus(trace) === '运行中';
+  }
+
   function isStopping(trace: SessionTrace | null): boolean {
     return Boolean(trace && sessionAction?.sessionId === traceSessionId(trace) && sessionAction.action === 'stop');
   }
@@ -412,6 +417,12 @@
     } finally {
       jupyterOpeningSessionId = '';
     }
+  }
+
+  function openTerminal(trace: SessionTrace): void {
+    const sessionId = traceSessionId(trace);
+    if (!sessionId) return;
+    window.location.assign(appPath(`/debug/runs/${encodeURIComponent(sessionId)}`));
   }
 
   function updateMessageDraft(sessionId: string, value: string): void {
@@ -605,6 +616,13 @@
             on:click={() => { if (resumableTrace) resumeSession(resumableTrace); }}
           >
             {isResuming(resumableTrace) ? '重启中...' : '重启'}
+          </button>
+          <button
+            class="event-action-button primary-link"
+            disabled={!canOpenTerminal(notebookTrace)}
+            on:click={() => { if (notebookTrace) openTerminal(notebookTrace); }}
+          >
+            打开终端
           </button>
           <button
             class="event-action-button primary-link"
