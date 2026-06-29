@@ -188,6 +188,20 @@
     }
   }
 
+  function firstLine(value: string): string {
+    return value.trim().split(/\r?\n/)[0] || '-';
+  }
+
+  function shouldCollapseError(value: string): boolean {
+    const trimmed = value.trim();
+    return trimmed.length > 96 || trimmed.split(/\r?\n/).length > 1;
+  }
+
+  function errorSummary(value: string): string {
+    const line = firstLine(value);
+    return line.length > 120 ? `${line.slice(0, 120)}...` : line;
+  }
+
   function compactTime(value: string): string {
     const formatted = formatTime(value);
     return formatted === '-' ? '-' : formatted.replace(/^\d{4}[/-]/, '');
@@ -774,9 +788,18 @@
                     <div><span>运行</span><b>{trace.run ? mapLoaderRunStatus(trace.run.status) : '-'}</b></div>
                     <div><span>开始</span><b>{compactTime(trace.run?.startedAt || trace.delivery.createdAt)}</b></div>
                     <div><span>完成</span><b>{compactTime(trace.run?.completedAt || trace.delivery.updatedAt)}</b></div>
+                    <div class="wide-meta"><span>Run ID</span><b title={trace.delivery.runId || '-'}>{trace.delivery.runId || '-'}</b></div>
                   </div>
                   {#if trace.delivery.error || trace.run?.error}
-                    <div class="run-error">{trace.delivery.error || trace.run?.error}</div>
+                    {@const runError = trace.delivery.error || trace.run?.error || ''}
+                    {#if shouldCollapseError(runError)}
+                      <details class="run-error-details">
+                        <summary title={firstLine(runError)}>{errorSummary(runError)}</summary>
+                        <pre>{runError}</pre>
+                      </details>
+                    {:else}
+                      <div class="run-error">{runError}</div>
+                    {/if}
                   {/if}
                   {#if trace.run?.resultJson}
                     <details class="run-result">
@@ -1153,8 +1176,8 @@
 
   .run-meta-grid {
     display: grid;
-    grid-template-columns: 0.8fr 1fr 1fr;
-    gap: 6px 8px;
+    grid-template-columns: 1fr;
+    gap: 4px;
     min-width: 0;
     padding: 7px 8px;
     border-radius: 6px;
@@ -1163,17 +1186,19 @@
 
   .run-meta-grid div {
     min-width: 0;
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
   }
 
   .run-meta-grid span {
-    display: block;
     color: var(--muted);
     font-size: 10px;
     line-height: 13px;
   }
 
   .run-meta-grid b {
-    display: block;
     min-width: 0;
     overflow: hidden;
     font-family: var(--mono);
@@ -1192,6 +1217,43 @@
     background: #fff2f0;
     font-size: 12px;
     line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .run-error-details {
+    min-width: 0;
+    padding: 8px;
+    border: 1px solid #ffccc7;
+    border-radius: 6px;
+    color: var(--danger);
+    background: #fff2f0;
+  }
+
+  .run-error-details summary {
+    min-width: 0;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1.45;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .run-error-details pre {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-height: 180px;
+    margin: 8px 0 0;
+    padding: 8px;
+    border-radius: 5px;
+    background: #fff;
+    color: var(--danger);
+    font-size: 11px;
+    line-height: 1.45;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
     overflow-wrap: anywhere;
   }
 
