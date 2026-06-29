@@ -285,15 +285,48 @@ textarea {
 
 .auth-actions {
   width: 100%;
+  max-width: 310px;
   display: grid;
   justify-items: center;
   gap: 12px;
 }
 
+.auth-form {
+  width: 100%;
+  max-width: 310px;
+  display: grid;
+  gap: 12px;
+}
+
+.auth-form label {
+  width: 100%;
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.25;
+  text-align: center;
+}
+
+.auth-form label span {
+  min-height: 18px;
+  line-height: 18px;
+}
+
+.auth-form input {
+  min-height: 36px;
+  line-height: 1.4;
+}
+
+.auth-form .auth-button {
+  max-width: none;
+  margin-top: 2px;
+}
+
 .auth-button {
   width: 100%;
   min-height: 44px;
-  max-width: 280px;
   font-size: var(--font-size-base);
 }
 
@@ -4924,13 +4957,19 @@ button.timeline-run-card {
   white-space: nowrap;
 }
 
-.debug-layout {
+.debug-workbench {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(330px, 400px);
+  gap: 14px;
   margin-top: 12px;
-  align-items: stretch;
+  align-items: start;
+}
+
+.debug-side-panel {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
 }
 
 .debug-card {
@@ -4944,8 +4983,21 @@ button.timeline-run-card {
   background: #fff;
 }
 
-.debug-card.wide {
-  grid-column: 1 / -1;
+.debug-terminal-panel {
+  --runtime-terminal-screen-height: 100%;
+  --runtime-terminal-screen-min-height: 420px;
+  --runtime-terminal-screen-track: 1fr;
+  min-height: calc(100vh - 168px);
+  display: block;
+  padding: 16px;
+}
+
+.debug-terminal-panel .runtime-terminal {
+  height: 100%;
+}
+
+.debug-side-card {
+  height: auto;
 }
 
 .debug-card-head {
@@ -4964,12 +5016,11 @@ button.timeline-run-card {
 }
 
 .debug-descriptions {
-  height: 100%;
   margin-bottom: 0;
 }
 
-.debug-descriptions div {
-  grid-template-columns: 132px minmax(0, 1fr);
+.debug-side-panel .debug-descriptions div {
+  grid-template-columns: minmax(96px, 116px) minmax(0, 1fr);
   min-height: 34px;
 }
 
@@ -4987,6 +5038,22 @@ button.timeline-run-card {
   line-height: var(--line-height-body);
 }
 
+.debug-descriptions b > span {
+  display: inline;
+  min-width: 0;
+  padding: 0;
+  border-right: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+}
+
+.debug-descriptions b > .muted {
+  color: var(--muted);
+}
+
 /* Identifiers / paths render in mono to echo the run-side-panel facts, so the
    same datum (runId, proxy path) reads identically across the two pages. */
 .debug-descriptions b .mono-text {
@@ -4996,13 +5063,17 @@ button.timeline-run-card {
   font-size: var(--font-size-sm);
 }
 
-@media (max-width: 980px) {
-  .debug-layout {
+@media (max-width: 1180px) {
+  .debug-workbench {
     grid-template-columns: 1fr;
   }
 
-  .debug-card.wide {
-    grid-column: auto;
+  .debug-terminal-panel {
+    --runtime-terminal-screen-height: 320px;
+    --runtime-terminal-screen-min-height: 280px;
+    --runtime-terminal-screen-mobile-height: 280px;
+    --runtime-terminal-screen-track: auto;
+    min-height: 0;
   }
 }
 

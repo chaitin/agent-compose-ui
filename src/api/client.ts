@@ -12,7 +12,7 @@ import {
   LoaderService,
   SessionService,
 } from '@chaitin-ai/agent-compose-client/agentcompose/v1/agentcompose_connect.js';
-import { RunService } from '@chaitin-ai/agent-compose-client/agentcompose/v2/agentcompose_connect.js';
+import { ExecService, RunService } from '@chaitin-ai/agent-compose-client/agentcompose/v2/agentcompose_connect.js';
 import { HealthService } from '@chaitin-ai/agent-compose-client/health/v1/health_connect.js';
 import { connectBaseUrl } from '../paths';
 
@@ -31,3 +31,4 @@ export const capabilityClient = createClient(CapabilityService, grpcWebTransport
 export const dashboardClient = createClient(DashboardService, grpcWebTransport);
 export const healthClient = createClient(HealthService, grpcWebTransport);
 export const runClient = createClient(RunService, grpcWebTransport);
+export const execClient = createClient(ExecService, grpcWebTransport);
