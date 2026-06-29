@@ -85,7 +85,8 @@
       event = nextEvent;
       const traces = await Promise.all(deliveries.map(loadRunTrace));
       runTraces = traces;
-      sessionTraces = await Promise.all(mergeSessionLinks(links, inferSessionLinksFromRunEvents(nextEvent.eventId, traces)).map(loadSessionTrace));
+      const loadedSessionTraces = await Promise.all(mergeSessionLinks(links, inferSessionLinksFromRunEvents(nextEvent.eventId, traces)).map(loadSessionTrace));
+      sessionTraces = latestSessionTrace(loadedSessionTraces);
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
       event = null;
@@ -156,6 +157,21 @@
       listWorkSessionEvents(link.sessionId).catch(() => []),
     ]);
     return { link, session, cells, events };
+  }
+
+  function latestSessionTrace(traces: SessionTrace[]): SessionTrace[] {
+    const latest = [...traces].sort((left, right) => compareTraceTime(right, left))[0];
+    return latest ? [latest] : [];
+  }
+
+  function compareTraceTime(left: SessionTrace, right: SessionTrace): number {
+    return traceTimeValue(left) - traceTimeValue(right);
+  }
+
+  function traceTimeValue(trace: SessionTrace): number {
+    const value = trace.session?.updatedAt || trace.session?.createdAt || trace.link.createdAt;
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? timestamp : 0;
   }
 
   function formatTime(value: string): string {
@@ -630,8 +646,7 @@
       <div class="main-column">
         <section class="panel section-panel session-panel">
           <div class="section-head">
-            <h2>关联会话</h2>
-            <span>{sessionTraces.length} 条</span>
+            <h2>最近会话</h2>
           </div>
           {#if sessionTraces.length === 0}
             <div class="empty">这个事件没有产生或绑定工作会话。</div>
@@ -800,6 +815,9 @@
 
   .event-page {
     height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr);
     gap: 12px;
@@ -1054,6 +1072,7 @@
     border-color: rgba(47, 95, 208, 0.24);
     box-shadow: var(--shadow-md);
     background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+    overflow: hidden;
   }
 
   .trace-list {
@@ -1067,6 +1086,8 @@
 
   .trace-list.single-session {
     grid-auto-rows: minmax(0, 1fr);
+    overflow: hidden;
+    padding-right: 0;
   }
 
   .trace-list.single-session .session-card {
@@ -1168,6 +1189,8 @@
 
   .session-output {
     gap: 8px;
+    min-height: 0;
+    overflow: hidden;
   }
 
   h4 {
@@ -1355,8 +1378,10 @@
   }
 
   .message-composer {
+    align-self: end;
     display: grid;
     gap: 7px;
+    min-height: 0;
     padding: 9px;
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -1425,6 +1450,11 @@
 
   .compact-empty {
     min-height: 80px;
+  }
+
+  .session-card > .compact-empty {
+    min-height: 0;
+    align-self: stretch;
   }
 
   @media (max-width: 960px) {
