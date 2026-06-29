@@ -285,6 +285,7 @@ textarea {
 
 .auth-actions {
   width: 100%;
+  max-width: 310px;
   display: grid;
   justify-items: center;
   gap: 12px;
@@ -326,7 +327,6 @@ textarea {
 .auth-button {
   width: 100%;
   min-height: 44px;
-  max-width: 280px;
   font-size: var(--font-size-base);
 }
 
