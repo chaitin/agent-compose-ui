@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { createEventDispatcher, onDestroy, onMount } from 'svelte';
 
   import { getProjectRunDebugTarget } from '../api/runs';
-  import { getWorkSession, type WorkSessionDetail } from '../api/sessions';
+  import { getWorkSession, getWorkSessionProxy, getWorkSessionStatus, type WorkSessionDetail } from '../api/sessions';
   import RuntimeCommandTerminal from '../components/RuntimeCommandTerminal.svelte';
+  import { apiPath } from '../paths';
   import { formatBeijingTime } from '../time';
 
   export let runId = '';
@@ -19,6 +20,8 @@
   let sessionId = '';
   let terminalAvailable = false;
   let terminalDisabledReason = '';
+  let proxyRetrying = false;
+  let statusPollTimer: ReturnType<typeof setInterval> | null = null;
 
   $: notebookUrl = statusLabel(session?.status || '') === '运行中' ? session?.notebookUrl || '' : '';
   $: debugStatus = statusLabel(session?.status || '');
@@ -28,16 +31,60 @@
 
   onMount(() => {
     void load();
+    return () => stopStatusPolling();
   });
+
+  onDestroy(() => {
+    stopStatusPolling();
+  });
+
+  function stopStatusPolling(): void {
+    if (statusPollTimer !== null) {
+      clearInterval(statusPollTimer);
+      statusPollTimer = null;
+    }
+  }
+
+  function startStatusPolling(): void {
+    stopStatusPolling();
+    statusPollTimer = setInterval(() => {
+      if (!sessionId) return;
+      void refreshSessionStatus();
+    }, 3000);
+  }
+
+  async function refreshSessionStatus(): Promise<void> {
+    try {
+      const status = await getWorkSessionStatus(sessionId);
+      if (session) {
+        session = { ...session, status: status.status };
+      }
+      const normalized = statusLabel(status.status);
+      if (normalized === '运行中' || normalized === '启动失败' || normalized === '已停止') {
+        if (normalized === '运行中') {
+          try {
+            const proxy = await getWorkSessionProxy(sessionId);
+            session = session ? { ...session, proxyPath: proxy.proxyPath, notebookUrl: proxy.notebookUrl, status: status.status } : session;
+          } catch { /* proxy may not be ready yet */ }
+        }
+        stopStatusPolling();
+      }
+    } catch { /* polling silently fails */ }
+  }
 
   async function load(): Promise<void> {
     if (!runId) return;
     loading = true;
     error = '';
     sessionId = '';
+    stopStatusPolling();
     try {
-      session = await loadDebugSession(runId);
+      session = await loadDebugSessionWithRetry(runId);
       sessionId = session.id;
+      const normalized = statusLabel(session.status);
+      if (normalized !== '运行中' && normalized !== '启动失败' && normalized !== '已停止') {
+        startStatusPolling();
+      }
     } catch (err) {
       session = null;
       error = err instanceof Error ? err.message : String(err);
@@ -46,12 +93,37 @@
     }
   }
 
-  async function loadDebugSession(id: string): Promise<WorkSessionDetail> {
+  async function loadDebugSessionWithRetry(id: string, maxRetries = 5): Promise<WorkSessionDetail> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await getWorkSession(id);
+      } catch (err) {
+        lastError = err;
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, Math.min(1000 * Math.pow(2, attempt), 8000)));
+        }
+      }
+    }
     try {
-      return await getWorkSession(id);
-    } catch {
       const target = await getProjectRunDebugTarget(id);
-      return getWorkSession(target.sessionId);
+      return await getWorkSession(target.sessionId);
+    } catch (err) {
+      lastError = err;
+    }
+    throw lastError;
+  }
+
+  async function retryProxy(): Promise<void> {
+    if (!sessionId) return;
+    proxyRetrying = true;
+    try {
+      const proxy = await getWorkSessionProxy(sessionId);
+      session = { ...session!, proxyPath: proxy.proxyPath, notebookUrl: proxy.notebookUrl };
+    } catch (err) {
+      error = `获取 Jupyter 入口失败：${err instanceof Error ? err.message : String(err)}`;
+    } finally {
+      proxyRetrying = false;
     }
   }
 
@@ -145,7 +217,11 @@
           <span>访问入口</span>
           <b>
             {#if notebookUrl}
-              <a class="button-link primary" href={notebookUrl} target="_blank" rel="noreferrer">打开 Jupyter</a>
+              <a class="button-link primary" href={notebookUrl ? apiPath(notebookUrl) : ''} target="_blank" rel="noreferrer">打开 Jupyter</a>
+            {:else if debugStatus === '运行中'}
+              <button class="button-link primary" disabled={proxyRetrying || loading} on:click={retryProxy}>
+                {proxyRetrying ? '获取中...' : '获取 Jupyter 入口'}
+              </button>
             {:else}
               <span class="muted">等待后端返回 Jupyter URL</span>
             {/if}

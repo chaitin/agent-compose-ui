@@ -2849,7 +2849,8 @@
 
   function messageTerminalText(message: ProductRun['messages'][number]): string {
     if (message.role === 'user') return message.source || '-';
-    return agentMessageContent(message, message.content || (message.running ? '' : '-'));
+    if (message.running && !message.content) return '回复中...';
+    return agentMessageContent(message, message.content || '-');
   }
 
   function messageSummaryText(message: ProductRun['messages'][number]): string {
@@ -2949,9 +2950,16 @@
             : productRun;
         }),
       ]);
-      initialRuns = await hydrateFirstUserMessages(initialRuns);
       runs = initialRuns;
+      const hydratePromise = hydrateFirstUserMessages(initialRuns);
       await syncSelectionAfterRunsLoaded();
+      hydratePromise.then((hydrated) => {
+        const inputMap = new Map(hydrated.map((r) => [r.id, r.input]));
+        runs = runs.map((r) => {
+          const input = inputMap.get(r.id);
+          return input !== undefined ? { ...r, input } : r;
+        });
+      });
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -3151,6 +3159,12 @@
             sourceSessionTags: item.sourceSessionTags,
             trigger: item.trigger,
             messages: cells.flatMap(cellToMessages),
+            events: events.map((event) => ({
+              type: event.type,
+              level: event.level,
+              message: event.message,
+              createdAt: event.createdAt,
+            })),
           }
           : item);
       } else if (run.automationId) {
