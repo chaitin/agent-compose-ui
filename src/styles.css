@@ -1043,6 +1043,23 @@ small,
   min-width: 0;
 }
 
+.event-link-button {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.event-link-button:hover {
+  background: var(--primary-weak);
+  border-color: var(--primary);
+}
+
 .event-level-pill {
   flex: none;
   padding: 1px 6px;
@@ -4013,7 +4030,7 @@ button.timeline-run-card {
 }
 
 .task-execution-log-list {
-  max-height: 280px;
+  max-height: 400px;
   overflow: auto;
   padding-right: 2px;
 }

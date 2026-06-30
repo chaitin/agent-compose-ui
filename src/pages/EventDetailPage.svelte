@@ -27,6 +27,7 @@
     type WorkSessionDetail,
     type WorkSessionEvent,
   } from '../api/sessions';
+  import { apiPath } from '../paths';
   import { CellType } from '@chaitin-ai/agent-compose-client/agentcompose/v1/agentcompose_pb.js';
   import { mapLoaderRunStatus, mapSessionStatus, statusTone } from '../model/runs';
   import { appPath } from '../paths';
@@ -431,7 +432,7 @@
         ? { ...item, session: { ...item.session, proxyPath: proxy.proxyPath, notebookUrl: proxy.notebookUrl } }
         : item);
       if (proxy.notebookUrl) {
-        const notebookUrl = new URL(proxy.notebookUrl, window.location.origin).toString();
+        const notebookUrl = new URL(apiPath(proxy.notebookUrl), window.location.origin).toString();
         if (popup) {
           popup.opener = null;
           popup.location.href = notebookUrl;
