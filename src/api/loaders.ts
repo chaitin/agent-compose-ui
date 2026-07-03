@@ -269,6 +269,11 @@ export async function listRecentAutomationRuns(loaderIds: string[], limit = 10):
   return runs.flat().sort((left, right) => compareDateDesc(left.startedAt, right.startedAt));
 }
 
+export async function listLoaderRuns(loaderId: string, limit = 50): Promise<AutomationRun[]> {
+  const response = await loaderClient.listLoaderRuns({ loaderId, limit });
+  return response.runs.map(runFromSummary);
+}
+
 export async function listAutomationEvents(loaderId: string, limit = 50): Promise<AutomationEvent[]> {
   const response = await loaderClient.listLoaderEvents({ loaderId, limit });
   return response.events.map((item) => ({

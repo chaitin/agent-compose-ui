@@ -758,6 +758,7 @@ scheduler.cron(${triggerName}, "0 8 * * *", function ${handlerName}(payload) {
               <span class="chip {statusClass(activeTask)}">{statusLabel(activeTask)}</span>
               <button disabled={toggleBusyId === activeTask.id} on:click={() => toggleTask(activeTask)}>{activeTask.enabled ? '暂停' : '启用'}</button>
               <button disabled={Boolean(activeTask.lastError)} on:click={() => { debugTask = activeTask; debugPayload = '{}'; }}>调试</button>
+              <button on:click={() => window.location.assign(appPath(`/tasks/${encodeURIComponent(activeTask.id)}/debug`))}>任务调试</button>
               <button on:click={() => openEdit(activeTask)}>编辑</button>
               <button class="primary" disabled={runningTaskId === activeTask.id} on:click={() => runTaskNow(activeTask)}>{runningTaskId === activeTask.id ? '运行中...' : '立即运行'}</button>
               <button class="danger-button" class:confirming={deleteConfirmId === activeTask.id} on:click={() => deleteTask(activeTask)}>{deleteConfirmId === activeTask.id ? '确认删除' : '删除'}</button>

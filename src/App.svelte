@@ -20,12 +20,16 @@
   import DebugRunPage from './pages/DebugRunPage.svelte';
   import EventDetailPage from './pages/EventDetailPage.svelte';
   import LoginPage from './pages/LoginPage.svelte';
+  import TaskDebugPage from './pages/TaskDebugPage.svelte';
   import { stripAppBase, appPath } from './paths';
 
-  type Page = 'runs' | 'agents' | 'automation-tasks' | 'settings' | 'debug-run' | 'event-detail' | 'login';
+  type Page = 'runs' | 'agents' | 'automation-tasks' | 'settings' | 'debug-run' | 'event-detail' | 'login' | 'task-debug';
 
   let debugRunId = '';
   let eventDetailId = '';
+  let taskDebugId = '';
+  let taskDebugRunId = '';
+  let taskDebugSessionId = '';
   let activePage: Page = pageFromPath(typeof window === 'undefined' ? '/' : stripAppBase(window.location.pathname));
   let health: HealthStatus | null = null;
   let statusError = '';
@@ -51,6 +55,7 @@
     settings: appPath('/settings'),
     'debug-run': appPath('/debug/runs'),
     'event-detail': appPath('/events'),
+    'task-debug': appPath('/tasks'),
     login: appPath('/login'),
   };
 
@@ -60,6 +65,14 @@
     if (debugMatch) {
       debugRunId = decodeURIComponent(debugMatch[1]);
       return 'debug-run';
+    }
+    const taskDebugMatch = normalized.match(/^\/tasks\/([^/]+)\/debug$/);
+    if (taskDebugMatch) {
+      taskDebugId = decodeURIComponent(taskDebugMatch[1]);
+      const params = new URLSearchParams(window.location.search);
+      taskDebugRunId = params.get('run') || '';
+      taskDebugSessionId = params.get('session') || '';
+      return 'task-debug';
     }
     const eventDetailMatch = normalized.match(/^\/events\/([^/]+)$/);
     if (eventDetailMatch) {
@@ -131,6 +144,22 @@
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     if (current !== nextPath) {
       history.pushState({ page: 'debug-run', runId }, '', nextPath);
+    }
+  }
+
+  function navigateToTaskDebug(taskId: string, runId = '', sessionId = ''): void {
+    taskDebugId = taskId;
+    taskDebugRunId = runId;
+    taskDebugSessionId = sessionId;
+    activePage = 'task-debug';
+    const params = new URLSearchParams();
+    if (runId) params.set('run', runId);
+    if (sessionId) params.set('session', sessionId);
+    const qs = params.toString();
+    const nextPath = appPath(`/tasks/${encodeURIComponent(taskId)}/debug${qs ? `?${qs}` : ''}`);
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (current !== nextPath) {
+      history.pushState({ page: 'task-debug', taskId, runId, sessionId }, '', nextPath);
     }
   }
 
@@ -500,6 +529,8 @@
         <AutomationTasksPage />
       {:else if activePage === 'settings'}
         <SettingsPage />
+      {:else if activePage === 'task-debug'}
+        <TaskDebugPage taskId={taskDebugId} initialRunId={taskDebugRunId} initialSessionId={taskDebugSessionId} />
       {:else}
         <DebugRunPage runId={debugRunId} on:navigateRuns={(event) => navigateRunsWithRun(event.detail)} />
       {/if}

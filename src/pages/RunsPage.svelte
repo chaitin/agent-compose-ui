@@ -4129,6 +4129,7 @@
                                       {#if detailRun.automationId}
                                         <div class="timeline-run-actions">
                                           <button type="button" disabled={isRunTaskDeleted(detailRun)} on:click|stopPropagation={() => goTaskDetail(detailRun)}>{isRunTaskDeleted(detailRun) ? '任务已删除' : '查看任务配置'}</button>
+                                          <button type="button" disabled={isRunTaskDeleted(detailRun)} on:click|stopPropagation={() => window.location.assign(appPath(`/tasks/${encodeURIComponent(detailRun.automationId)}/debug?run=${encodeURIComponent(detailRun.id)}`))}>调试任务</button>
                                         </div>
                                       {/if}
                                     </div>
@@ -4274,6 +4275,7 @@
                                       {#if detailRun.automationId}
                                         <div class="timeline-run-actions">
                                           <button type="button" disabled={isRunTaskDeleted(detailRun)} on:click|stopPropagation={() => goTaskDetail(detailRun)}>{isRunTaskDeleted(detailRun) ? '任务已删除' : '查看任务配置'}</button>
+                                          <button type="button" disabled={isRunTaskDeleted(detailRun)} on:click|stopPropagation={() => window.location.assign(appPath(`/tasks/${encodeURIComponent(detailRun.automationId)}/debug?run=${encodeURIComponent(detailRun.id)}`))}>调试任务</button>
                                         </div>
                                       {:else if canContinueManualConversation(detailRun)}
                                         <div class="timeline-run-actions">
