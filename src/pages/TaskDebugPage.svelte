@@ -605,10 +605,6 @@
     }));
   }
 
-  function canResumeSession(): boolean {
-    return Boolean(selectedSessionId) && ['已停止', '启动失败'].includes(sessionStatus) && !resuming;
-  }
-
   function sessionToggleButton(): { label: string; disabled: boolean; action: 'resume' | 'stop' | null } {
     if (!selectedSessionId) return { label: '重启会话', disabled: true, action: null };
     if (resuming) return { label: '重启中...', disabled: true, action: null };
@@ -1320,8 +1316,8 @@
                   <option value={s.id}>会话 {s.label}</option>
                 {/each}
               </select>
-              <button disabled={!canResumeSession()} on:click={resumeCurrentSession}>
-                {resuming ? '重启中...' : '重启会话'}
+              <button disabled={toggleBtn.disabled} on:click={toggleSession}>
+                {toggleBtn.label}
               </button>
             </div>
           </div>
