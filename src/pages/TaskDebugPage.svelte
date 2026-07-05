@@ -376,13 +376,19 @@
         listWorkSessionCells(sid).catch(() => []),
         listWorkSessionEvents(sid).catch(() => []),
       ]);
+      const prevStatus = rawSessionStatus;
       session = status;
       rawSessionStatus = status?.status || '';
       sessionStatus = mapSessionStatus(rawSessionStatus);
+      refreshTerminalForStatus(prevStatus);
       sessionCells = cells;
       sessionEvents = evts;
-      if (status?.workspacePath) currentCwd = status.workspacePath;
-      if (!currentCwd) currentCwd = '/root';
+      // Don't seed cwd from the host workspacePath — exec runs *inside* the
+      // container, where the workspace is mounted at the guest path (default
+      // /workspace). The host path isn't valid there and triggers an OCI
+      // chdir error. Leave empty so the backend defaults to the guest path;
+      // we adopt the resolved cwd it returns in each exec result.
+      currentCwd = '';
       startWatching(sid);
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -605,16 +611,23 @@
     }));
   }
 
-  function sessionToggleButton(): { label: string; disabled: boolean; action: 'resume' | 'stop' | null } {
-    if (!selectedSessionId) return { label: '重启会话', disabled: true, action: null };
+  function sessionToggleButton(
+    sid: string,
+    resuming: boolean,
+    stopping: boolean,
+    status: string,
+  ): { label: string; disabled: boolean; action: 'resume' | 'stop' | null } {
+    if (!sid) return { label: '重启会话', disabled: true, action: null };
     if (resuming) return { label: '重启中...', disabled: true, action: null };
     if (stopping) return { label: '停止中...', disabled: true, action: null };
-    if (rawSessionStatus === 'RUNNING') return { label: '停止会话', disabled: false, action: 'stop' };
-    if (rawSessionStatus === 'STARTING') return { label: '启动中...', disabled: true, action: null };
+    if (status === 'RUNNING') return { label: '停止会话', disabled: false, action: 'stop' };
+    if (status === 'STARTING') return { label: '启动中...', disabled: true, action: null };
     return { label: '重启会话', disabled: false, action: 'resume' };
   }
 
-  $: toggleBtn = sessionToggleButton();
+  // Pass the reactive vars as args so Svelte's legacy `$:` dep tracking picks them up —
+  // a no-arg call would leave `toggleBtn` stuck at its initial value.
+  $: toggleBtn = sessionToggleButton(selectedSessionId, resuming, stopping, rawSessionStatus);
 
   function canChat(): boolean {
     return Boolean(selectedSessionId) && rawSessionStatus === 'RUNNING' && !sendingMessage;
@@ -637,7 +650,6 @@
       error = err instanceof Error ? err.message : String(err);
       if (termReady && /not_found/i.test(error)) {
         term?.write('\r\n\x1b[31m会话不存在或已删除\x1b[0m\r\n');
-        showPrompt();
       }
     } finally {
       resuming = false;
@@ -655,7 +667,7 @@
       session = updated;
       if (termReady) {
         term?.write('\r\n\x1b[33m○ 会话已停止\x1b[0m\r\n');
-        showPrompt();
+        term?.write(terminalBlockedHint());
       }
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -665,7 +677,7 @@
   }
 
   async function toggleSession(): Promise<void> {
-    const action = sessionToggleButton().action;
+    const action = toggleBtn.action;
     if (action === 'resume') await resumeCurrentSession();
     else if (action === 'stop') await stopCurrentSession();
   }
@@ -741,9 +753,11 @@
         await watchWorkSession(sid, (evt) => {
           if (ctrl.signal.aborted) return;
           if (evt.type === 'session' && evt.session) {
+            const prevStatus = rawSessionStatus;
             session = evt.session;
             rawSessionStatus = evt.session.status;
             sessionStatus = mapSessionStatus(rawSessionStatus);
+            refreshTerminalForStatus(prevStatus);
           } else if (evt.type === 'event' && evt.event) {
             sessionEvents = [evt.event, ...sessionEvents];
           } else if (evt.type === 'cell' && evt.cell) {
@@ -804,7 +818,7 @@
     termResizeObserver.observe(terminalEl);
     term.onData(handleTerminalInput);
     termReady = true;
-    showPrompt();
+    refreshTerminalForStatus('');
   }
 
   function destroyTerminal(): void {
@@ -826,6 +840,23 @@
     term?.write(`\x1b[32m${user}@${host}\x1b[0m:\x1b[34m${dir}\x1b[0m# `);
   }
 
+  function terminalBlockedHint(): string {
+    if (rawSessionStatus === 'STARTING') return '\r\n\x1b[33m会话启动中,请稍候...\x1b[0m\r\n';
+    return '\r\n\x1b[33m会话未运行,请点击右上角"重启会话"\x1b[0m\r\n';
+  }
+
+  // Sync the terminal display to the current session status: prompt when runnable,
+  // the not-running hint otherwise. Called on init, session select, and watch updates.
+  function refreshTerminalForStatus(prev: string): void {
+    if (!termReady || !term) return;
+    if (rawSessionStatus === prev) return;
+    if (rawSessionStatus === 'RUNNING') {
+      showPrompt();
+    } else {
+      term.write(terminalBlockedHint());
+    }
+  }
+
   function redrawAfterPrompt(): void {
     term?.write('\r\x1b[K');
     showPrompt();
@@ -838,6 +869,15 @@
 
   function handleTerminalInput(data: string): void {
     if (!term || !termReady) return;
+    if (rawSessionStatus !== 'RUNNING') {
+      // Session not runnable — block command input, only honour Ctrl+C / Ctrl+L.
+      for (const ch of data) {
+        const code = ch.charCodeAt(0);
+        if (code === 3) { term.write('^C\r\n'); }
+        else if (code === 12) { term.clear(); term.write(terminalBlockedHint()); }
+      }
+      return;
+    }
     for (const ch of data) {
       const code = ch.charCodeAt(0);
       if (code === 3) { term.write('^C\r\n'); if (execRunning) { execAbort?.abort(); execAbort = null; execRunning = false; } lineBuffer = ''; cursorPos = 0; showPrompt(); continue; }
@@ -863,8 +903,8 @@
     if (cmd === 'clear') { term?.clear(); showPrompt(); return; }
     if (cmd === 'cd' || cmd.startsWith('cd ')) {
       const target = cmd.slice(2).trim();
-      if (target === '') currentCwd = session?.workspacePath || '/root';
-      else currentCwd = resolvePath(currentCwd, target);
+      if (target === '') currentCwd = '';
+      else currentCwd = resolvePath(currentCwd || '/', target);
       showPrompt(); return;
     }
     execAbort?.abort();
@@ -881,6 +921,10 @@
             else term?.write(evt.chunk);
           }
           if (evt.type === 'completed' && evt.result) {
+            // Adopt the cwd the backend actually used (it defaults to the
+            // in-container workspace path when we send empty cwd) so the
+            // prompt and subsequent `cd` resolve against the real guest path.
+            if (evt.result.cwd) currentCwd = evt.result.cwd;
             term?.write(`\r\n\x1b[${evt.result.exitCode === 0 ? 32 : 31}m[exit ${evt.result.exitCode}]\x1b[0m\r\n`);
           }
         },
@@ -1372,7 +1416,7 @@
                 </div>
                 <div class="td-chat-composer">
                   <textarea
-                    rows="3"
+                    rows="2"
                     value={messageDraft}
                     placeholder={canChat() ? '输入消息，Enter 发送' : `会话${sessionStatus || '未运行'}`}
                     disabled={!canChat()}
@@ -1945,13 +1989,15 @@
   }
   .td-chat-composer textarea {
     width: 100%;
-    min-height: 48px;
+    height: calc(var(--font-size-sm) * 4);
+    min-height: 0;
     resize: none;
     border: 1px solid var(--line);
     border-radius: 6px;
-    padding: 6px 10px;
+    padding: 0 10px;
     font: inherit;
     font-size: var(--font-size-sm);
+    line-height: calc(var(--font-size-sm) * 2);
     box-sizing: border-box;
   }
   .td-composer-actions {
@@ -1964,6 +2010,10 @@
   .td-composer-actions span {
     font-size: var(--font-size-xs);
     color: var(--muted);
+  }
+  .td-composer-actions button {
+    padding: 4px 8px;
+    min-height: 0;
   }
 
   /* Resize Handle */
