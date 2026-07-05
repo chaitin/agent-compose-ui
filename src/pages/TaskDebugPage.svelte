@@ -40,7 +40,7 @@
   type TimelineEntry =
     | { kind: 'input'; id: string; timestamp: string; content: string }
     | { kind: 'loader_event'; id: string; timestamp: string; type: string; level: string; message: string; detail?: string }
-    | { kind: 'session_card'; id: string; timestamp: string; sessionId: string; summary: string }
+    | { kind: 'session_card'; id: string; timestamp: string; sessionId: string; summary: string; messages?: Array<{role: string; content: string}> }
     | { kind: 'error'; id: string; timestamp: string; message: string }
     | { kind: 'artifact'; id: string; timestamp: string; name: string; size: string };
 
@@ -172,13 +172,13 @@
       ]);
       runDetail = detail;
       runEvents = events.filter((e) => !e.runId || e.runId === runId);
-      buildTimeline(detail, runEvents);
+      await buildTimeline(detail, runEvents);
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     }
   }
 
-  function buildTimeline(detail: AutomationRun, events: AutomationEvent[]): void {
+  async function buildTimeline(detail: AutomationRun, events: AutomationEvent[]): Promise<void> {
     const entries: TimelineEntry[] = [];
 
     if (detail.payloadJson) {
@@ -222,6 +222,27 @@
     }
 
     entries.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    // Load session cell messages for inline display
+    const sessionCards = entries.filter((en): en is TimelineEntry & { kind: 'session_card' } => en.kind === 'session_card');
+    if (sessionCards.length > 0) {
+      const cellResults = await Promise.allSettled(
+        sessionCards.map((card) => listWorkSessionCells(card.sessionId).catch(() => []))
+      );
+      cellResults.forEach((result, i) => {
+        if (result.status === 'fulfilled' && result.value.length > 0) {
+          const cells = result.value;
+          const msgs: Array<{role: string; content: string}> = [];
+          for (const cell of cells.slice(0, 4)) {
+            const role = cell.type === CellType.UNSPECIFIED ? '用户' : cell.type === CellType.AGENT ? (cell.agent || 'Agent') : '系统';
+            const content = cell.type === CellType.UNSPECIFIED ? (cell.source || '') : (cell.output || '');
+            if (content.trim()) msgs.push({ role, content: content.length > 200 ? content.slice(0, 200) + '...' : content });
+          }
+          sessionCards[i].messages = msgs;
+        }
+      });
+    }
+
     timeline = entries;
   }
 
@@ -517,6 +538,7 @@
   // ── Terminal ──
 
   $: if (terminalEl && !termReady && activeDebugTab === 'terminal') initTerminal();
+ $: if (activeDebugTab !== 'terminal' && termReady) destroyTerminal();
 
   function initTerminal(): void {
     if (termReady || !terminalEl) return;
@@ -525,7 +547,7 @@
       fontFamily: 'IBM Plex Mono, Fira Code, ui-monospace, SFMono-Regular, Menlo, monospace',
       fontSize: 13, lineHeight: 1.25, scrollback: 5000, allowProposedApi: true,
       theme: {
-        background: '#0a1628', foreground: '#d8e2ec', cursor: '#ffbf69',
+        background: '#07111a', foreground: '#d8e2ec', cursor: '#ffbf69',
         selectionBackground: 'rgba(255,191,105,0.28)',
         black: '#1a2332', red: '#f87171', green: '#4ade80', yellow: '#fbbf24',
         blue: '#60a5fa', magenta: '#c084fc', cyan: '#22d3ee', white: '#e2e8f0',
@@ -682,6 +704,9 @@
       const isSuccess = run.status.toUpperCase() === 'SUCCEEDED' || run.status.toUpperCase() === 'SUCCESS';
       runResult = { success: isSuccess, message: run.error || runStatusLabel(run), runId: run.id };
       runs = [run, ...runs];
+	      selectedRunId = run.id;
+	      centerTab = 'output';
+	      await loadRunDetail(run.id);
     } catch (err) {
       runResult = { success: false, message: err instanceof Error ? err.message : String(err) };
     } finally {
@@ -754,18 +779,23 @@
 </script>
 
 {#if loading}
-  <div class="alert info">正在加载任务调试信息...</div>
+  <div class="empty-state">
+    <div class="empty-state-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+    </div>
+    <h3>加载任务调试信息...</h3>
+  </div>
 {:else if error && !taskDetail}
   <div class="alert danger">{error}</div>
 {:else if !taskDetail}
   <div class="alert info">任务不存在</div>
 {:else}
-  <!-- Enter Pause Dialog -->
+  <!-- Dialogs -->
   {#if showEnterPauseDialog}
     <div class="td-dialog-mask" role="dialog">
       <div class="td-dialog-card">
         <h3>暂停任务调度</h3>
-        <p>进入调试模式将暂停该任务的所有自动触发（定时 / 周期 / 事件 / 延迟），以免干扰排查。是否暂停？</p>
+        <p>进入调试模式将暂停该任务的所有自动触发，以免干扰排查。是否暂停？</p>
         <div class="td-dialog-actions">
           <button on:click={declinePauseScheduler}>跳过（保持启用）</button>
           <button class="primary" on:click={confirmPauseScheduler}>确认暂停</button>
@@ -774,7 +804,6 @@
     </div>
   {/if}
 
-  <!-- Leave Dialog -->
   {#if showLeaveDialog}
     <div class="td-dialog-mask" role="dialog">
       <div class="td-dialog-card">
@@ -789,52 +818,56 @@
     </div>
   {/if}
 
-  <!-- Pause Banner -->
   {#if schedulerPaused}
-    <div class="td-pause-banner">调试模式——任务调度已暂停，离开后自动恢复</div>
+    <div class="alert warning" style="margin-bottom:0; border-radius:6px;">
+      调试模式 — 任务调度已暂停，离开后按选择恢复
+    </div>
   {/if}
 
   {#if error}
     <div class="alert danger">{error}</div>
   {/if}
 
-  <div class="page-title">
+  <!-- Header -->
+  <div class="page-title" style="margin-bottom:2px;">
     <div>
-      <h2>任务调试 · {taskDetail.name || taskId}</h2>
+      <h2>任务调试 · {taskDetail.name || shortId(taskId)}</h2>
     </div>
     <div class="toolbar">
-      <button on:click={showLeaveConfirm}>← 返回任务列表</button>
-      <button on:click={() => (drawerOpen = !drawerOpen)}>{drawerOpen ? '关闭编辑器' : '代码 / 变量编辑'}</button>
-      <button on:click={() => load()}>{loading ? '加载中...' : '刷新'}</button>
+      <button on:click={showLeaveConfirm}>返回任务列表</button>
+      <button class:primary={drawerOpen} on:click={() => (drawerOpen = !drawerOpen)}>
+        {drawerOpen ? '关闭编辑器' : '代码 / 变量编辑'}
+      </button>
+      <button on:click={() => load()}>刷新</button>
     </div>
   </div>
 
+  <!-- Main Layout -->
   <div class="td-layout" class:td-drawer-open={drawerOpen}>
-    <!-- Left Sidebar -->
-    <aside class="td-sidebar">
-      <div class="td-sidebar-head">
-        <h3>运行记录</h3>
+    <!-- Left: Run History -->
+    <aside class="run-list-card" style="overflow:hidden;">
+      <div class="run-list-head">
+        <b>运行记录</b>
         <span>{runs.length} 次</span>
       </div>
-      <div class="td-sidebar-body">
+      <div class="run-list">
         {#if runs.length === 0}
-          <div class="empty">暂无运行记录</div>
+          <div class="empty" style="margin:12px;">暂无运行记录</div>
         {:else}
           {#each groupRunsByDate(runs) as group}
             <div class="td-run-group">
               <div class="td-date-label">{group.label}</div>
               {#each group.items as run}
                 <button
-                  class="td-run-item"
-                  class:td-run-active={selectedRunId === run.id}
+                  class="run-card"
+                  class:selected={selectedRunId === run.id}
                   on:click={() => { selectedRunId = run.id; void loadRunDetail(run.id); centerTab = 'output'; }}
                 >
-                  <span class={`td-status-dot ${runStatusColor(run)}`}></span>
-                  <span class="td-run-info">
-                    <span class="td-run-time">{formatBeijingTime(run.startedAt).split(' ')[1] || formatBeijingTime(run.startedAt)}</span>
-                    <span class="td-run-status">{runStatusLabel(run)}</span>
+                  <span class="run-card-head">
+                    <b>{formatBeijingTime(run.startedAt).split(' ')[1] || formatBeijingTime(run.startedAt)}</b>
+                    <em class={runStatusColor(run)}>{runStatusLabel(run)}</em>
                   </span>
-                  <span class="td-run-duration">{formatDuration(run.durationMs)}</span>
+                  <span class="run-card-time">{formatDuration(run.durationMs)}</span>
                 </button>
               {/each}
             </div>
@@ -843,9 +876,9 @@
       </div>
     </aside>
 
-    <!-- Center Area -->
+    <!-- Center -->
     <div class="td-center">
-      <div class="td-center-tabs">
+      <div class="detail-tabs" style="padding:0 10px;">
         <button class:active={centerTab === 'output'} on:click={() => (centerTab = 'output')}>运行输出</button>
         <button class:active={centerTab === 'session'} on:click={() => (centerTab = 'session')}>Session 调试</button>
       </div>
@@ -853,47 +886,68 @@
       {#if centerTab === 'output'}
         <div class="td-output-tab">
           {#if !selectedRunId}
-            <div class="empty">请从左侧选择一条运行记录</div>
+            <div class="empty-state">
+              <div class="empty-state-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+              </div>
+              <h3>选择运行记录</h3>
+              <p>从左侧选择一条运行记录以查看输出时间线</p>
+            </div>
           {:else if !runDetail}
-            <div class="empty">加载中...</div>
+            <div class="empty-state"><h3>加载中...</h3></div>
           {:else}
-            <div class="td-run-output-header">
-              <span>运行 #{shortId(selectedRunId)}</span>
-              <span class={`home-pill ${runStatusColor(runDetail)}`}>{runStatusLabel(runDetail)}</span>
-              <span>{formatDuration(runDetail.durationMs)}</span>
+            <div class="panel" style="padding:10px 14px; border-radius:6px 6px 0 0; gap:8px;">
+              <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <span style="font-weight:var(--font-weight-semibold); font-family:var(--mono); font-size:var(--font-size-sm);">#{shortId(selectedRunId)}</span>
+                <span class={`home-pill ${runStatusColor(runDetail)}`}>{runStatusLabel(runDetail)}</span>
+                <span style="color:var(--muted); font-size:var(--font-size-sm);">{formatDuration(runDetail.durationMs)}</span>
+              </div>
             </div>
             <div class="td-timeline">
               {#if timeline.length === 0}
-                <div class="empty">暂无时间线数据</div>
+                <div class="empty" style="margin:12px;">暂无时间线数据</div>
               {:else}
-                {#each timeline as entry (`${entry.kind}-${entry.id}`)}
-                  <div class="td-tl-item td-tl-{entry.kind} {eventLevelClass((entry as any).level)}">
-                    <span class="td-tl-time">{formatBeijingTime(entry.timestamp)}</span>
-                    <span class="td-tl-content">
+                {#each timeline as entry, i (`${entry.kind}-${entry.id}`)}
+                  <div class="td-tl-item td-tl-{entry.kind} {eventLevelClass((entry as any).level)}" class:td-tl-result={entry.kind === 'input' && entry.id === 'result'}>
+                    <time>{formatBeijingTime(entry.timestamp).split(' ')[0]}<br>{formatBeijingTime(entry.timestamp).split(' ')[1]}</time>
+                    <div class="td-tl-rail">
+                      <div class="td-tl-dot"></div>
+                      {#if i < timeline.length - 1}
+                        <div class="td-tl-line"></div>
+                      {/if}
+                    </div>
+                    <div class="td-tl-body">
                       {#if entry.kind === 'input'}
-                        <span class="td-tl-badge input">输入</span>
-                        {#if entry.id === 'result'}<span class="td-tl-badge result">结果</span>{/if}
-                        <pre class="td-tl-body">{entry.content}</pre>
+                        <span class="td-tl-label {entry.id === 'result' ? 'td-tl-label-out' : 'td-tl-label-in'}">
+                          {entry.id === 'result' ? '输出' : '输入'}
+                        </span>
+                        <pre class="td-tl-pre">{entry.content}</pre>
                       {:else if entry.kind === 'loader_event'}
-                        <span class="td-tl-badge event">{translateEventType(entry.type)}</span>
-                        {#if entry.type}<span class="td-tl-event-type">{entry.type}</span>{/if}
-                        <span class="td-tl-message">{entry.message}</span>
+                        <span class="td-tl-msg">{translateEventType(entry.type)}</span>
+                        {#if entry.message}<span class="td-tl-msg-detail">{entry.message}</span>{/if}
                         {#if entry.detail}
-                          <pre class="td-tl-detail">{entry.detail}</pre>
+                          <pre class="td-tl-pre td-tl-detail">{entry.detail}</pre>
                         {/if}
                       {:else if entry.kind === 'session_card'}
-                        <span class="td-tl-badge session">会话</span>
-                        <button class="td-tl-link" on:click={() => selectSession(entry.sessionId)}>
-                          查看会话 {shortId(entry.sessionId)} — {entry.summary}
-                        </button>
+                        <span class="td-tl-type">会话</span>
+                        <span class="td-tl-msg">{shortId(entry.sessionId)} · {entry.summary}</span>
+                        <button class="td-tl-link" on:click={() => selectSession(entry.sessionId)}>查看</button>
+                        {#if entry.messages}
+                          {#each entry.messages as m}
+                            <div class="td-tl-session-msg">
+                              <span class="td-tl-session-role">{m.role}:</span>
+                              <span class="td-tl-session-text">{m.content}</span>
+                            </div>
+                          {/each}
+                        {/if}
                       {:else if entry.kind === 'error'}
-                        <span class="td-tl-badge err">错误</span>
-                        <span class="td-tl-message td-tl-error-text">{entry.message}</span>
+                        <span class="td-tl-label td-tl-label-err">错误</span>
+                        <span class="td-tl-msg">{entry.message}</span>
                       {:else if entry.kind === 'artifact'}
-                        <span class="td-tl-badge artifact">产出物</span>
-                        <span class="td-tl-message">{entry.name}</span>
+                        <span class="td-tl-label td-tl-label-artifact">产出物</span>
+                        <span class="td-tl-msg">{entry.name}</span>
                       {/if}
-                    </span>
+                    </div>
                   </div>
                 {/each}
               {/if}
@@ -901,25 +955,34 @@
           {/if}
         </div>
       {:else}
-        <!-- Session Debug Tab -->
+        <!-- Session Debug -->
         <div class="td-session-tab">
-          <div class="td-session-top-bar">
-            <select bind:value={selectedSessionId} on:change={() => { if (selectedSessionId) { void loadSessionDetail(selectedSessionId); } }}>
-              <option value="">选择会话...</option>
-              {#each availableSessions as s}
-                <option value={s.id}>会话 {s.label}</option>
-              {/each}
-            </select>
-            <button disabled={!canResumeSession()} on:click={resumeCurrentSession}>
-              {resuming ? '重启中...' : '重启会话'}
-            </button>
+          <div class="panel" style="padding:8px 12px; border-radius:6px 6px 0 0; flex-shrink:0;">
+            <div style="display:flex; gap:8px; align-items:center;">
+              <select bind:value={selectedSessionId} style="flex:1; min-height:32px;"
+                on:change={() => { if (selectedSessionId) { void loadSessionDetail(selectedSessionId); } }}>
+                <option value="">选择会话...</option>
+                {#each availableSessions as s}
+                  <option value={s.id}>会话 {s.label}</option>
+                {/each}
+              </select>
+              <button disabled={!canResumeSession()} on:click={resumeCurrentSession}>
+                {resuming ? '重启中...' : '重启会话'}
+              </button>
+            </div>
           </div>
 
           {#if !selectedSessionId}
-            <div class="empty">请选择要调试的会话</div>
+            <div class="empty-state">
+              <div class="empty-state-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+              </div>
+              <h3>选择会话</h3>
+              <p>选择要调试的 Work Session 以查看对话和终端</p>
+            </div>
           {:else}
             <div class="td-split-view" bind:this={splitContainer} class:td-dragging={dragging}>
-              <!-- Chat Area -->
+              <!-- Chat -->
               <div class="td-chat-pane" style="height: {((1 - bottomRatio) * 100)}%">
                 <div class="td-chat-messages" bind:this={chatMessagesEl}>
                   {#if chatMessages.length === 0}
@@ -940,7 +1003,7 @@
                     {/each}
                   {/if}
                 </div>
-                <div class="td-chat-composer" class:td-chat-disabled={!canChat()}>
+                <div class="td-chat-composer">
                   <textarea
                     rows="3"
                     value={messageDraft}
@@ -950,7 +1013,7 @@
                     on:keydown={handleMessageKeydown}
                   ></textarea>
                   <div class="td-composer-actions">
-                    <span>{canChat() ? 'Enter 发送 · Shift + Enter 换行' : `会话${sessionStatus || '未运行'}`}</span>
+                    <span>{canChat() ? 'Enter 发送 · Shift+Enter 换行' : `会话${sessionStatus || '未运行'}`}</span>
                     <button disabled={!canChat() || !messageDraft.trim()} on:click={sendMessage}>
                       {sendingMessage ? '发送中...' : '发送'}
                     </button>
@@ -964,9 +1027,9 @@
                 <div class="td-resize-line"></div>
               </div>
 
-              <!-- Bottom Debug Panel -->
-              <div class="td-bottom-panel" style="height: {(bottomRatio * 100)}%">
-                <div class="td-debug-tabs">
+              <!-- Bottom Panel -->
+              <div class="panel td-bottom-panel" style="height: {(bottomRatio * 100)}%; padding:0; gap:0;">
+                <div class="detail-tabs" style="padding:0 8px; background:var(--surface-2);">
                   <button class:active={activeDebugTab === 'terminal'} on:click={() => (activeDebugTab = 'terminal')}>终端</button>
                   <button class:active={activeDebugTab === 'events'} on:click={() => (activeDebugTab = 'events')}>事件</button>
                   <button class:active={activeDebugTab === 'artifacts'} on:click={() => (activeDebugTab = 'artifacts')}>产出物</button>
@@ -977,7 +1040,7 @@
                   {:else if activeDebugTab === 'events'}
                     <div class="td-events-list">
                       {#if sessionEvents.length === 0}
-                        <div class="empty">暂无事件</div>
+                        <div class="empty" style="margin:12px;">暂无事件</div>
                       {:else}
                         {#each sessionEvents as evt}
                           <div class="td-event-row {eventLevelClass(evt.level)}">
@@ -990,9 +1053,9 @@
                       {/if}
                     </div>
                   {:else}
-                    <div class="td-artifacts-tab">
+                    <div style="padding:20px; text-align:center;">
                       <p class="muted">产出物浏览需在终端中执行命令查看。</p>
-                      <p class="muted">例如: <code>ls -la /workspace</code></p>
+                      <p class="muted">例如: <code style="font-family:var(--mono); background:var(--surface-2); padding:2px 6px; border-radius:3px;">ls -la /workspace</code></p>
                     </div>
                   {/if}
                 </div>
@@ -1005,19 +1068,19 @@
 
     <!-- Right Drawer -->
     {#if drawerOpen}
-      <aside class="td-drawer">
-        <div class="td-drawer-head">
-          <h3>任务工作区</h3>
-          <button class="td-drawer-close" on:click={() => (drawerOpen = false)}>✕</button>
+      <aside class="panel td-drawer" style="padding:0; gap:0;">
+        <div class="panel-head" style="padding:10px 12px; border-bottom:1px solid var(--line);">
+          <h3 style="margin:0; font-size:var(--font-size-sm);">任务工作区</h3>
+          <button class="ghost" style="min-height:28px; padding:4px 8px;" on:click={() => (drawerOpen = false)}>关闭</button>
         </div>
         <div class="td-drawer-body">
-          <section class="td-drawer-section">
+          <section>
             <h4>JS 脚本</h4>
             <div class="td-code-editor-wrap">
               <pre class="td-code-highlight" aria-hidden="true" style="transform: translate({-scriptScrollLeft}px, {-scriptScrollTop}px);">{@html highlightedJS(scriptDraft)}</pre>
               <textarea
                 class="td-code-editor"
-                rows="16"
+                rows="18"
                 spellcheck="false"
                 bind:value={scriptDraft}
                 on:scroll={syncCodeScroll}
@@ -1025,20 +1088,20 @@
             </div>
           </section>
 
-          <section class="td-drawer-section">
+          <section>
             <div class="td-section-head">
               <h4>环境变量</h4>
-              <button on:click={addEnvItem}>添加变量</button>
+              <button on:click={addEnvItem} style="min-height:28px; font-size:var(--font-size-xs);">添加变量</button>
             </div>
             {#if envDraft.length === 0}
               <p class="muted">未配置环境变量</p>
             {:else}
               {#each envDraft as item, i}
                 <div class="td-env-row">
-                  <input bind:value={item.name} placeholder="KEY">
-                  <input bind:value={item.value} placeholder="VALUE" type={item.secret ? 'password' : 'text'}>
+                  <input bind:value={item.name} placeholder="KEY" style="flex:1;">
+                  <input bind:value={item.value} placeholder="VALUE" type={item.secret ? 'password' : 'text'} style="flex:1.4;">
                   <label class="td-env-secret"><input type="checkbox" bind:checked={item.secret}> 敏感</label>
-                  <button on:click={() => removeEnvItem(i)}>删除</button>
+                  <button class="ghost" style="min-height:28px; padding:4px 6px; color:var(--danger);" on:click={() => removeEnvItem(i)}>删除</button>
                 </div>
               {/each}
             {/if}
@@ -1052,14 +1115,14 @@
           </div>
 
           {#if runResult}
-            <section class="td-drawer-section">
+            <section>
               <h4>运行结果</h4>
-              <div class="td-result-card" class:td-result-success={runResult.success} class:td-result-failed={!runResult.success}>
-                <span>{runResult.success ? '成功' : '失败'}</span>
-                <span>{runResult.message}</span>
+              <div class="alert" class:success={runResult.success} class:danger={!runResult.success}>
+                <span style="font-weight:var(--font-weight-semibold);">{runResult.success ? '成功' : '失败'}</span>
+                <span style="margin-left:8px;">{runResult.message}</span>
               </div>
               {#if runResult.runId}
-                <button class="td-view-output-btn" on:click={goToNewRun}>查看全量输出 →</button>
+                <button class="button-link" style="margin-top:8px; width:100%;" on:click={goToNewRun}>查看全量输出 →</button>
               {/if}
             </section>
           {/if}
@@ -1070,180 +1133,553 @@
 {/if}
 
 <style>
-  /* Dialog */
-  .td-dialog-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; }
-  .td-dialog-card { background: #fff; border-radius: 8px; padding: 24px; max-width: 440px; box-shadow: var(--shadow-lg); }
+  /* ── Dialog ── */
+  .td-dialog-mask {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(15,23,42,0.3); backdrop-filter: blur(2px);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .td-dialog-card {
+    background: var(--surface); border-radius: var(--radius-lg);
+    padding: 24px; max-width: 420px; box-shadow: var(--shadow-xl);
+  }
   .td-dialog-card h3 { margin: 0 0 8px; font-size: var(--font-size-md); }
-  .td-dialog-card p { margin: 0 0 16px; color: var(--muted); line-height: 1.5; }
+  .td-dialog-card p { margin: 0 0 16px; color: var(--muted); line-height: 1.55; }
   .td-dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
-  /* Pause Banner */
-  .td-pause-banner { padding: 8px 16px; background: #fef9c3; color: #854d0e; font-weight: var(--font-weight-semibold); font-size: var(--font-size-sm); text-align: center; border-radius: 6px; margin-bottom: 8px; }
+  /* ── Layout ── */
+  .td-layout {
+    display: grid;
+    grid-template-columns: 248px minmax(0, 1fr);
+    gap: 12px;
+    min-height: 0;
+    height: calc(100vh - 150px);
+  }
+  .td-layout.td-drawer-open {
+    grid-template-columns: 248px minmax(0, 1fr) 380px;
+  }
 
-  /* Layout */
-  .td-layout { display: flex; height: calc(100vh - 140px); gap: 0; overflow: hidden; }
-  .td-layout.td-drawer-open .td-drawer { display: flex; }
+  /* ── Sidebar ── */
+  .td-run-group { padding: 0; }
+  /* Compact sidebar run cards — global run-card min-height (104px) is too tall */
+  :global(.run-list-card) :global(.run-card) {
+    min-height: 58px;
+    padding: 7px 10px;
+    gap: 2px;
+  }
+  .td-date-label {
+    padding: 8px 6px 4px;
+    font-size: var(--font-size-xs);
+    color: var(--muted);
+    font-weight: var(--font-weight-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
 
-  /* Sidebar */
-  .td-sidebar { width: 240px; flex-shrink: 0; border-right: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; background: var(--surface); }
-  .td-sidebar-head { padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
-  .td-sidebar-head h3 { margin: 0; font-size: var(--font-size-sm); }
-  .td-sidebar-head span { font-size: var(--font-size-xs); color: var(--muted); }
-  .td-sidebar-body { flex: 1; overflow-y: auto; }
-  .td-run-group { padding: 2px 0; }
-  .td-date-label { padding: 6px 12px; font-size: var(--font-size-xs); color: var(--muted); font-weight: var(--font-weight-semibold); }
-  .td-run-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 12px; border: none; background: none; cursor: pointer; font-size: var(--font-size-sm); text-align: left; }
-  .td-run-item:hover { background: var(--surface-2); }
-  .td-run-item.td-run-active { background: var(--selected-bg); box-shadow: inset 2px 0 0 var(--selected-border); }
-  .td-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .td-status-dot.green { background: var(--success-solid); }
-  .td-status-dot.red { background: var(--danger-solid); }
-  .td-status-dot.blue { background: var(--primary); }
-  .td-status-dot.gray { background: var(--line-strong); }
-  .td-run-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-  .td-run-time { font-size: var(--font-size-xs); }
-  .td-run-status { font-size: var(--font-size-xs); color: var(--muted); }
-  .td-run-duration { font-size: var(--font-size-xs); color: var(--muted); font-family: var(--mono); flex-shrink: 0; }
 
-  /* Center */
-  .td-center { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
-  .td-center-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--line); padding: 0 8px; background: var(--surface-2); flex-shrink: 0; }
-  .td-center-tabs button { padding: 8px 16px; border: none; border-bottom: 2px solid transparent; background: none; cursor: pointer; font-weight: var(--font-weight-semibold); font-size: var(--font-size-sm); color: var(--muted); }
-  .td-center-tabs button.active { color: var(--primary); border-bottom-color: var(--primary); }
+  /* ── Center ── */
+  .td-center {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
 
-  /* Output Tab */
-  .td-output-tab { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
-  .td-run-output-header { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); flex-shrink: 0; }
 
-  /* Timeline */
-  .td-timeline { flex: 1; overflow-y: auto; padding: 8px; background: #07111a; }
-  .td-tl-item { display: flex; gap: 10px; padding: 6px 8px; border-left: 3px solid transparent; margin-bottom: 2px; min-width: 0; }
-  .td-tl-item.tl-error { border-left-color: var(--danger); background: rgba(239,68,68,0.06); }
-  .td-tl-item.tl-warning { border-left-color: var(--amber); background: rgba(245,158,11,0.04); }
-  .td-tl-item.td-tl-loader_event { border-left-color: #f59e0b; }
-  .td-tl-item.td-tl-session_card { border-left-color: #22c55e; }
-  .td-tl-item.td-tl-error { border-left-color: #ef4444; background: rgba(239,68,68,0.06); }
-  .td-tl-item.td-tl-input { border-left-color: #3b82f6; }
-  .td-tl-item.td-tl-artifact { border-left-color: #8b5cf6; }
-  .td-tl-time { flex-shrink: 0; width: 140px; font-size: 11px; font-family: var(--mono); color: #4a5f73; padding-top: 1px; }
-  .td-tl-content { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
-  .td-tl-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; line-height: 1.4; }
-  .td-tl-badge.input { background: rgba(59,130,246,0.2); color: #60a5fa; }
-  .td-tl-badge.result { background: rgba(34,197,94,0.2); color: #4ade80; }
-  .td-tl-badge.event { background: rgba(245,158,11,0.18); color: #fbbf24; }
-  .td-tl-badge.session { background: rgba(34,197,94,0.18); color: #4ade80; }
-  .td-tl-badge.err { background: rgba(239,68,68,0.22); color: #f87171; }
-  .td-tl-badge.artifact { background: rgba(139,92,246,0.18); color: #a78bfa; }
-  .td-tl-event-type { font-size: 10px; color: #64748b; font-family: var(--mono); }
-  .td-tl-message { font-size: 13px; color: #d8e2ec; word-break: break-word; }
-  .td-tl-error-text { color: #fca5a5 !important; }
-  .td-tl-body { margin: 4px 0 0; padding: 0; font-family: var(--mono); font-size: 12px; color: #93c5fd; white-space: pre-wrap; word-break: break-word; width: 100%; }
-  .td-tl-detail { margin: 4px 0 0; padding: 6px 10px; background: rgba(255,255,255,0.03); border-left: 2px solid rgba(255,255,255,0.1); border-radius: 0 4px 4px 0; font-family: var(--mono); font-size: 12px; color: #7c8fa0; white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto; width: 100%; }
-  .td-tl-link { background: none; border: none; color: #4ade80; cursor: pointer; font-size: 13px; text-decoration: underline; padding: 0; }
-  .td-tl-link:hover { color: #86efac; }
+  /* ── Output Tab ── */
+  .td-output-tab {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--line);
+    border-top: 0;
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    background: var(--surface);
+    overflow: hidden;
+  }
 
-  /* Session Tab */
-  .td-session-tab { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  .td-session-top-bar { display: flex; gap: 8px; padding: 8px; border-bottom: 1px solid var(--line); background: var(--surface); flex-shrink: 0; }
-  .td-session-top-bar select { flex: 1; min-width: 0; min-height: 32px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit; font-size: var(--font-size-sm); }
+  /* ── Timeline ── */
+  .td-timeline {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 10px 0;
+    background: var(--surface);
+    font-family: var(--mono);
+    font-size: var(--font-size-sm);
+    line-height: 1.55;
+  }
+
+  /* Each row: left rail (time + dot + line) | body */
+  .td-tl-item {
+    display: flex;
+    gap: 6px;
+    padding: 0 12px;
+  }
+  .td-tl-item:hover { background: var(--surface-2); }
+  .td-tl-item.tl-error { background: rgba(180,35,24,0.04); }
+
+  /* Time column */
+  .td-tl-item > time {
+    flex: 0 0 64px;
+    color: var(--muted);
+    font-weight: var(--font-weight-medium);
+    font-size: var(--font-size-xs);
+    line-height: var(--line-height-label);
+    text-align: right;
+    user-select: none;
+    padding: 0 6px 0 0;
+  }
+
+  /* ── Center rail (dot + line) ── */
+  .td-tl-rail {
+    flex: 0 0 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 5px;
+  }
+  .td-tl-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 999px;
+    background: #94a3b8;
+    box-shadow: 0 0 0 3px #f1f5f9;
+    flex-shrink: 0;
+  }
+  .td-tl-input .td-tl-dot { background: var(--primary); box-shadow: 0 0 0 3px var(--primary-weak); }
+  .td-tl-input.td-tl-result .td-tl-dot { background: var(--success-solid); box-shadow: 0 0 0 3px #dcfce7; }
+  .td-tl-session_card .td-tl-dot { background: var(--success-solid); box-shadow: 0 0 0 3px #dcfce7; }
+  .td-tl-error .td-tl-dot { background: var(--danger-solid); box-shadow: 0 0 0 3px #ffe4e6; }
+  .td-tl-artifact .td-tl-dot { background: var(--violet); box-shadow: 0 0 0 3px var(--violet-weak); }
+  .td-tl-loader_event.tl-error .td-tl-dot { background: var(--danger-solid); box-shadow: 0 0 0 3px #ffe4e6; }
+  .td-tl-loader_event.tl-warning .td-tl-dot { background: #d97706; box-shadow: 0 0 0 3px #fff4df; }
+
+  .td-tl-line {
+    flex: 1;
+    width: 2px;
+    min-height: 12px;
+    background: var(--line);
+    border-radius: 1px;
+  }
+
+  /* ── Right body ── */
+  .td-tl-body {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 4px;
+    padding: 2px 0 12px;
+    line-height: var(--line-height-label);
+  }
+  .td-tl-body > * {
+    line-height: var(--line-height-label);
+  }
+
+  .td-tl-label {
+    font-weight: var(--font-weight-semibold);
+    flex-shrink: 0;
+  }
+  .td-tl-label-in { color: var(--primary); }
+  .td-tl-label-out { color: var(--success); }
+  .td-tl-label-err { color: var(--danger); }
+  .td-tl-label-artifact { color: var(--violet); }
+
+  .td-tl-type {
+    color: var(--muted);
+    font-size: var(--font-size-xs);
+    flex-shrink: 0;
+  }
+  .td-tl-msg {
+    color: var(--text);
+    word-break: break-word;
+  }
+  .td-tl-msg-detail {
+    color: var(--muted);
+    word-break: break-word;
+  }
+  .td-tl-link {
+    background: none;
+    border: none;
+    color: var(--primary);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: inherit;
+    min-height: 0;
+    padding: 0;
+    text-decoration: underline;
+    white-space: nowrap;
+    line-height: var(--line-height-label);
+  }
+  .td-tl-link:hover { color: #1d4ed8; }
+
+  .td-tl-session-msg {
+    width: 100%;
+    display: flex;
+    gap: 4px;
+    margin-top: 2px;
+    padding-left: 0;
+    font-size: var(--font-size-sm);
+    line-height: 1.45;
+  }
+  .td-tl-session-role {
+    color: var(--muted);
+    flex-shrink: 0;
+    font-weight: var(--font-weight-medium);
+  }
+  .td-tl-session-text {
+    color: var(--text);
+    word-break: break-word;
+  }
+
+  .td-tl-pre {
+    width: 100%;
+    margin: 4px 0 2px;
+    padding: 6px 10px;
+    background: var(--surface-2);
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: var(--font-size-xs);
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+    color: var(--muted);
+  }
+  .td-tl-detail {
+    max-height: 140px;
+  }
+
+  /* ── Session Tab ── */
+  .td-session-tab {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
 
   /* Split View */
-  .td-split-view { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .td-split-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border: 1px solid var(--line);
+    border-top: 0;
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    overflow: hidden;
+    background: var(--surface);
+  }
   .td-split-view.td-dragging { cursor: row-resize; }
-  .td-chat-pane { display: flex; flex-direction: column; min-height: 120px; overflow: hidden; }
-  .td-chat-messages { flex: 1; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; }
-  .td-chat-empty { color: var(--muted); font-size: var(--font-size-sm); text-align: center; padding: 40px; }
-  .td-chat-msg { max-width: 85%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); }
-  .td-chat-user { align-self: flex-end; background: var(--primary-weak); border-color: rgba(59,130,246,0.2); }
-  .td-chat-agent { align-self: flex-start; background: #fff; border-color: rgba(34,197,94,0.2); }
-  .td-chat-system { align-self: center; max-width: 90%; background: #f8fafc; opacity: 0.8; }
-  .td-chat-running { border-color: rgba(59,130,246,0.4); }
-  .td-chat-head { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
-  .td-chat-role { font-weight: var(--font-weight-semibold); font-size: var(--font-size-xs); text-transform: uppercase; }
+
+  .td-chat-pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 120px;
+    overflow: hidden;
+  }
+  .td-chat-messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .td-chat-empty {
+    color: var(--muted);
+    font-size: var(--font-size-sm);
+    text-align: center;
+    padding: 48px;
+  }
+
+  .td-chat-msg {
+    max-width: 82%;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+  }
+  .td-chat-user {
+    align-self: flex-end;
+    background: var(--primary-weak);
+    border-color: rgba(47,95,208,0.18);
+  }
+  .td-chat-agent {
+    align-self: flex-start;
+    background: #fff;
+    border-color: rgba(16,185,129,0.18);
+  }
+  .td-chat-system {
+    align-self: center;
+    max-width: 88%;
+    background: var(--surface-2);
+    opacity: 0.85;
+  }
+  .td-chat-running { border-color: rgba(47,95,208,0.32); }
+
+  .td-chat-head {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 3px;
+  }
+  .td-chat-role {
+    font-weight: var(--font-weight-semibold);
+    font-size: 11px;
+    text-transform: uppercase;
+  }
   .td-chat-user .td-chat-role { color: var(--primary); }
   .td-chat-agent .td-chat-role { color: var(--success); }
   .td-chat-system .td-chat-role { color: var(--muted); }
   .td-chat-time { font-size: var(--font-size-xs); color: var(--muted); }
-  .td-chat-running-badge { font-size: var(--font-size-xs); padding: 1px 7px; border-radius: 999px; background: rgba(59,130,246,0.12); color: var(--primary); }
-  .td-chat-stop-reason { font-size: var(--font-size-xs); color: var(--muted); }
-  .td-chat-body { margin: 0; font-family: var(--mono); font-size: var(--font-size-sm); line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-height: 300px; overflow-y: auto; }
+  .td-chat-running-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(47,95,208,0.1);
+    color: var(--primary);
+  }
+  .td-chat-stop-reason {
+    font-size: var(--font-size-xs);
+    color: var(--muted);
+  }
+  .td-chat-body {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 260px;
+    overflow-y: auto;
+  }
 
   /* Chat Composer */
-  .td-chat-composer { padding: 8px; border-top: 1px solid var(--line); background: #fff; flex-shrink: 0; }
-  .td-chat-composer.td-chat-disabled { background: var(--surface-2); }
-  .td-chat-composer textarea { width: 100%; min-height: 52px; resize: none; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: var(--font-size-sm); box-sizing: border-box; }
-  .td-chat-composer textarea:disabled { background: var(--surface-2); color: var(--muted); }
-  .td-composer-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
-  .td-composer-actions span { font-size: var(--font-size-xs); color: var(--muted); }
+  .td-chat-composer {
+    padding: 8px 12px;
+    border-top: 1px solid var(--line);
+    background: #fff;
+    flex-shrink: 0;
+  }
+  .td-chat-composer textarea {
+    width: 100%;
+    min-height: 48px;
+    resize: none;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font: inherit;
+    font-size: var(--font-size-sm);
+    box-sizing: border-box;
+  }
+  .td-composer-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-top: 5px;
+  }
+  .td-composer-actions span {
+    font-size: var(--font-size-xs);
+    color: var(--muted);
+  }
 
-  /* Resize */
-  .td-resize-handle { flex-shrink: 0; height: 8px; display: flex; align-items: center; justify-content: center; cursor: row-resize; }
-  .td-resize-handle:hover { background: rgba(59,130,246,0.06); }
-  .td-resize-line { width: 40px; height: 3px; border-radius: 2px; background: var(--line-strong); }
+  /* Resize Handle */
+  .td-resize-handle {
+    flex-shrink: 0;
+    height: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: row-resize;
+  }
+  .td-resize-handle:hover { background: rgba(47,95,208,0.05); }
+  .td-resize-line {
+    width: 40px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--line-strong);
+  }
 
   /* Bottom Panel */
-  .td-bottom-panel { display: flex; flex-direction: column; min-height: 60px; border-top: 1px solid var(--line); background: #fff; overflow: hidden; }
-  .td-debug-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--line); padding: 0 6px; background: var(--surface-2); flex-shrink: 0; }
-  .td-debug-tabs button { padding: 6px 12px; font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); border: none; border-bottom: 2px solid transparent; background: none; color: var(--muted); cursor: pointer; }
-  .td-debug-tabs button.active { color: var(--primary); border-bottom-color: var(--primary); }
-  .td-debug-tab-content { flex: 1; overflow: hidden; }
+  .td-bottom-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 60px;
+    border-top: 1px solid var(--line);
+    overflow: hidden;
+  }
+
+  .td-debug-tab-content {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
 
   /* Terminal */
-  .td-terminal-container { width: 100%; height: 100%; }
-  :global(.td-terminal-container .xterm) { height: 100%; padding: 6px; }
+  .td-terminal-container {
+    width: 100%;
+    height: 100%;
+  }
+  :global(.td-terminal-container .xterm) {
+    height: 100%;
+    padding: 4px 6px;
+  }
 
-  /* Events */
-  .td-events-list { height: 100%; overflow-y: auto; font-family: var(--mono); font-size: var(--font-size-xs); }
-  .td-event-row { display: flex; gap: 8px; padding: 4px 10px; border-bottom: 1px solid rgba(0,0,0,0.04); align-items: baseline; }
+  /* Events List */
+  .td-events-list {
+    height: 100%;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: var(--font-size-xs);
+    padding: 4px 0;
+  }
+  .td-event-row {
+    display: flex;
+    gap: 8px;
+    padding: 4px 10px;
+    border-bottom: 1px solid rgba(0,0,0,0.04);
+    align-items: baseline;
+  }
   .td-event-row:hover { background: var(--surface-2); }
-  .td-event-row.tl-error { background: rgba(239,68,68,0.04); }
-  .td-evt-time { flex: 0 0 140px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .td-evt-type { flex: 0 0 130px; font-weight: var(--font-weight-semibold); }
-  .td-evt-level { flex: 0 0 50px; font-size: 10px; text-transform: uppercase; }
+  .td-event-row.tl-error { background: rgba(180,35,24,0.03); }
+  .td-evt-time {
+    flex: 0 0 140px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .td-evt-type {
+    flex: 0 0 130px;
+    font-weight: var(--font-weight-semibold);
+  }
+  .td-evt-level {
+    flex: 0 0 48px;
+    font-size: 10px;
+    text-transform: uppercase;
+  }
   .td-evt-level.tl-error { color: var(--danger); }
   .td-evt-level.tl-warning { color: #d97706; }
-  .td-evt-msg { flex: 1; min-width: 0; word-break: break-word; }
+  .td-evt-msg {
+    flex: 1;
+    min-width: 0;
+    word-break: break-word;
+  }
 
-  /* Artifacts */
-  .td-artifacts-tab { padding: 20px; text-align: center; }
-  .td-artifacts-tab code { font-family: var(--mono); background: var(--surface-2); padding: 2px 6px; border-radius: 3px; }
-
-  /* Drawer */
-  .td-drawer { display: none; width: 400px; flex-shrink: 0; border-left: 1px solid var(--line); flex-direction: column; overflow: hidden; background: #fff; }
-  .td-drawer-head { padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
-  .td-drawer-head h3 { margin: 0; font-size: var(--font-size-sm); }
-  .td-drawer-close { background: none; border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 14px; }
-  .td-drawer-body { flex: 1; overflow-y: auto; padding: 12px; }
-  .td-drawer-section { margin-bottom: 16px; }
-  .td-drawer-section h4 { margin: 0 0 8px; font-size: var(--font-size-sm); }
-  .td-section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  /* ── Drawer ── */
+  .td-drawer {
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .td-drawer-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .td-drawer-body section > h4 {
+    margin: 0 0 6px;
+    font-size: var(--font-size-sm);
+    color: var(--text);
+  }
+  .td-section-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
   .td-section-head h4 { margin: 0; }
 
   /* Code Editor */
-  .td-code-editor-wrap { position: relative; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-  .td-code-highlight { position: absolute; inset: 0; margin: 0; padding: 8px 10px; font-family: var(--mono); font-size: 13px; line-height: 1.45; white-space: pre; pointer-events: none; overflow: hidden; color: var(--text); }
-  .td-code-editor { display: block; position: relative; width: 100%; padding: 8px 10px; font-family: var(--mono); font-size: 13px; line-height: 1.45; border: none; resize: none; color: transparent; caret-color: var(--text); background: transparent; }
+  .td-code-editor-wrap {
+    position: relative;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--surface-2);
+  }
+  .td-code-highlight {
+    position: absolute;
+    top: 0;
+    left: 0;
+    min-width: 100%;
+    margin: 0;
+    padding: 8px 10px;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.45;
+    white-space: pre;
+    pointer-events: none;
+    overflow: visible;
+    color: var(--text);
+    tab-size: 2;
+  }
+  .td-code-editor {
+    display: block;
+    position: relative;
+    width: 100%;
+    padding: 8px 10px;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.45;
+    white-space: pre;
+    overflow: auto;
+    border: none;
+    resize: none;
+    color: transparent;
+    caret-color: var(--text);
+    background: transparent;
+    tab-size: 2;
+  }
   .td-code-editor:focus { outline: none; }
+
   :global(.tok-keyword) { color: #7c3aed; font-weight: 600; }
   :global(.tok-string) { color: #059669; }
   :global(.tok-comment) { color: #6b7280; font-style: italic; }
   :global(.tok-number) { color: #d97706; }
   :global(.tok-function) { color: #2563eb; }
 
-  /* Env */
-  .td-env-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
-  .td-env-row input[type="text"],
-  .td-env-row input[type="password"] { flex: 1; min-width: 0; min-height: 30px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px; font-size: var(--font-size-sm); }
-  .td-env-secret { display: flex; align-items: center; gap: 2px; font-size: var(--font-size-xs); white-space: nowrap; cursor: pointer; }
+  /* Env Editor */
+  .td-env-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .td-env-row input {
+    min-height: 30px;
+    padding: 4px 8px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    font-size: var(--font-size-sm);
+  }
+  .td-env-secret {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+    cursor: pointer;
+  }
   .td-env-secret input { width: auto; margin: 0; }
 
   /* Drawer Actions */
-  .td-drawer-actions { display: flex; gap: 8px; margin-bottom: 16px; }
-
-  /* Run Result */
-  .td-result-card { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 6px; font-size: var(--font-size-sm); }
-  .td-result-success { background: var(--success-weak); color: var(--success); }
-  .td-result-failed { background: var(--danger-weak); color: var(--danger); }
-  .td-view-output-btn { margin-top: 8px; background: none; border: none; color: var(--primary); cursor: pointer; font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); }
-  .td-view-output-btn:hover { text-decoration: underline; }
+  .td-drawer-actions {
+    display: flex;
+    gap: 8px;
+  }
 </style>
