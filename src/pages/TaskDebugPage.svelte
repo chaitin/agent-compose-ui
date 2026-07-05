@@ -339,6 +339,14 @@
     return 'gray';
   }
 
+  function sessionStatusColor(s: WorkSession | null): string {
+    if (!s) return 'gray';
+    const label = mapSessionStatus(s.status);
+    if (label === '启动失败') return 'red';
+    if (label === '运行中' || label === '启动中') return 'blue';
+    return 'gray';
+  }
+
   function formatDuration(ms: number): string {
     if (ms <= 0) return '-';
     if (ms < 1000) return `${ms}ms`;
@@ -1044,6 +1052,15 @@
               <p>选择要调试的 Work Session 以查看对话和终端</p>
             </div>
           {:else}
+            <div class="panel td-session-meta" style="padding:8px 12px; flex-shrink:0; display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:var(--font-size-sm);">
+              <span style="font-weight:var(--font-weight-semibold);">{session?.title || `会话 ${shortId(selectedSessionId)}`}</span>
+              <span class={`home-pill ${sessionStatusColor(session)}`}>{sessionStatus || '未知'}</span>
+              {#if session?.driver}<span style="color:var(--muted);">驱动: {session.driver}</span>{/if}
+              {#if session?.guestImage}<span style="color:var(--muted);">镜像: {session.guestImage}</span>{/if}
+              {#if session?.createdAt}<span style="color:var(--muted);">创建: {formatBeijingTime(session.createdAt)}</span>{/if}
+              {#if session}<span style="color:var(--muted);">Cell: {session.cellCount}</span>{/if}
+              {#if session}<span style="color:var(--muted);">事件: {session.eventCount}</span>{/if}
+            </div>
             <div class="td-split-view" bind:this={splitContainer} class:td-dragging={dragging}>
               <!-- Chat -->
               <div class="td-chat-pane" style="height: {((1 - bottomRatio) * 100)}%">
