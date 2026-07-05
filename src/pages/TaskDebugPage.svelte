@@ -111,7 +111,7 @@
   let messageAbort: AbortController | null = null;
   let runPollAbort: AbortController | null = null;
   let bottomRatio = 0.3;
-  let activeDebugTab: 'terminal' | 'events' | 'artifacts' = 'terminal';
+  let activeDebugTab: 'terminal' | 'artifacts' = 'terminal';
 
   let terminalEl: HTMLDivElement | null = null;
   let term: Terminal | null = null;
@@ -1574,27 +1574,11 @@
               <div class="panel td-bottom-panel" style="height: {(bottomRatio * 100)}%; padding:0; gap:0;">
                 <div class="detail-tabs" style="padding:0 8px; background:var(--surface-2);">
                   <button class:active={activeDebugTab === 'terminal'} on:click={() => (activeDebugTab = 'terminal')}>终端</button>
-                  <button class:active={activeDebugTab === 'events'} on:click={() => (activeDebugTab = 'events')}>事件</button>
                   <button class:active={activeDebugTab === 'artifacts'} on:click={() => (activeDebugTab = 'artifacts')}>产出物</button>
                 </div>
                 <div class="td-debug-tab-content">
                   {#if activeDebugTab === 'terminal'}
                     <div class="td-terminal-container" bind:this={terminalEl}></div>
-                  {:else if activeDebugTab === 'events'}
-                    <div class="td-events-list">
-                      {#if sessionEvents.length === 0}
-                        <div class="empty" style="margin:12px;">暂无事件</div>
-                      {:else}
-                        {#each sessionEvents as evt}
-                          <div class="td-event-row {eventLevelClass(evt.level)}">
-                            <span class="td-evt-time">{formatTime(evt.createdAt)}</span>
-                            <span class="td-evt-type">{translateEventType(evt.type)}</span>
-                            {#if evt.level}<span class="td-evt-level {eventLevelClass(evt.level)}">{evt.level}</span>{/if}
-                            <span class="td-evt-msg">{evt.message}</span>
-                          </div>
-                        {/each}
-                      {/if}
-                    </div>
                   {:else}
                     <div style="padding:20px; text-align:center;">
                       <p class="muted">产出物浏览需在终端中执行命令查看。</p>
@@ -2184,47 +2168,6 @@
   :global(.td-terminal-container .xterm) {
     height: 100%;
     padding: 4px 6px;
-  }
-
-  /* Events List */
-  .td-events-list {
-    height: 100%;
-    overflow-y: auto;
-    font-family: var(--mono);
-    font-size: var(--font-size-xs);
-    padding: 4px 0;
-  }
-  .td-event-row {
-    display: flex;
-    gap: 8px;
-    padding: 4px 10px;
-    border-bottom: 1px solid rgba(0,0,0,0.04);
-    align-items: baseline;
-  }
-  .td-event-row:hover { background: var(--surface-2); }
-  .td-event-row.tl-error { background: rgba(180,35,24,0.03); }
-  .td-evt-time {
-    flex: 0 0 140px;
-    color: var(--muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .td-evt-type {
-    flex: 0 0 130px;
-    font-weight: var(--font-weight-semibold);
-  }
-  .td-evt-level {
-    flex: 0 0 48px;
-    font-size: 10px;
-    text-transform: uppercase;
-  }
-  .td-evt-level.tl-error { color: var(--danger); }
-  .td-evt-level.tl-warning { color: #d97706; }
-  .td-evt-msg {
-    flex: 1;
-    min-width: 0;
-    word-break: break-word;
   }
 
   /* ── Drawer ── */
