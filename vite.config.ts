@@ -18,6 +18,7 @@ export default defineConfig({
     // Does not affect the production build — RPC baseUrl stays same-origin there.
     proxy: {
       '/agentcompose.v1.': { target: 'http://127.0.0.1:7410', changeOrigin: true },
+      '/agentcompose.v2.': { target: 'http://127.0.0.1:7410', changeOrigin: true },
       '/health.v1.': { target: 'http://127.0.0.1:7410', changeOrigin: true },
       '/api': { target: 'http://127.0.0.1:7410', changeOrigin: true },
     },
