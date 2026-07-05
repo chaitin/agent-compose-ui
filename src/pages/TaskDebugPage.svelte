@@ -82,6 +82,7 @@
   let resuming = false;
   let watchAbort: AbortController | null = null;
   let messageAbort: AbortController | null = null;
+  let runPollAbort: AbortController | null = null;
   let bottomRatio = 0.3;
   let activeDebugTab: 'terminal' | 'events' | 'artifacts' = 'terminal';
 
@@ -139,6 +140,7 @@
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       stopWatching();
+      stopRunPolling();
       messageAbort?.abort();
       destroyTerminal();
     };
@@ -146,6 +148,7 @@
 
   onDestroy(() => {
     stopWatching();
+    stopRunPolling();
     messageAbort?.abort();
     destroyTerminal();
   });
@@ -194,18 +197,91 @@
     }
   }
 
+  async function fetchRunDetail(runId: string): Promise<AutomationRun> {
+    const [detail, events] = await Promise.all([
+      getAutomationRun(taskId, runId),
+      listAutomationEvents(taskId, eventLimit),
+    ]);
+    runDetail = detail;
+    runEvents = events.filter((e) => !e.runId || e.runId === runId);
+    await buildTimeline(detail, runEvents);
+    return detail;
+  }
+
   async function loadRunDetail(runId: string): Promise<void> {
+    stopRunPolling();
     try {
-      const [detail, events] = await Promise.all([
-        getAutomationRun(taskId, runId),
-        listAutomationEvents(taskId, eventLimit),
-      ]);
-      runDetail = detail;
-      runEvents = events.filter((e) => !e.runId || e.runId === runId);
-      await buildTimeline(detail, runEvents);
+      const detail = await fetchRunDetail(runId);
+      // Keep the timeline live while the run is still in progress.
+      if (!isTerminalRun(detail) && selectedRunId === runId) {
+        void pollRunDetail(runId);
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     }
+  }
+
+  function isTerminalRun(r: AutomationRun | null): boolean {
+    if (!r) return true;
+    const s = (r.status || '').toUpperCase();
+    return s === 'SUCCEEDED' || s === 'SUCCESS' || s === 'FAILED' || s === 'FAILURE' || s === 'CANCELED' || s === 'CANCELLED' || s === 'SKIPPED';
+  }
+
+  function stopRunPolling(): void {
+    runPollAbort?.abort();
+    runPollAbort = null;
+  }
+
+  // Poll a run's detail + events every ~2.5s so the timeline and sidebar
+  // status update live. Stops when the run reaches a terminal state, when a
+  // different run is selected, or when aborted (component destroy / new run).
+  async function pollRunDetail(runId: string): Promise<void> {
+    stopRunPolling();
+    const controller = new AbortController();
+    runPollAbort = controller;
+    try {
+      while (!controller.signal.aborted) {
+        await delay(2500, controller.signal);
+        if (controller.signal.aborted || selectedRunId !== runId) break;
+        try {
+          const [detail, events] = await Promise.all([
+            getAutomationRun(taskId, runId),
+            listAutomationEvents(taskId, eventLimit),
+          ]);
+          if (controller.signal.aborted || selectedRunId !== runId) break;
+          runDetail = detail;
+          runEvents = events.filter((e) => !e.runId || e.runId === runId);
+          await buildTimeline(detail, runEvents);
+          if (controller.signal.aborted || selectedRunId !== runId) break;
+          runs = runs.map((r) => (r.id === runId ? detail : r));
+          if (isTerminalRun(detail)) break;
+        } catch {
+          /* transient fetch error — keep polling */
+        }
+      }
+    } finally {
+      if (runPollAbort === controller) runPollAbort = null;
+    }
+  }
+
+  // After triggering a run, discover the newly created run record by polling
+  // listLoaderRuns until a run ID we haven't seen before appears. The backend
+  // creates the run (status RUNNING) at the start of RunLoaderNow, so this
+  // resolves quickly once the RPC reaches the server.
+  async function waitForNewRun(loaderId: string, previousIds: Set<string>): Promise<AutomationRun | null> {
+    const probe = new AbortController();
+    for (let i = 0; i < 12; i++) {
+      try {
+        const all = await listLoaderRuns(loaderId, 100);
+        const sorted = all.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+        const fresh = sorted.find((r) => !previousIds.has(r.id));
+        if (fresh) return fresh;
+      } catch {
+        /* keep trying */
+      }
+      await delay(500, probe.signal);
+    }
+    return null;
   }
 
   async function loadMoreEvents(): Promise<void> {
@@ -821,13 +897,38 @@
         envItems: envDraft.filter((e) => e.name.trim()),
       });
       taskDetail = updated;
-      const run = await runAutomationTaskNow(taskDetail.id, '{}');
-      const isSuccess = run.status.toUpperCase() === 'SUCCEEDED' || run.status.toUpperCase() === 'SUCCESS';
-      runResult = { success: isSuccess, message: run.error || runStatusLabel(run), runId: run.id };
-      runs = [run, ...runs];
-	      selectedRunId = run.id;
-	      centerTab = 'output';
-	      await loadRunDetail(run.id);
+
+      // RunLoaderNow blocks server-side until the run completes (up to 20 min
+      // by default). Awaiting it would freeze the UI, so fire it in the
+      // background and reconcile when it resolves. The backend creates the
+      // run record (status RUNNING) as soon as the RPC starts, so we can
+      // discover it via listLoaderRuns and poll its logs live.
+      const previousRunIds = new Set(runs.map((r) => r.id));
+      const runPromise = runAutomationTaskNow(taskDetail.id, '{}')
+        .then((run) => {
+          const isSuccess = run.status.toUpperCase() === 'SUCCEEDED' || run.status.toUpperCase() === 'SUCCESS';
+          runResult = { success: isSuccess, message: run.error || runStatusLabel(run), runId: run.id };
+          runs = [run, ...runs.filter((r) => r.id !== run.id)];
+          if (selectedRunId === run.id) {
+            void loadRunDetail(run.id);
+          }
+          return run;
+        })
+        .catch((err) => {
+          runResult = { success: false, message: err instanceof Error ? err.message : String(err) };
+        });
+
+      // Discover the newly created run and select it immediately so the user
+      // sees the run record and live logs without a manual refresh.
+      const newRun = await waitForNewRun(taskDetail.id, previousRunIds);
+      if (newRun) {
+        runs = [newRun, ...runs.filter((r) => r.id !== newRun.id)];
+        selectedRunId = newRun.id;
+        centerTab = 'output';
+        await loadRunDetail(newRun.id);
+      }
+      // Let the blocking RPC finish in the background.
+      void runPromise;
     } catch (err) {
       runResult = { success: false, message: err instanceof Error ? err.message : String(err) };
     } finally {
