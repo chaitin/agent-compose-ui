@@ -1052,14 +1052,22 @@
                     <div class="td-chat-empty">暂无对话消息</div>
                   {:else}
                     {#each chatMessages as msg (msg.id)}
-                      <div class="td-chat-msg td-chat-{msg.role}" class:td-chat-running={msg.running}>
+                      <div class="td-chat-msg td-chat-{msg.role}" class:td-chat-running={msg.running} class:td-chat-highlight={highlightedCellId === msg.id} id={`td-chat-cell-${msg.id}`}>
                         <div class="td-chat-head">
                           <span class="td-chat-role">
                             {#if msg.role === 'user'}用户{:else if msg.role === 'agent'}{msg.agent || 'Agent'}{:else}系统{/if}
                           </span>
+                          <span class="td-chat-cellid">#{shortId(msg.id)}</span>
                           <span class="td-chat-time">{formatTime(msg.timestamp)}</span>
                           {#if msg.running}<span class="td-chat-running-badge">输出中...</span>{/if}
                           {#if msg.stopReason}<span class="td-chat-stop-reason">{msg.stopReason}</span>{/if}
+                          {#if !msg.running && msg.role !== 'user'}
+                            {#if msg.success}
+                              <span class="td-chat-exit td-chat-exit-ok">成功</span>
+                            {:else}
+                              <span class="td-chat-exit td-chat-exit-err">失败{msg.exitCode ? ` (exit ${msg.exitCode})` : ''}</span>
+                            {/if}
+                          {/if}
                         </div>
                         <pre class="td-chat-body">{msg.content || (msg.running ? '等待输出...' : '(无内容)')}</pre>
                       </div>
@@ -1534,6 +1542,30 @@
   .td-chat-stop-reason {
     font-size: var(--font-size-xs);
     color: var(--muted);
+  }
+  .td-chat-cellid {
+    font-family: var(--mono);
+    font-size: var(--font-size-xs);
+    color: var(--muted);
+    opacity: 0.7;
+  }
+  .td-chat-exit {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    font-weight: var(--font-weight-semibold);
+  }
+  .td-chat-exit-ok {
+    background: rgba(16,185,129,0.12);
+    color: var(--success);
+  }
+  .td-chat-exit-err {
+    background: rgba(239,68,68,0.12);
+    color: var(--danger);
+  }
+  .td-chat-highlight {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(47,95,208,0.18);
   }
   .td-chat-body {
     margin: 0;
