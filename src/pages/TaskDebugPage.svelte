@@ -197,7 +197,7 @@
     try {
       const [detail, events] = await Promise.all([
         getAutomationRun(taskId, runId),
-        listAutomationEvents(taskId, 500),
+        listAutomationEvents(taskId, eventLimit),
       ]);
       runDetail = detail;
       runEvents = events.filter((e) => !e.runId || e.runId === runId);
@@ -206,6 +206,19 @@
       error = err instanceof Error ? err.message : String(err);
     }
   }
+
+  async function loadMoreEvents(): Promise<void> {
+    if (loadingMoreEvents || !selectedRunId) return;
+    loadingMoreEvents = true;
+    eventLimit += 500;
+    try {
+      await loadRunDetail(selectedRunId);
+    } finally {
+      loadingMoreEvents = false;
+    }
+  }
+
+  $: hasMoreEvents = runEvents.length >= eventLimit;
 
   async function buildTimeline(detail: AutomationRun, events: AutomationEvent[]): Promise<void> {
     const entries: TimelineEntry[] = [];
@@ -980,6 +993,13 @@
                   </div>
                 {/each}
               {/if}
+              {#if selectedRunId && hasMoreEvents}
+                <div class="td-tl-loadmore">
+                  <button disabled={loadingMoreEvents} on:click={loadMoreEvents}>
+                    {loadingMoreEvents ? '加载中...' : `加载更多（已展示 ${runEvents.length} 条）`}
+                  </button>
+                </div>
+              {/if}
             </div>
           {/if}
         </div>
@@ -1381,6 +1401,29 @@
   }
   .td-tl-detail {
     /* no height clamp — full detail shown */
+  }
+
+  .td-tl-loadmore {
+    padding: 10px 12px;
+    display: flex;
+    justify-content: center;
+  }
+  .td-tl-loadmore button {
+    min-height: 30px;
+    padding: 4px 14px;
+    font-size: var(--font-size-sm);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .td-tl-loadmore button:hover:not(:disabled) {
+    background: var(--surface-2);
+  }
+  .td-tl-loadmore button:disabled {
+    color: var(--muted);
+    cursor: default;
   }
 
   /* ── Session Tab ── */
