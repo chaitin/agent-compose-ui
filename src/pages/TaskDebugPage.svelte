@@ -625,7 +625,7 @@
   }
 
   async function resumeCurrentSession(): Promise<void> {
-    if (!canResumeSession() || !selectedSessionId) return;
+    if (!selectedSessionId || resuming || stopping) return;
     resuming = true;
     error = '';
     try {
@@ -633,11 +633,45 @@
       rawSessionStatus = updated.status;
       sessionStatus = mapSessionStatus(rawSessionStatus);
       session = updated;
+      if (termReady) {
+        term?.write('\r\n\x1b[32m✓ 会话已恢复,终端可用\x1b[0m\r\n');
+        showPrompt();
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
+      if (termReady && /not_found/i.test(error)) {
+        term?.write('\r\n\x1b[31m会话不存在或已删除\x1b[0m\r\n');
+        showPrompt();
+      }
     } finally {
       resuming = false;
     }
+  }
+
+  async function stopCurrentSession(): Promise<void> {
+    if (!selectedSessionId || resuming || stopping) return;
+    stopping = true;
+    error = '';
+    try {
+      const updated = await stopWorkSession(selectedSessionId);
+      rawSessionStatus = updated.status;
+      sessionStatus = mapSessionStatus(rawSessionStatus);
+      session = updated;
+      if (termReady) {
+        term?.write('\r\n\x1b[33m○ 会话已停止\x1b[0m\r\n');
+        showPrompt();
+      }
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      stopping = false;
+    }
+  }
+
+  async function toggleSession(): Promise<void> {
+    const action = sessionToggleButton().action;
+    if (action === 'resume') await resumeCurrentSession();
+    else if (action === 'stop') await stopCurrentSession();
   }
 
   function latestAgentName(): string {
