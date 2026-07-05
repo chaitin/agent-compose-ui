@@ -609,6 +609,17 @@
     return Boolean(selectedSessionId) && ['已停止', '启动失败'].includes(sessionStatus) && !resuming;
   }
 
+  function sessionToggleButton(): { label: string; disabled: boolean; action: 'resume' | 'stop' | null } {
+    if (!selectedSessionId) return { label: '重启会话', disabled: true, action: null };
+    if (resuming) return { label: '重启中...', disabled: true, action: null };
+    if (stopping) return { label: '停止中...', disabled: true, action: null };
+    if (rawSessionStatus === 'RUNNING') return { label: '停止会话', disabled: false, action: 'stop' };
+    if (rawSessionStatus === 'STARTING') return { label: '启动中...', disabled: true, action: null };
+    return { label: '重启会话', disabled: false, action: 'resume' };
+  }
+
+  $: toggleBtn = sessionToggleButton();
+
   function canChat(): boolean {
     return Boolean(selectedSessionId) && rawSessionStatus === 'RUNNING' && !sendingMessage;
   }
