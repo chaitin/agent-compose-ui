@@ -237,6 +237,7 @@
         level: e.level,
         message: e.message,
         detail: e.payloadJson ? tryFormatJson(e.payloadJson) : undefined,
+        topicEventId: e.topicEventId || undefined,
       });
       if (e.linkedSessionId || e.linkedAgentSessionId) {
         const sid = e.linkedSessionId || e.linkedAgentSessionId;
@@ -416,6 +417,38 @@
       const el = document.getElementById(`td-chat-cell-${cellId}`);
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
+  }
+
+  async function toggleTopicChain(eventId: string): Promise<void> {
+    if (expandedTopicEvents.has(eventId)) {
+      expandedTopicEvents.delete(eventId);
+      expandedTopicEvents = new Set(expandedTopicEvents);
+      return;
+    }
+    expandedTopicEvents.add(eventId);
+    expandedTopicEvents = new Set(expandedTopicEvents);
+    if (!topicChainCache.has(eventId)) {
+      topicChainCache.set(eventId, { event: null, runs: [], sessions: [], loading: true, error: '' });
+      topicChainCache = new Map(topicChainCache);
+      try {
+        const [event, runs, sessions] = await Promise.all([
+          getTopicEvent(eventId).catch(() => null),
+          listTopicEventRuns(eventId).catch(() => []),
+          listTopicEventSessions(eventId).catch(() => []),
+        ]);
+        topicChainCache.set(eventId, { event, runs, sessions, loading: false, error: '' });
+      } catch (err) {
+        topicChainCache.set(eventId, { event: null, runs: [], sessions: [], loading: false, error: err instanceof Error ? err.message : String(err) });
+      }
+      topicChainCache = new Map(topicChainCache);
+    }
+  }
+
+  function jumpToTopicRun(runId: string): void {
+    if (!runId) return;
+    selectedRunId = runId;
+    void loadRunDetail(runId);
+    centerTab = 'output';
   }
 
   async function toggleTriggerEnabled(trigger: AutomationTrigger, enabled: boolean): Promise<void> {
@@ -1037,6 +1070,53 @@
                         {#if entry.detail}
                           <pre class="td-tl-pre td-tl-detail">{entry.detail}</pre>
                         {/if}
+                        {#if entry.topicEventId}
+                          {@const topicId = entry.topicEventId}
+                          <button class="td-tl-link" on:click={() => toggleTopicChain(topicId)}>
+                            {expandedTopicEvents.has(topicId) ? '收起事件链' : '展开事件链'}
+                          </button>
+                          {#if expandedTopicEvents.has(topicId)}
+                            {@const chain = topicChainCache.get(topicId)}
+                            <div class="td-tl-topic-chain">
+                              {#if !chain || chain.loading}
+                                <span class="muted">加载中...</span>
+                              {:else if chain.error}
+                                <span class="td-tl-label td-tl-label-err">加载失败: {chain.error}</span>
+                              {:else}
+                                {#if chain.event}
+                                  <div class="td-tl-topic-block">
+                                    <span class="td-tl-topic-head">原始事件</span>
+                                    <span class="td-tl-topic-row">topic: {chain.event.topic || '-'}</span>
+                                    <span class="td-tl-topic-row">source: {chain.event.source || '-'}</span>
+                                    <span class="td-tl-topic-row">provider: {chain.event.provider || '-'}</span>
+                                    <span class="td-tl-topic-row">intent: {chain.event.intent || '-'}</span>
+                                    <span class="td-tl-topic-row">sequence: {chain.event.sequence}</span>
+                                  </div>
+                                {/if}
+                                <div class="td-tl-topic-block">
+                                  <span class="td-tl-topic-head">关联 Runs ({chain.runs.length})</span>
+                                  {#if chain.runs.length === 0}
+                                    <span class="muted">无</span>
+                                  {:else}
+                                    {#each chain.runs as r}
+                                      <button class="td-tl-link" on:click={() => jumpToTopicRun(r.runId)}>Run {shortId(r.runId)} · {r.status}</button>
+                                    {/each}
+                                  {/if}
+                                </div>
+                                <div class="td-tl-topic-block">
+                                  <span class="td-tl-topic-head">关联 Sessions ({chain.sessions.length})</span>
+                                  {#if chain.sessions.length === 0}
+                                    <span class="muted">无</span>
+                                  {:else}
+                                    {#each chain.sessions as s}
+                                      <button class="td-tl-link" on:click={() => selectSession(s.sessionId)}>Session {shortId(s.sessionId)} · {s.relation}</button>
+                                    {/each}
+                                  {/if}
+                                </div>
+                              {/if}
+                            </div>
+                          {/if}
+                        {/if}
                       {:else if entry.kind === 'session_card'}
                         <span class="td-tl-type">会话</span>
                         <span class="td-tl-msg">{shortId(entry.sessionId)} · {entry.summary}</span>
@@ -1524,6 +1604,34 @@
   }
   .td-tl-detail {
     /* no height clamp — full detail shown */
+  }
+
+  .td-tl-topic-chain {
+    margin-top: 6px;
+    padding: 8px 10px;
+    border-left: 2px solid var(--line);
+    background: var(--surface-2);
+    border-radius: 0 4px 4px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .td-tl-topic-block {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .td-tl-topic-head {
+    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-xs);
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+  .td-tl-topic-row {
+    font-family: var(--mono);
+    font-size: var(--font-size-xs);
+    color: var(--muted);
+    word-break: break-word;
   }
 
   .td-tl-loadmore {
