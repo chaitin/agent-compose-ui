@@ -6,14 +6,21 @@
   import {
     getAutomationTask,
     getAutomationRun,
+    getTopicEvent,
     listAutomationEvents,
     listLoaderRuns,
+    listTopicEventRuns,
+    listTopicEventSessions,
     runAutomationTaskNow,
     saveAutomationTask,
     setAutomationTaskEnabled,
+    setAutomationTriggerEnabled,
     type AutomationTaskDetail,
     type AutomationRun,
     type AutomationEvent,
+    type TopicEvent,
+    type TopicEventRun,
+    type TopicEventSession,
   } from '../api/loaders';
   import {
     getWorkSessionStatus,
@@ -39,10 +46,18 @@
   type CenterTab = 'output' | 'session';
   type TimelineEntry =
     | { kind: 'input'; id: string; timestamp: string; content: string }
-    | { kind: 'loader_event'; id: string; timestamp: string; type: string; level: string; message: string; detail?: string }
-    | { kind: 'session_card'; id: string; timestamp: string; sessionId: string; summary: string; messages?: Array<{role: string; content: string}> }
+    | { kind: 'loader_event'; id: string; timestamp: string; type: string; level: string; message: string; detail?: string; topicEventId?: string }
+    | { kind: 'session_card'; id: string; timestamp: string; sessionId: string; summary: string; linkedCellId?: string; messages?: Array<{role: string; content: string}> }
     | { kind: 'error'; id: string; timestamp: string; message: string }
     | { kind: 'artifact'; id: string; timestamp: string; name: string; size: string };
+
+  type TopicChain = {
+    event: TopicEvent | null;
+    runs: TopicEventRun[];
+    sessions: TopicEventSession[];
+    loading: boolean;
+    error: string;
+  };
 
   let loading = true;
   let error = '';
@@ -96,6 +111,20 @@
   let showEnterPauseDialog = false;
   let showLeaveDialog = false;
   let pendingLeaveAction: 'enable' | 'keep_disabled' | null = null;
+
+  // A2: 加载更多事件
+  let eventLimit = 500;
+  let loadingMoreEvents = false;
+
+  // B5: 跳转高亮
+  let highlightedCellId = '';
+
+  // B6: topic 事件链懒加载
+  let topicChainCache = new Map<string, TopicChain>();
+  let expandedTopicEvents = new Set<string>();
+
+  // B2: 触发器 spec 展开
+  let expandedTriggerSpecs = new Set<string>();
 
   let splitContainer: HTMLDivElement | null = null;
   let chatMessagesEl: HTMLDivElement | null = null;
