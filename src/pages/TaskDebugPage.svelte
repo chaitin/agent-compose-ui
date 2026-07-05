@@ -21,6 +21,7 @@
     type TopicEvent,
     type TopicEventRun,
     type TopicEventSession,
+    type AutomationTrigger,
   } from '../api/loaders';
   import {
     getWorkSessionStatus,
@@ -415,6 +416,24 @@
       const el = document.getElementById(`td-chat-cell-${cellId}`);
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
+  }
+
+  async function toggleTriggerEnabled(trigger: AutomationTrigger, enabled: boolean): Promise<void> {
+    try {
+      const updated = await setAutomationTriggerEnabled(taskId, trigger.triggerId, enabled);
+      taskDetail = updated;
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  function toggleTriggerSpec(triggerId: string): void {
+    if (expandedTriggerSpecs.has(triggerId)) {
+      expandedTriggerSpecs.delete(triggerId);
+    } else {
+      expandedTriggerSpecs.add(triggerId);
+    }
+    expandedTriggerSpecs = new Set(expandedTriggerSpecs);
   }
 
   // ── Scheduler Pause ──
@@ -844,8 +863,7 @@
   $: scrollChatToBottom(chatMessages, chatMessagesEl);
 
   function shortId(id: string): string { return id ? id.substring(0, 8) : ''; }
-  function triggerKindLabel(run: AutomationRun | null): string {
-    if (!run || !run.triggerKind) return '';
+  function triggerKindLabelFromKind(kind: string): string {
     const map: Record<string, string> = {
       manual: '手动触发',
       interval: '周期触发',
@@ -853,7 +871,15 @@
       timeout: '延迟触发',
       cron: '定时触发',
     };
-    return map[run.triggerKind] ?? run.triggerKind;
+    return map[kind] ?? kind;
+  }
+  function triggerKindLabel(run: AutomationRun | null): string {
+    if (!run || !run.triggerKind) return '';
+    return triggerKindLabelFromKind(run.triggerKind);
+  }
+  function triggerKindLabelFromTrigger(t: AutomationTrigger | null | undefined): string {
+    if (!t || !t.kind) return '未知';
+    return triggerKindLabelFromKind(t.kind);
   }
   function formatTime(v: string | undefined): string { return v ? formatBeijingTime(v) : '-'; }
 </script>
@@ -1212,6 +1238,42 @@
                   <input bind:value={item.value} placeholder="VALUE" type={item.secret ? 'password' : 'text'} style="flex:1.4;">
                   <label class="td-env-secret"><input type="checkbox" bind:checked={item.secret}> 敏感</label>
                   <button class="ghost" style="min-height:28px; padding:4px 6px; color:var(--danger);" on:click={() => removeEnvItem(i)}>删除</button>
+                </div>
+              {/each}
+            {/if}
+          </section>
+
+          <section>
+            <div class="td-section-head">
+              <h4>触发器</h4>
+            </div>
+            {#if !taskDetail?.triggers || taskDetail.triggers.length === 0}
+              <p class="muted">未配置触发器</p>
+            {:else}
+              {#each taskDetail.triggers as trigger (trigger.triggerId)}
+                <div class="td-trigger-card" class:td-trigger-disabled={!trigger.enabled}>
+                  <div class="td-trigger-head">
+                    <span class="td-trigger-kind">{triggerKindLabelFromTrigger(trigger)}</span>
+                    {#if trigger.topic}<span class="td-trigger-topic">{trigger.topic}</span>{/if}
+                    <label class="td-trigger-toggle">
+                      <input type="checkbox" checked={trigger.enabled} on:change={(e) => toggleTriggerEnabled(trigger, (e.currentTarget as HTMLInputElement).checked)}>
+                      启用
+                    </label>
+                  </div>
+                  <div class="td-trigger-meta">
+                    {#if trigger.intervalMs > 0}<span>间隔: {formatDuration(trigger.intervalMs)}</span>{/if}
+                    {#if trigger.nextFireAt}<span>下次: {formatBeijingTime(trigger.nextFireAt)}</span>{/if}
+                    {#if trigger.lastFiredAt}<span>上次: {formatBeijingTime(trigger.lastFiredAt)}</span>{/if}
+                    {#if trigger.autoId}<span>自动ID</span>{/if}
+                  </div>
+                  {#if trigger.specJson}
+                    <button class="td-trigger-spec-toggle" on:click={() => toggleTriggerSpec(trigger.triggerId)}>
+                      {expandedTriggerSpecs.has(trigger.triggerId) ? '收起配置' : '查看配置'}
+                    </button>
+                    {#if expandedTriggerSpecs.has(trigger.triggerId)}
+                      <pre class="td-trigger-spec">{tryFormatJson(trigger.specJson)}</pre>
+                    {/if}
+                  {/if}
                 </div>
               {/each}
             {/if}
@@ -1829,6 +1891,72 @@
     cursor: pointer;
   }
   .td-env-secret input { width: auto; margin: 0; }
+
+  /* Trigger cards */
+  .td-trigger-card {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    background: var(--surface);
+  }
+  .td-trigger-card.td-trigger-disabled { opacity: 0.6; }
+  .td-trigger-head {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+  .td-trigger-kind {
+    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-sm);
+  }
+  .td-trigger-topic {
+    font-family: var(--mono);
+    font-size: var(--font-size-xs);
+    color: var(--muted);
+    background: var(--surface-2);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+  .td-trigger-toggle {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--font-size-xs);
+    cursor: pointer;
+  }
+  .td-trigger-toggle input { width: auto; margin: 0; }
+  .td-trigger-meta {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: var(--font-size-xs);
+    color: var(--muted);
+  }
+  .td-trigger-spec-toggle {
+    background: none;
+    border: none;
+    color: var(--primary);
+    font-size: var(--font-size-xs);
+    cursor: pointer;
+    padding: 2px 0;
+    margin-top: 4px;
+  }
+  .td-trigger-spec {
+    margin: 4px 0 0;
+    padding: 6px 8px;
+    background: var(--surface-2);
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: var(--font-size-xs);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: none;
+    overflow: visible;
+  }
 
   /* Drawer Actions */
   .td-drawer-actions {
