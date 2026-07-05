@@ -817,6 +817,17 @@
   $: scrollChatToBottom(chatMessages, chatMessagesEl);
 
   function shortId(id: string): string { return id ? id.substring(0, 8) : ''; }
+  function triggerKindLabel(run: AutomationRun | null): string {
+    if (!run || !run.triggerKind) return '';
+    const map: Record<string, string> = {
+      manual: '手动触发',
+      interval: '周期触发',
+      event: '事件触发',
+      timeout: '延迟触发',
+      cron: '定时触发',
+    };
+    return map[run.triggerKind] ?? run.triggerKind;
+  }
   function formatTime(v: string | undefined): string { return v ? formatBeijingTime(v) : '-'; }
 </script>
 
@@ -943,6 +954,9 @@
                 <span style="font-weight:var(--font-weight-semibold); font-family:var(--mono); font-size:var(--font-size-sm);">#{shortId(selectedRunId)}</span>
                 <span class={`home-pill ${runStatusColor(runDetail)}`}>{runStatusLabel(runDetail)}</span>
                 <span style="color:var(--muted); font-size:var(--font-size-sm);">{formatDuration(runDetail.durationMs)}</span>
+                {#if triggerKindLabel(runDetail)}
+                  <span style="color:var(--muted); font-size:var(--font-size-sm);">· 触发: {triggerKindLabel(runDetail)}{runDetail.triggerSource ? ' ' + runDetail.triggerSource : ''}</span>
+                {/if}
               </div>
             </div>
             <div class="td-timeline">
