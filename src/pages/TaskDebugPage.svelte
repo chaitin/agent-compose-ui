@@ -162,7 +162,6 @@
   let chatMessagesEl: HTMLDivElement | null = null;
   let dragging = false;
 
-  $: chatMessages = buildSessionChatMessages(sessionCells);
   $: logEntries = buildSessionLog(sessionCells, sessionEvents);
 
   onMount(() => {
@@ -510,6 +509,7 @@
 
   function selectSession(sid: string): void {
     highlightedCellId = '';
+    expandedLogIds = new Set();
     selectedSessionId = sid;
     centerTab = 'session';
     void loadSessionDetail(sid);
@@ -624,21 +624,7 @@
     }
   }
 
-  // ── Session Chat ──
-
-  function buildSessionChatMessages(cellList: WorkSessionCell[]): Array<{ id: string; role: string; content: string; timestamp: string; agent?: string; running?: boolean; exitCode?: number; stopReason?: string; success?: boolean }> {
-    return cellList.map((cell) => ({
-      id: cell.id,
-      role: cell.type === CellType.UNSPECIFIED ? 'user' : cell.type === CellType.AGENT ? 'agent' : 'system',
-      content: cell.type === CellType.UNSPECIFIED ? (cell.source || '') : (cell.output || ''),
-      timestamp: cell.createdAt || '',
-      agent: cell.agent || undefined,
-      running: cell.running,
-      exitCode: cell.exitCode,
-      stopReason: cell.stopReason || undefined,
-      success: cell.success,
-    }));
-  }
+  // ── Session Log ──
 
   function firstLine(s: string): string {
     const t = (s || '').trim();
@@ -1200,9 +1186,13 @@
   }
 
   function scrollChatToBottom(_msgs: unknown, el: HTMLDivElement | null): void {
-    if (el) requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    if (nearBottom) {
+      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+    }
   }
-  $: scrollChatToBottom(chatMessages, chatMessagesEl);
+  $: scrollChatToBottom(logEntries, chatMessagesEl);
 
   function shortId(id: string): string { return id ? id.substring(0, 8) : ''; }
   function triggerKindLabelFromKind(kind: string): string {
@@ -1501,30 +1491,58 @@
             <div class="td-split-view" bind:this={splitContainer} class:td-dragging={dragging}>
               <!-- Chat -->
               <div class="td-chat-pane" style="height: {((1 - bottomRatio) * 100)}%">
-                <div class="td-chat-messages" bind:this={chatMessagesEl}>
-                  {#if chatMessages.length === 0}
-                    <div class="td-chat-empty">暂无对话消息</div>
+                <div class="td-log" bind:this={chatMessagesEl}>
+                  {#if logEntries.length === 0}
+                    <div class="td-log-empty">暂无日志</div>
                   {:else}
-                    {#each chatMessages as msg (msg.id)}
-                      <div class="td-chat-msg td-chat-{msg.role}" class:td-chat-running={msg.running} class:td-chat-highlight={highlightedCellId === msg.id} id={`td-chat-cell-${msg.id}`}>
-                        <div class="td-chat-head">
-                          <span class="td-chat-role">
-                            {#if msg.role === 'user'}用户{:else if msg.role === 'agent'}{msg.agent || 'Agent'}{:else}系统{/if}
-                          </span>
-                          <span class="td-chat-cellid">#{shortId(msg.id)}</span>
-                          <span class="td-chat-time">{formatTime(msg.timestamp)}</span>
-                          {#if msg.running}<span class="td-chat-running-badge">输出中...</span>{/if}
-                          {#if msg.stopReason}<span class="td-chat-stop-reason">{msg.stopReason}</span>{/if}
-                          {#if !msg.running && msg.role !== 'user'}
-                            {#if msg.success}
-                              <span class="td-chat-exit td-chat-exit-ok">成功</span>
-                            {:else}
-                              <span class="td-chat-exit td-chat-exit-err">失败{msg.exitCode ? ` (exit ${msg.exitCode})` : ''}</span>
-                            {/if}
-                          {/if}
-                        </div>
-                        <pre class="td-chat-body">{msg.content || (msg.running ? '等待输出...' : '(无内容)')}</pre>
-                      </div>
+                    {#each logEntries as entry (entry.id)}
+                      {#if entry.kind === 'cell'}
+                        <button
+                          type="button"
+                          class="td-log-row td-log-cell td-log-{entry.role}"
+                          id={`td-chat-cell-${entry.id}`}
+                          class:td-log-highlight={highlightedCellId === entry.id}
+                          aria-expanded={expandedLogIds.has(entry.id)}
+                          on:click={() => toggleLogExpand(entry.id)}
+                        >
+                          <span class="td-log-time">{entry.timeLabel}</span>
+                          <span class="td-log-tag td-log-tag-{cellStatusClass(entry)}">{cellTagLabel(entry)}</span>
+                          <span class="td-log-summary">{firstLine(entry.content) || (entry.running ? '输出中...' : '(无内容)')}</span>
+                        </button>
+                        {#if expandedLogIds.has(entry.id)}
+                          <div class="td-log-expand">
+                            <div class="td-log-meta">
+                              {#if entry.agent}<span>agent: {entry.agent}</span>{/if}
+                              {#if entry.agentSessionId}<span>agentSession: {shortId(entry.agentSessionId)}</span>{/if}
+                              {#if entry.role !== 'user'}<span>exit: {entry.exitCode}</span>{/if}
+                              {#if entry.stopReason}<span>stopReason: {entry.stopReason}</span>{/if}
+                              <span>createdAt: {formatTime(entry.timestamp)}</span>
+                            </div>
+                            <pre class="td-log-body">{entry.content || (entry.running ? '等待输出...' : '(无内容)')}</pre>
+                          </div>
+                        {/if}
+                      {:else}
+                        <button
+                          type="button"
+                          class="td-log-row td-log-event"
+                          aria-expanded={expandedLogIds.has(entry.id)}
+                          on:click={() => toggleLogExpand(entry.id)}
+                        >
+                          <span class="td-log-time">{entry.timeLabel}</span>
+                          <span class="td-log-tag td-log-tag-{logLevelClass(entry.level)}">{entry.level || 'INFO'}</span>
+                          <span class="td-log-summary">{entry.type}{entry.message ? ': ' + entry.message : ''}</span>
+                        </button>
+                        {#if expandedLogIds.has(entry.id)}
+                          <div class="td-log-expand">
+                            <div class="td-log-meta">
+                              <span>type: {entry.type}</span>
+                              <span>level: {entry.level || '-'}</span>
+                              <span>createdAt: {formatTime(entry.timestamp)}</span>
+                            </div>
+                            <pre class="td-log-body">{entry.message || '(无消息)'}</pre>
+                          </div>
+                        {/if}
+                      {/if}
                     {/each}
                   {/if}
                 </div>
@@ -1995,103 +2013,99 @@
     min-height: 120px;
     overflow: hidden;
   }
-  .td-chat-messages {
+  .td-log {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 10px 14px;
+    padding: 6px 10px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 1px;
+    font-family: var(--mono);
+    font-size: var(--font-size-xs);
+    line-height: 1.5;
   }
-  .td-chat-empty {
+  .td-log-empty {
     color: var(--muted);
     font-size: var(--font-size-sm);
     text-align: center;
     padding: 48px;
+    font-family: inherit;
   }
 
-  .td-chat-msg {
-    max-width: 82%;
-    padding: 8px 12px;
-    border-radius: 8px;
-    border: 1px solid var(--line);
-  }
-  .td-chat-user {
-    align-self: flex-end;
-    background: var(--primary-weak);
-    border-color: rgba(47,95,208,0.18);
-  }
-  .td-chat-agent {
-    align-self: flex-start;
-    background: #fff;
-    border-color: rgba(16,185,129,0.18);
-  }
-  .td-chat-system {
-    align-self: center;
-    max-width: 88%;
-    background: var(--surface-2);
-    opacity: 0.85;
-  }
-  .td-chat-running { border-color: rgba(47,95,208,0.32); }
-
-  .td-chat-head {
+  .td-log-row {
     display: flex;
+    align-items: baseline;
     gap: 8px;
-    align-items: center;
-    margin-bottom: 3px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    min-height: 0;
+    font-weight: 400;
   }
-  .td-chat-role {
+  .td-log-row:hover { background: var(--surface-2); }
+  .td-log-time {
+    flex: 0 0 auto;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .td-log-tag {
+    flex: 0 0 auto;
     font-weight: var(--font-weight-semibold);
-    font-size: 11px;
-    text-transform: uppercase;
+    white-space: nowrap;
   }
-  .td-chat-user .td-chat-role { color: var(--primary); }
-  .td-chat-agent .td-chat-role { color: var(--success); }
-  .td-chat-system .td-chat-role { color: var(--muted); }
-  .td-chat-time { font-size: var(--font-size-xs); color: var(--muted); }
-  .td-chat-running-badge {
-    font-size: 10px;
-    padding: 1px 6px;
-    border-radius: 999px;
-    background: rgba(47,95,208,0.1);
-    color: var(--primary);
+  .td-log-tag-ok { color: var(--success); }
+  .td-log-tag-err { color: var(--danger); }
+  .td-log-tag-running { color: var(--primary); }
+  .td-log-tag-warn { color: #d97706; }
+  .td-log-tag-info { color: var(--muted); }
+  .td-log-tag-user { color: var(--primary); }
+  .td-log-tag-system { color: var(--muted); }
+  .td-log-summary {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
   }
-  .td-chat-stop-reason {
+  .td-log-event .td-log-summary { color: var(--muted); }
+  .td-log-highlight {
+    background: rgba(47,95,208,0.12);
+    box-shadow: inset 2px 0 0 var(--primary);
+  }
+  .td-log-expand {
+    margin: 1px 0 3px;
+    padding: 6px 10px;
+    border-left: 2px solid var(--primary);
+    background: var(--surface-2);
+    border-radius: 0 4px 4px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .td-log-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
     font-size: var(--font-size-xs);
     color: var(--muted);
   }
-  .td-chat-cellid {
-    font-family: var(--mono);
-    font-size: var(--font-size-xs);
-    color: var(--muted);
-    opacity: 0.7;
-  }
-  .td-chat-exit {
-    font-size: 10px;
-    padding: 1px 6px;
-    border-radius: 999px;
-    font-weight: var(--font-weight-semibold);
-  }
-  .td-chat-exit-ok {
-    background: rgba(16,185,129,0.12);
-    color: var(--success);
-  }
-  .td-chat-exit-err {
-    background: rgba(239,68,68,0.12);
-    color: var(--danger);
-  }
-  .td-chat-highlight {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 2px rgba(47,95,208,0.18);
-  }
-  .td-chat-body {
+  .td-log-body {
     margin: 0;
     font-family: var(--mono);
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-xs);
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;
+    max-height: 320px;
+    overflow-y: auto;
+    color: var(--text);
   }
 
   /* Chat Composer */
