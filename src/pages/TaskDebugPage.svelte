@@ -1495,7 +1495,7 @@
                   {#if logEntries.length === 0}
                     <div class="td-log-empty">暂无日志</div>
                   {:else}
-                    {#each logEntries as entry (entry.id)}
+                    {#each logEntries as entry (`${entry.kind}-${entry.id}`)}
                       {#if entry.kind === 'cell'}
                         <button
                           type="button"
