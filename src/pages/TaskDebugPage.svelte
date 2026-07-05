@@ -28,6 +28,7 @@
     listWorkSessionCells,
     listWorkSessionEvents,
     resumeWorkSession,
+    stopWorkSession,
     sendWorkSessionMessageStream,
     watchWorkSession,
     type WorkSession,
@@ -80,6 +81,7 @@
   let messageDraft = '';
   let sendingMessage = false;
   let resuming = false;
+  let stopping = false;
   let watchAbort: AbortController | null = null;
   let messageAbort: AbortController | null = null;
   let runPollAbort: AbortController | null = null;
