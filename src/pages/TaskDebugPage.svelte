@@ -246,6 +246,7 @@
             timestamp: e.createdAt,
             sessionId: sid,
             summary: translateEventType(e.type),
+            linkedCellId: e.linkedCellId || undefined,
           });
         }
       }
@@ -393,9 +394,27 @@
   }
 
   function selectSession(sid: string): void {
+    highlightedCellId = '';
     selectedSessionId = sid;
     centerTab = 'session';
     void loadSessionDetail(sid);
+  }
+
+  async function jumpToCell(sid: string, cellId: string | undefined): Promise<void> {
+    highlightedCellId = '';
+    if (selectedSessionId !== sid) {
+      selectedSessionId = sid;
+      centerTab = 'session';
+      await loadSessionDetail(sid);
+    } else {
+      centerTab = 'session';
+    }
+    if (!cellId) return;
+    highlightedCellId = cellId;
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`td-chat-cell-${cellId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
   }
 
   // ── Scheduler Pause ──
@@ -996,6 +1015,9 @@
                         <span class="td-tl-type">会话</span>
                         <span class="td-tl-msg">{shortId(entry.sessionId)} · {entry.summary}</span>
                         <button class="td-tl-link" on:click={() => selectSession(entry.sessionId)}>查看</button>
+                        {#if entry.linkedCellId}
+                          <button class="td-tl-link" on:click={() => jumpToCell(entry.sessionId, entry.linkedCellId)}>跳转 Cell</button>
+                        {/if}
                         {#if entry.messages}
                           {#each entry.messages as m}
                             <div class="td-tl-session-msg">
