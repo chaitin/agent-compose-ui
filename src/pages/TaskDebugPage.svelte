@@ -53,6 +53,31 @@
     | { kind: 'error'; id: string; timestamp: string; message: string }
     | { kind: 'artifact'; id: string; timestamp: string; name: string; size: string };
 
+  type LogEntry =
+    | {
+        kind: 'cell';
+        id: string;
+        timestamp: string;
+        timeLabel: string;
+        role: 'user' | 'agent' | 'system';
+        agent: string;
+        content: string;
+        exitCode: number;
+        success: boolean;
+        running: boolean;
+        stopReason: string;
+        agentSessionId: string;
+      }
+    | {
+        kind: 'event';
+        id: string;
+        timestamp: string;
+        timeLabel: string;
+        type: string;
+        level: string;
+        message: string;
+      };
+
   type TopicChain = {
     event: TopicEvent | null;
     runs: TopicEventRun[];
@@ -130,11 +155,15 @@
   // B2: 触发器 spec 展开
   let expandedTriggerSpecs = new Set<string>();
 
+  // 统一日志:展开的 entry id
+  let expandedLogIds = new Set<string>();
+
   let splitContainer: HTMLDivElement | null = null;
   let chatMessagesEl: HTMLDivElement | null = null;
   let dragging = false;
 
   $: chatMessages = buildSessionChatMessages(sessionCells);
+  $: logEntries = buildSessionLog(sessionCells, sessionEvents);
 
   onMount(() => {
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -609,6 +638,91 @@
       stopReason: cell.stopReason || undefined,
       success: cell.success,
     }));
+  }
+
+  function firstLine(s: string): string {
+    const t = (s || '').trim();
+    if (!t) return '';
+    const i = t.indexOf('\n');
+    return i === -1 ? t : t.slice(0, i);
+  }
+
+  function cellStatusClass(e: LogEntry & { kind: 'cell' }): string {
+    if (e.role === 'user') return 'user';
+    if (e.role === 'system') return 'system';
+    if (e.running) return 'running';
+    return e.success ? 'ok' : 'err';
+  }
+
+  function cellTagLabel(e: LogEntry & { kind: 'cell' }): string {
+    if (e.role === 'user') return 'user';
+    if (e.role === 'system') return 'system';
+    const status = e.running ? '⟳' : e.success ? '✓' : '✗';
+    const code = !e.running && !e.success && e.exitCode ? String(e.exitCode) : '';
+    return `${e.agent || 'agent'} ${status}${code}`;
+  }
+
+  function logLevelClass(level: string): string {
+    const l = (level || '').toUpperCase();
+    if (l === 'ERROR' || l === 'ERR' || l === 'FATAL') return 'err';
+    if (l === 'WARN' || l === 'WARNING') return 'warn';
+    return 'info';
+  }
+
+  function toggleLogExpand(id: string): void {
+    if (expandedLogIds.has(id)) {
+      expandedLogIds.delete(id);
+    } else {
+      expandedLogIds.add(id);
+    }
+    expandedLogIds = new Set(expandedLogIds); // 触发 Svelte legacy反应性
+  }
+
+  function buildSessionLog(cells: WorkSessionCell[], events: WorkSessionEvent[]): LogEntry[] {
+    const cellEntries: LogEntry[] = cells.map((cell) => ({
+      kind: 'cell' as const,
+      id: cell.id,
+      timestamp: cell.createdAt || '',
+      timeLabel: '',
+      role: cell.type === CellType.UNSPECIFIED ? 'user' : cell.type === CellType.AGENT ? 'agent' : 'system',
+      agent: cell.agent || '',
+      content: cell.type === CellType.UNSPECIFIED ? (cell.source || '') : (cell.output || ''),
+      exitCode: cell.exitCode,
+      success: cell.success,
+      running: cell.running,
+      stopReason: cell.stopReason || '',
+      agentSessionId: cell.agentSessionId || '',
+    }));
+    const eventEntries: LogEntry[] = events.map((evt) => ({
+      kind: 'event' as const,
+      id: evt.id,
+      timestamp: evt.createdAt || '',
+      timeLabel: '',
+      type: evt.type,
+      level: evt.level,
+      message: evt.message,
+    }));
+    const all: LogEntry[] = [...cellEntries, ...eventEntries].sort((a, b) => {
+      const ta = new Date(a.timestamp || 0).getTime();
+      const tb = new Date(b.timestamp || 0).getTime();
+      if (ta !== tb) return ta - tb;
+      return a.kind === b.kind ? 0 : a.kind === 'cell' ? -1 : 1; // 同时间戳:cell 排在 event 前
+    });
+    let prevDay = '';
+    for (const e of all) {
+      // 与 formatTime 一致使用北京时间(Asia/Shanghai),避免摘要与展开行时间不一致
+      const full = e.timestamp ? formatBeijingTime(e.timestamp) : '';
+      const sp = full.indexOf(' ');
+      if (sp === -1) {
+        e.timeLabel = e.timestamp || '--:--:--';
+        continue;
+      }
+      const day = full.slice(0, sp);
+      const hhmmss = full.slice(sp + 1);
+      e.timeLabel = day !== prevDay ? `${day} ${hhmmss}` : hhmmss;
+      prevDay = day;
+    }
+    return all;
   }
 
   function sessionToggleButton(
