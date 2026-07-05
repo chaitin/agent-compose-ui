@@ -891,7 +891,14 @@
         controller.signal,
       );
     } catch (err) {
-      if (!controller.signal.aborted) term?.write(`\r\n\x1b[31m${err instanceof Error ? err.message : String(err)}\x1b[0m\r\n`);
+      if (!controller.signal.aborted) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/not running|failed_precondition/i.test(msg)) {
+          term?.write('\r\n\x1b[33m会话未运行,请点击右上角"重启会话"\x1b[0m\r\n');
+        } else {
+          term?.write(`\r\n\x1b[31m${msg}\x1b[0m\r\n`);
+        }
+      }
     } finally {
       execAbort = null; execRunning = false; showPrompt();
     }
