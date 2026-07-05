@@ -262,10 +262,10 @@
         if (result.status === 'fulfilled' && result.value.length > 0) {
           const cells = result.value;
           const msgs: Array<{role: string; content: string}> = [];
-          for (const cell of cells.slice(0, 4)) {
+          for (const cell of cells) {
             const role = cell.type === CellType.UNSPECIFIED ? '用户' : cell.type === CellType.AGENT ? (cell.agent || 'Agent') : '系统';
             const content = cell.type === CellType.UNSPECIFIED ? (cell.source || '') : (cell.output || '');
-            if (content.trim()) msgs.push({ role, content: content.length > 200 ? content.slice(0, 200) + '...' : content });
+            if (content.trim()) msgs.push({ role, content });
           }
           sessionCards[i].messages = msgs;
         }
@@ -1377,12 +1377,10 @@
     line-height: 1.45;
     white-space: pre-wrap;
     word-break: break-word;
-    max-height: 200px;
-    overflow-y: auto;
     color: var(--muted);
   }
   .td-tl-detail {
-    max-height: 140px;
+    /* no height clamp — full detail shown */
   }
 
   /* ── Session Tab ── */
@@ -1487,8 +1485,6 @@
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;
-    max-height: 260px;
-    overflow-y: auto;
   }
 
   /* Chat Composer */
