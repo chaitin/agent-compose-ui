@@ -34,3 +34,6 @@ into the nginx-based runtime image. nginx serves static assets and forwards
 API/RPC/OAuth/Jupyter routes to the local Go UI server, which handles browser
 auth/OAuth and proxies the daemon. CI publishes the image to
 `ghcr.io/chaitin/agent-compose-ui`.
+
+When the shared deployment environment includes daemon `HTTP_BASIC_AUTH`, the UI
+server reuses it for proxied daemon API and Jupyter requests.

@@ -9,7 +9,11 @@ import (
 	"time"
 )
 
-func NewBackendProxy(backend *url.URL) http.Handler {
+type BackendProxyOptions struct {
+	AuthorizationHeader string
+}
+
+func NewBackendProxy(backend *url.URL, options BackendProxyOptions) http.Handler {
 	proxy := httputil.NewSingleHostReverseProxy(backend)
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
@@ -17,6 +21,9 @@ func NewBackendProxy(backend *url.URL) http.Handler {
 		originalDirector(req)
 		if req.Header.Get("X-Forwarded-Host") == "" {
 			req.Header.Set("X-Forwarded-Host", originalHost)
+		}
+		if options.AuthorizationHeader != "" {
+			req.Header.Set("Authorization", options.AuthorizationHeader)
 		}
 	}
 	proxy.Transport = &http.Transport{
