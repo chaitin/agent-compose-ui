@@ -78,10 +78,7 @@ func NewAuthManager(di do.Injector) (*auth.Manager, error) {
 }
 
 func NewBackendProxy(di do.Injector) (http.Handler, error) {
-	cfg := do.MustInvoke[config.Config](di)
-	return proxy.NewBackendProxy(do.MustInvoke[*url.URL](di), proxy.BackendProxyOptions{
-		AuthorizationHeader: cfg.BackendAuthorizationHeader,
-	}), nil
+	return proxy.NewBackendProxy(do.MustInvoke[*url.URL](di)), nil
 }
 
 func NewHTTPServer(di do.Injector) (*http.Server, error) {
