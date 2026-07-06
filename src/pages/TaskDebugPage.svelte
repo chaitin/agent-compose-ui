@@ -97,6 +97,7 @@
   let centerTab: CenterTab = 'output';
 
   let availableSessions: Array<{ id: string; label: string }> = [];
+  let mostRecentSessionId = '';
   let selectedSessionId = '';
   let session: WorkSession | null = null;
   let sessionCells: WorkSessionCell[] = [];
@@ -155,9 +156,6 @@
   // B2: 触发器 spec 展开
   let expandedTriggerSpecs = new Set<string>();
 
-  // 统一日志:展开的 entry id
-  let expandedLogIds = new Set<string>();
-
   let splitContainer: HTMLDivElement | null = null;
   let chatMessagesEl: HTMLDivElement | null = null;
   let dragging = false;
@@ -190,19 +188,30 @@
     loading = true;
     error = '';
     try {
-      taskDetail = await getAutomationTask(taskId);
+      // 三个请求相互独立,并行发起以减少首屏等待
+      const [task, allRuns, allEvents] = await Promise.all([
+        getAutomationTask(taskId),
+        listLoaderRuns(taskId, 100),
+        listAutomationEvents(taskId, 500),
+      ]);
+      taskDetail = task;
       scriptDraft = taskDetail.script || '';
       envDraft = taskDetail.envItems.map((e) => ({ ...e }));
       taskWasEnabled = taskDetail.enabled;
 
-      const allRuns = await listLoaderRuns(taskId, 100);
       runs = allRuns.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
-
-      const allEvents = await listAutomationEvents(taskId, 500);
       const sessionIds = new Set<string>();
+      let latestEventTime = -1;
       for (const e of allEvents) {
-        if (e.linkedSessionId) sessionIds.add(e.linkedSessionId);
-        if (e.linkedAgentSessionId) sessionIds.add(e.linkedAgentSessionId);
+        const sid = e.linkedSessionId || e.linkedAgentSessionId;
+        if (sid) {
+          sessionIds.add(sid);
+          const t = e.createdAt ? new Date(e.createdAt).getTime() : NaN;
+          if (!Number.isNaN(t) && t > latestEventTime) {
+            latestEventTime = t;
+            mostRecentSessionId = sid;
+          }
+        }
       }
       availableSessions = Array.from(sessionIds).map((id) => ({ id, label: id.substring(0, 8) }));
 
@@ -509,10 +518,18 @@
 
   function selectSession(sid: string): void {
     highlightedCellId = '';
-    expandedLogIds = new Set();
     selectedSessionId = sid;
     centerTab = 'session';
     void loadSessionDetail(sid);
+  }
+
+  function switchToSessionTab(): void {
+    centerTab = 'session';
+    // 默认展示最近的一次对话
+    if (!selectedSessionId && mostRecentSessionId) {
+      selectedSessionId = mostRecentSessionId;
+      void loadSessionDetail(mostRecentSessionId);
+    }
   }
 
   async function jumpToCell(sid: string, cellId: string | undefined): Promise<void> {
@@ -626,13 +643,6 @@
 
   // ── Session Log ──
 
-  function firstLine(s: string): string {
-    const t = (s || '').trim();
-    if (!t) return '';
-    const i = t.indexOf('\n');
-    return i === -1 ? t : t.slice(0, i);
-  }
-
   function cellStatusClass(e: LogEntry & { kind: 'cell' }): string {
     if (e.role === 'user') return 'user';
     if (e.role === 'system') return 'system';
@@ -653,15 +663,6 @@
     if (l === 'ERROR' || l === 'ERR' || l === 'FATAL') return 'err';
     if (l === 'WARN' || l === 'WARNING') return 'warn';
     return 'info';
-  }
-
-  function toggleLogExpand(id: string): void {
-    if (expandedLogIds.has(id)) {
-      expandedLogIds.delete(id);
-    } else {
-      expandedLogIds.add(id);
-    }
-    expandedLogIds = new Set(expandedLogIds); // 触发 Svelte legacy反应性
   }
 
   function buildSessionLog(cells: WorkSessionCell[], events: WorkSessionEvent[]): LogEntry[] {
@@ -694,19 +695,9 @@
       if (ta !== tb) return ta - tb;
       return a.kind === b.kind ? 0 : a.kind === 'cell' ? -1 : 1; // 同时间戳:cell 排在 event 前
     });
-    let prevDay = '';
     for (const e of all) {
-      // 与 formatTime 一致使用北京时间(Asia/Shanghai),避免摘要与展开行时间不一致
-      const full = e.timestamp ? formatBeijingTime(e.timestamp) : '';
-      const sp = full.indexOf(' ');
-      if (sp === -1) {
-        e.timeLabel = e.timestamp || '--:--:--';
-        continue;
-      }
-      const day = full.slice(0, sp);
-      const hhmmss = full.slice(sp + 1);
-      e.timeLabel = day !== prevDay ? `${day} ${hhmmss}` : hhmmss;
-      prevDay = day;
+      // 与 formatTime 一致使用北京时间(Asia/Shanghai),每行都带日期
+      e.timeLabel = e.timestamp ? formatBeijingTime(e.timestamp) : '--:--:--';
     }
     return all;
   }
@@ -1267,7 +1258,7 @@
   {/if}
 
   <!-- Header -->
-  <div class="page-title" style="margin-bottom:2px;">
+  <div class="page-title">
     <div>
       <h2>任务调试 · {taskDetail.name || shortId(taskId)}</h2>
     </div>
@@ -1318,7 +1309,7 @@
     <div class="td-center">
       <div class="detail-tabs" style="padding:0 10px;">
         <button class:active={centerTab === 'output'} on:click={() => (centerTab = 'output')}>运行输出</button>
-        <button class:active={centerTab === 'session'} on:click={() => (centerTab = 'session')}>Session 调试</button>
+        <button class:active={centerTab === 'session'} on:click={switchToSessionTab}>Session 调试</button>
       </div>
 
       {#if centerTab === 'output'}
@@ -1497,69 +1488,54 @@
                   {:else}
                     {#each logEntries as entry (`${entry.kind}-${entry.id}`)}
                       {#if entry.kind === 'cell'}
-                        <button
-                          type="button"
+                        <div
                           class="td-log-row td-log-cell td-log-{entry.role}"
                           id={`td-chat-cell-${entry.id}`}
                           class:td-log-highlight={highlightedCellId === entry.id}
-                          aria-expanded={expandedLogIds.has(entry.id)}
-                          on:click={() => toggleLogExpand(entry.id)}
                         >
-                          <span class="td-log-time">{entry.timeLabel}</span>
-                          <span class="td-log-tag td-log-tag-{cellStatusClass(entry)}">{cellTagLabel(entry)}</span>
-                          <span class="td-log-summary">{firstLine(entry.content) || (entry.running ? '输出中...' : '(无内容)')}</span>
-                        </button>
-                        {#if expandedLogIds.has(entry.id)}
-                          <div class="td-log-expand">
-                            <div class="td-log-meta">
-                              {#if entry.agent}<span>agent: {entry.agent}</span>{/if}
-                              {#if entry.agentSessionId}<span>agentSession: {shortId(entry.agentSessionId)}</span>{/if}
-                              {#if entry.role !== 'user'}<span>exit: {entry.exitCode}</span>{/if}
-                              {#if entry.stopReason}<span>stopReason: {entry.stopReason}</span>{/if}
-                              <span>createdAt: {formatTime(entry.timestamp)}</span>
-                            </div>
+                          <div class="td-log-head">
+                            <span class="td-log-time">{entry.timeLabel}</span>
+                            <span class="td-log-tag td-log-tag-{cellStatusClass(entry)}">{cellTagLabel(entry)}</span>
+                          </div>
+                          <div class="td-log-detail">
+                            {#if entry.agentSessionId || entry.stopReason}
+                              <div class="td-log-meta">
+                                {#if entry.agentSessionId}<span>agentSession: {shortId(entry.agentSessionId)}</span>{/if}
+                                {#if entry.stopReason}<span>stopReason: {entry.stopReason}</span>{/if}
+                              </div>
+                            {/if}
                             <pre class="td-log-body">{entry.content || (entry.running ? '等待输出...' : '(无内容)')}</pre>
                           </div>
-                        {/if}
+                        </div>
                       {:else}
-                        <button
-                          type="button"
-                          class="td-log-row td-log-event"
-                          aria-expanded={expandedLogIds.has(entry.id)}
-                          on:click={() => toggleLogExpand(entry.id)}
-                        >
-                          <span class="td-log-time">{entry.timeLabel}</span>
-                          <span class="td-log-tag td-log-tag-{logLevelClass(entry.level)}">{entry.level || 'INFO'}</span>
-                          <span class="td-log-summary">{entry.type}{entry.message ? ': ' + entry.message : ''}</span>
-                        </button>
-                        {#if expandedLogIds.has(entry.id)}
-                          <div class="td-log-expand">
-                            <div class="td-log-meta">
-                              <span>type: {entry.type}</span>
-                              <span>level: {entry.level || '-'}</span>
-                              <span>createdAt: {formatTime(entry.timestamp)}</span>
-                            </div>
+                        <div class="td-log-row td-log-event">
+                          <div class="td-log-head">
+                            <span class="td-log-time">{entry.timeLabel}</span>
+                            <span class="td-log-tag td-log-tag-{logLevelClass(entry.level)}">{entry.level || 'INFO'}</span>
+                            <span class="td-log-summary">{entry.type}</span>
+                          </div>
+                          <div class="td-log-detail">
                             <pre class="td-log-body">{entry.message || '(无消息)'}</pre>
                           </div>
-                        {/if}
+                        </div>
                       {/if}
                     {/each}
                   {/if}
                 </div>
                 <div class="td-chat-composer">
-                  <textarea
-                    rows="2"
-                    value={messageDraft}
-                    placeholder={canChat() ? '输入消息，Enter 发送' : `会话${sessionStatus || '未运行'}`}
-                    disabled={!canChat()}
-                    on:input={(e) => (messageDraft = e.currentTarget.value)}
-                    on:keydown={handleMessageKeydown}
-                  ></textarea>
-                  <div class="td-composer-actions">
-                    <span>{canChat() ? 'Enter 发送 · Shift+Enter 换行' : `会话${sessionStatus || '未运行'}`}</span>
-                    <button disabled={!canChat() || !messageDraft.trim()} on:click={sendMessage}>
-                      {sendingMessage ? '发送中...' : '发送'}
-                    </button>
+                  <div class="td-composer-input">
+                    <textarea
+                      rows="2"
+                      value={messageDraft}
+                      placeholder={canChat() ? '输入消息，Enter 发送' : `会话${sessionStatus || '未运行'}`}
+                      disabled={!canChat()}
+                      on:input={(e) => (messageDraft = e.currentTarget.value)}
+                      on:keydown={handleMessageKeydown}
+                    ></textarea>
+                    <button
+                      class="td-composer-send"
+                      disabled={!canChat() || !messageDraft.trim()}
+                      on:click={sendMessage}>{sendingMessage ? '发送中...' : '发送'}</button>
                   </div>
                 </div>
               </div>
@@ -1596,7 +1572,7 @@
     <!-- Right Drawer -->
     {#if drawerOpen}
       <aside class="panel td-drawer" style="padding:0; gap:0;">
-        <div class="panel-head" style="padding:10px 12px; border-bottom:1px solid var(--line);">
+        <div class="panel-head" style="padding:4px 12px; border-bottom:1px solid var(--line);">
           <h3 style="margin:0; font-size:var(--font-size-sm);">任务工作区</h3>
           <button class="ghost" style="min-height:28px; padding:4px 8px;" on:click={() => (drawerOpen = false)}>关闭</button>
         </div>
@@ -1696,6 +1672,16 @@
 {/if}
 
 <style>
+  /* ── 页头 ── */
+  .td-session-meta { border-radius: 0; }
+  .page-title { margin-top: 0; margin-bottom: 0; }
+  .page-title h2 { font-size: var(--font-size-xl); margin-bottom: 0; }
+  .toolbar button {
+    font-size: var(--font-size-sm);
+    min-height: 28px;
+    padding: 4px 10px;
+  }
+
   /* ── Dialog ── */
   .td-dialog-mask {
     position: fixed; inset: 0; z-index: 100;
@@ -1716,7 +1702,7 @@
     grid-template-columns: 248px minmax(0, 1fr);
     gap: 12px;
     min-height: 0;
-    height: calc(100vh - 150px);
+    height: calc(100vh - 110px);
   }
   .td-layout.td-drawer-open {
     grid-template-columns: 248px minmax(0, 1fr) 380px;
@@ -2004,10 +1990,10 @@
     padding: 6px 10px;
     display: flex;
     flex-direction: column;
-    gap: 1px;
+    gap: 0;
     font-family: var(--mono);
     font-size: var(--font-size-xs);
-    line-height: 1.5;
+    line-height: 1.6;
   }
   .td-log-empty {
     color: var(--muted);
@@ -2018,21 +2004,18 @@
   }
 
   .td-log-row {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .td-log-head {
     display: flex;
     align-items: baseline;
     gap: 8px;
-    padding: 1px 4px;
-    border-radius: 4px;
-    cursor: pointer;
     white-space: nowrap;
-    width: 100%;
-    text-align: left;
-    background: none;
-    border: none;
-    min-height: 0;
-    font-weight: 400;
   }
-  .td-log-row:hover { background: var(--surface-2); }
   .td-log-time {
     flex: 0 0 auto;
     color: var(--muted);
@@ -2051,10 +2034,7 @@
   .td-log-tag-user { color: var(--primary); }
   .td-log-tag-system { color: var(--muted); }
   .td-log-summary {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    flex: 0 0 auto;
     white-space: nowrap;
     color: var(--text);
   }
@@ -2063,12 +2043,9 @@
     background: rgba(47,95,208,0.12);
     box-shadow: inset 2px 0 0 var(--primary);
   }
-  .td-log-expand {
-    margin: 1px 0 3px;
-    padding: 6px 10px;
-    border-left: 2px solid var(--primary);
-    background: var(--surface-2);
-    border-radius: 0 4px 4px 0;
+  .td-log-detail {
+    padding: 2px 0 2px 10px;
+    border-left: 2px solid var(--line);
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -2094,38 +2071,34 @@
 
   /* Chat Composer */
   .td-chat-composer {
-    padding: 8px 12px;
+    padding: 8px 12px 4px;
     border-top: 1px solid var(--line);
     background: #fff;
     flex-shrink: 0;
   }
+  .td-composer-input {
+    position: relative;
+  }
   .td-chat-composer textarea {
     width: 100%;
-    height: calc(var(--font-size-sm) * 4);
+    height: calc(var(--font-size-sm) * 6);
     min-height: 0;
     resize: none;
     border: 1px solid var(--line);
     border-radius: 6px;
-    padding: 0 10px;
+    padding: 0 76px 0 10px;
     font: inherit;
     font-size: var(--font-size-sm);
     line-height: calc(var(--font-size-sm) * 2);
     box-sizing: border-box;
   }
-  .td-composer-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-    margin-top: 5px;
-  }
-  .td-composer-actions span {
-    font-size: var(--font-size-xs);
-    color: var(--muted);
-  }
-  .td-composer-actions button {
-    padding: 4px 8px;
+  .td-composer-send {
+    position: absolute;
+    right: 6px;
+    bottom: 12px;
+    padding: 2px 10px;
     min-height: 0;
+    font-size: var(--font-size-sm);
   }
 
   /* Resize Handle */
@@ -2151,6 +2124,7 @@
     flex-direction: column;
     min-height: 60px;
     border-top: 1px solid var(--line);
+    border-radius: 0 0 8px 8px;
     overflow: hidden;
   }
 
@@ -2205,7 +2179,7 @@
     border: 1px solid var(--line);
     border-radius: 6px;
     overflow: hidden;
-    background: var(--surface-2);
+    background: #000;
   }
   .td-code-highlight {
     position: absolute;
@@ -2215,12 +2189,13 @@
     margin: 0;
     padding: 8px 10px;
     font-family: var(--mono);
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     line-height: 1.45;
-    white-space: pre;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
     pointer-events: none;
     overflow: visible;
-    color: var(--text);
+    color: #e5e7eb;
     tab-size: 2;
   }
   .td-code-editor {
@@ -2229,14 +2204,15 @@
     width: 100%;
     padding: 8px 10px;
     font-family: var(--mono);
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     line-height: 1.45;
-    white-space: pre;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
     overflow: auto;
     border: none;
-    resize: none;
+    resize: vertical;
     color: transparent;
-    caret-color: var(--text);
+    caret-color: #e5e7eb;
     background: transparent;
     tab-size: 2;
   }
