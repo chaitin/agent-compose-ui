@@ -6,7 +6,9 @@
   "scripts": {
     "build:ui": "vite build",
     "dev:ui": "vite",
-    "check:ui": "vite build"
+    "check:ui": "vite build",
+    "check:server": "go test ./...",
+    "build:image": "docker build -f nginx/Dockerfile -t agent-compose-ui:local ."
   },
   "dependencies": {
     "@ant-design/icons-svg": "^4.4.2",

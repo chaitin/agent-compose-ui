@@ -3,6 +3,10 @@ node_modules/
 
 # Build output
 dist/
+dist.bak.*/
+frontend.tar.gz
+frontend.pid
+frontend.node.pid
 
 # Vite / Svelte caches
 .vite/

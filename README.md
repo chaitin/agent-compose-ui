@@ -21,12 +21,16 @@ npm run dev:ui   # http://127.0.0.1:5174
 
 ```bash
 npm run build:ui   # outputs to dist/
+go test ./...
+docker build -f nginx/Dockerfile -t agent-compose-ui:local .
 ```
 
 Set `AGENT_COMPOSE_BASE` to host the app under a sub-path (default `/`).
 
 ## Deploy
 
-`nginx/Dockerfile` builds the static UI and serves it via nginx, reverse-proxying
-the API and Jupyter routes to the daemon. CI publishes the image to
+`nginx/Dockerfile` builds the Svelte UI and the Go UI server, then packages both
+into the nginx-based runtime image. nginx serves static assets and forwards
+API/RPC/OAuth/Jupyter routes to the local Go UI server, which handles browser
+auth/OAuth and proxies the daemon. CI publishes the image to
 `ghcr.io/chaitin/agent-compose-ui`.
