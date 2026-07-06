@@ -21,7 +21,7 @@ env:
 
 jobs:
   image:
-    name: Build and push frontend image
+    name: Build and push UI image
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

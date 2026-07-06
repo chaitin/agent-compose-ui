@@ -1,8 +1,8 @@
 import { apiFetchJson } from './http';
 
-// Login/auth state from the backend (pkg/auth). Auth is enabled via the
-// AUTH_PASSWORD env at deploy time; there is no RPC to change it, so the
-// settings UI shows this read-only.
+// Login/auth state from the agent-compose-ui server. Auth is enabled via the
+// UI-side AUTH_* / OAUTH_* env at deploy time; there is no RPC to change it,
+// so the settings UI shows this read-only.
 export type AuthStatus = {
   enabled: boolean;
   loggedIn: boolean;

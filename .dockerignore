@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist.bak.*/
+frontend.pid
+frontend.node.pid
+frontend.log
+frontend.tar.gz
+.git/
+.github/
+.env
+.env.*
