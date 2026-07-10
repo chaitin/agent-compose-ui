@@ -308,9 +308,16 @@ export async function listTopicEventRuns(eventId: string): Promise<TopicEventRun
 }
 
 export async function listTopicEventSessions(eventId: string): Promise<TopicEventSession[]> {
-  const response = await apiFetchJson<{ sessions: TopicEventSessionResponse[] }>(`/api/events/${encodeURIComponent(eventId)}/sessions`);
-  return response.sessions.map((item) => ({
-    sessionId: item.session_id,
+  // Older daemons return sessions/session_id, while newer daemons use
+  // sandboxes/sandbox_id after the session-to-sandbox rename.
+  const response = await apiFetchJson<TopicEventSessionsResponse>(`/api/events/${encodeURIComponent(eventId)}/sessions`);
+  const items = Array.isArray(response.sessions)
+    ? response.sessions
+    : Array.isArray(response.sandboxes)
+      ? response.sandboxes
+      : [];
+  return items.map((item) => ({
+    sessionId: item.session_id || item.sandbox_id || '',
     relation: item.relation,
     loaderId: item.loader_id || '',
     runId: item.run_id || '',
@@ -478,7 +485,8 @@ type TopicEventRunResponse = {
 };
 
 type TopicEventSessionResponse = {
-  session_id: string;
+  session_id?: string;
+  sandbox_id?: string;
   relation: string;
   loader_id?: string;
   run_id?: string;
@@ -486,6 +494,11 @@ type TopicEventSessionResponse = {
   loader_event_id?: string;
   event_id: string;
   created_at: string;
+};
+
+type TopicEventSessionsResponse = {
+  sessions?: TopicEventSessionResponse[];
+  sandboxes?: TopicEventSessionResponse[];
 };
 
 function topicEventFromResponse(item: TopicEventResponse): TopicEvent {
