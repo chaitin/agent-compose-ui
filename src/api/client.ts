@@ -2,31 +2,24 @@ import { createClient } from '@connectrpc/connect';
 import { createGrpcWebTransport } from '@connectrpc/connect-web';
 
 import {
-  AgentDefinitionService,
-  AgentService,
   CapabilityService,
-  ConfigService,
   DashboardService,
-  KernelService,
-  LLMService,
-  LoaderService,
-  SessionService,
-} from '@chaitin-ai/agent-compose-client/agentcompose/v1/agentcompose_connect.js';
-import { ExecService, RunService } from '@chaitin-ai/agent-compose-client/agentcompose/v2/agentcompose_connect.js';
-import { HealthService } from '@chaitin-ai/agent-compose-client/health/v1/health_connect.js';
+  ExecService,
+  ProjectService,
+  RunService,
+  SandboxService,
+  SettingsService,
+} from '../gen/agentcompose/v2/agentcompose_connect.js';
+import { HealthService } from '../gen/health/v1/health_connect.js';
 import { connectBaseUrl } from '../paths';
 
 const grpcWebTransport = createGrpcWebTransport({
   baseUrl: connectBaseUrl(),
 });
 
-export const sessionClient = createClient(SessionService, grpcWebTransport);
-export const kernelClient = createClient(KernelService, grpcWebTransport);
-export const agentClient = createClient(AgentService, grpcWebTransport);
-export const agentDefinitionClient = createClient(AgentDefinitionService, grpcWebTransport);
-export const llmClient = createClient(LLMService, grpcWebTransport);
-export const loaderClient = createClient(LoaderService, grpcWebTransport);
-export const configClient = createClient(ConfigService, grpcWebTransport);
+export const projectClient = createClient(ProjectService, grpcWebTransport);
+export const sandboxClient = createClient(SandboxService, grpcWebTransport);
+export const settingsClient = createClient(SettingsService, grpcWebTransport);
 export const capabilityClient = createClient(CapabilityService, grpcWebTransport);
 export const dashboardClient = createClient(DashboardService, grpcWebTransport);
 export const healthClient = createClient(HealthService, grpcWebTransport);

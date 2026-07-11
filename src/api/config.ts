@@ -1,4 +1,4 @@
-import { capabilityClient, configClient } from './client';
+import { capabilityClient, settingsClient } from './client';
 import { apiFetchJson } from './http';
 
 export type CapabilityGatewayConfig = {
@@ -18,15 +18,15 @@ export type CapabilityStatus = {
 };
 
 export async function getCapabilityGatewayConfig(): Promise<CapabilityGatewayConfig> {
-  const response = await configClient.getCapabilityGatewayConfig({});
-  return { addr: response.addr, tokenSet: response.tokenSet };
+  const response = await settingsClient.getCapabilityGatewayConfig({});
+  return { addr: response.config?.addr ?? '', tokenSet: response.config?.tokenSet ?? false };
 }
 
 // updateCapabilityGatewayConfig saves the OctoBus connection. An empty token
 // clears the stored token.
 export async function updateCapabilityGatewayConfig(addr: string, token: string): Promise<CapabilityGatewayConfig> {
-  const response = await configClient.updateCapabilityGatewayConfig({ addr, token });
-  return { addr: response.addr, tokenSet: response.tokenSet };
+  const response = await settingsClient.updateCapabilityGatewayConfig({ addr, token });
+  return { addr: response.config?.addr ?? '', tokenSet: response.config?.tokenSet ?? false };
 }
 
 export async function getCapabilityStatus(): Promise<CapabilityStatus> {
@@ -158,8 +158,8 @@ type WebhookSourceResponse = {
 };
 
 export async function listEnvItems(): Promise<EnvItem[]> {
-  const response = await configClient.getGlobalEnvConfig({});
-  return response.envItems.map((item) => ({
+  const response = await settingsClient.getGlobalEnv({});
+  return response.env.map((item) => ({
     name: item.name,
     value: item.secret && item.value ? '' : item.value,
     secret: item.secret,
@@ -168,8 +168,8 @@ export async function listEnvItems(): Promise<EnvItem[]> {
 }
 
 export async function updateEnvItems(envItems: EnvItem[]): Promise<void> {
-  await configClient.updateGlobalEnvConfig({
-    envItems: envItems
+  await settingsClient.updateGlobalEnv({
+    env: envItems
       .filter((item) => item.name.trim())
       .map((item) => ({
         name: item.name.trim(),
@@ -180,47 +180,47 @@ export async function updateEnvItems(envItems: EnvItem[]): Promise<void> {
 }
 
 export async function listWorkspacePresets(): Promise<WorkspacePreset[]> {
-  const response = await configClient.listWorkspaceConfigs({});
-  return response.workspaces.map((item) => ({
+  const response = await settingsClient.listWorkspacePresets({});
+  return response.presets.map((item) => ({
     id: item.id,
     name: item.name,
     type: item.type,
     configJson: item.configJson,
     comment: item.comment,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
+    createdAt: timestampString(item.createdAt),
+    updatedAt: timestampString(item.updatedAt),
   }));
 }
 
 export async function createWorkspacePreset(input: WorkspacePresetInput): Promise<WorkspacePreset> {
-  const response = await configClient.createWorkspaceConfig({
+  const response = await settingsClient.createWorkspacePreset({
     name: input.name.trim(),
     type: input.type,
     configJson: input.configJson,
     comment: input.comment.trim(),
   });
-  if (!response.workspace) {
+  if (!response.preset) {
     throw new Error('Workspace 配置保存失败');
   }
-  return workspaceFromResponse(response.workspace);
+  return workspaceFromResponse(response.preset);
 }
 
 export async function updateWorkspacePreset(id: string, input: WorkspacePresetInput): Promise<WorkspacePreset> {
-  const response = await configClient.updateWorkspaceConfig({
-    workspaceId: id,
+  const response = await settingsClient.updateWorkspacePreset({
+    presetId: id,
     name: input.name.trim(),
     type: input.type,
     configJson: input.configJson,
     comment: input.comment.trim(),
   });
-  if (!response.workspace) {
+  if (!response.preset) {
     throw new Error('Workspace 配置保存失败');
   }
-  return workspaceFromResponse(response.workspace);
+  return workspaceFromResponse(response.preset);
 }
 
 export async function deleteWorkspacePreset(id: string): Promise<void> {
-  await configClient.deleteWorkspaceConfig({ workspaceId: id });
+  await settingsClient.deleteWorkspacePreset({ presetId: id });
 }
 
 type WorkspaceFilesResponse = {
@@ -288,16 +288,20 @@ export async function deleteWebhookSource(id: string): Promise<void> {
   await apiFetch(`/api/webhook-sources/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
-function workspaceFromResponse(item: NonNullable<Awaited<ReturnType<typeof configClient.createWorkspaceConfig>>['workspace']>): WorkspacePreset {
+function workspaceFromResponse(item: NonNullable<Awaited<ReturnType<typeof settingsClient.createWorkspacePreset>>['preset']>): WorkspacePreset {
   return {
     id: item.id,
     name: item.name,
     type: item.type,
     configJson: item.configJson,
     comment: item.comment,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
+    createdAt: timestampString(item.createdAt),
+    updatedAt: timestampString(item.updatedAt),
   };
+}
+
+function timestampString(value?: { seconds: bigint; nanos: number }): string {
+  return value ? new Date(Number(value.seconds) * 1000 + value.nanos / 1e6).toISOString() : '';
 }
 
 function webhookSourceFromResponse(item: WebhookSourceResponseItem): WebhookSource {

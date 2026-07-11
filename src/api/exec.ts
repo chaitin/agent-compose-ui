@@ -1,4 +1,4 @@
-import { ExecStreamEventType } from '@chaitin-ai/agent-compose-client/agentcompose/v2/agentcompose_pb.js';
+import { ExecStreamEventType } from '../gen/agentcompose/v2/agentcompose_pb.js';
 
 import { execClient } from './client';
 
