@@ -2,7 +2,7 @@ import { runClient } from './client';
 
 export type ProjectRunDebugTarget = {
   runId: string;
-  sessionId: string;
+  sandboxId: string;
 };
 
 export async function getProjectRunDebugTarget(runId: string): Promise<ProjectRunDebugTarget> {
@@ -16,6 +16,6 @@ export async function getProjectRunDebugTarget(runId: string): Promise<ProjectRu
   }
   return {
     runId: summary.runId,
-    sessionId: summary.sandboxId,
+    sandboxId: summary.sandboxId,
   };
 }

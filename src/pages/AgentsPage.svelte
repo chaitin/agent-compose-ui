@@ -6,7 +6,7 @@
   import AntIcon from '../components/AntIcon.svelte';
   import {
     createAgentDefinition,
-    createAgentDefinitionSession,
+    runAgentDefinition,
     deleteAgentDefinition,
     listAgentDefinitions,
     updateAgentDefinition,
@@ -308,7 +308,7 @@
     try {
       const task = runTask.trim();
       const title = task ? `${task} ${formatSessionTime(new Date())}` : `${runAgent.name} ${formatSessionTime(new Date())}`;
-      const sessionId = await createAgentDefinitionSession({
+	  const { runId, sandboxId } = await runAgentDefinition({
         agentId: runAgent.id,
         title,
         workspaceId: runWorkspaceMode === 'git' || runWorkspaceMode === 'file' ? runWorkspaceId : '',
@@ -317,9 +317,9 @@
         message: runTask,
         provider: runAgent.provider,
       });
-      showMessage(sessionId ? `工作会话已创建：${sessionId}` : '工作会话已创建');
-      closeRun();
-      window.location.assign(sessionId ? appPath(`/runs?runId=${encodeURIComponent(sessionId)}`) : appPath('/runs'));
+	  showMessage(sandboxId ? `工作会话已创建：${sandboxId}` : '工作会话已创建');
+	  closeRun();
+	  window.location.assign(runId ? appPath(`/runs?runId=${encodeURIComponent(runId)}`) : appPath('/runs'));
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {

@@ -9,7 +9,7 @@
 
   import AntIcon from '../components/AntIcon.svelte';
   import { getAutomationRun, listAutomationEvents, listAutomationTasks, listRecentAutomationRuns, runAutomationTaskNow, type AutomationTask } from '../api/loaders';
-  import { createAgentDefinitionSession, listAgentDefinitions, type AgentDefinition } from '../api/agents';
+  import { runAgentDefinition, listAgentDefinitions, type AgentDefinition } from '../api/agents';
   import { listWorkspacePresets, type WorkspacePreset } from '../api/config';
   import {
     getWorkSessionStatus,
@@ -402,11 +402,11 @@
     activeMode = workbenchMode;
     selectedConversationId = params.get('conversationId') || '';
     conversationId = selectedConversationId;
-    const requestedSessionId = params.get('sessionId') || '';
+	const requestedSandboxId = params.get('sandboxId') || params.get('sessionId') || '';
     const requestedRunId = params.get('runId') || '';
     selectedRunId = workbenchMode === 'chat'
-      ? (selectedConversationId || requestedSessionId || requestedRunId)
-      : (requestedRunId || requestedSessionId || selectedConversationId);
+	  ? (selectedConversationId || requestedSandboxId || requestedRunId)
+	  : (requestedRunId || requestedSandboxId || selectedConversationId);
     selectedAgentId = rawAgentId;
     selectedGroupKey = selectedAgentId;
     selectedContextKey = selectedTaskId ? `task:${selectedTaskId}` : (selectedRunId ? '' : 'overview');
@@ -468,7 +468,8 @@
       q: timelineQuery.trim() || null,
       mock: null,
       runId: selectedRunParam(),
-      sessionId: selectedSessionParam(),
+	  sandboxId: selectedSessionParam(),
+	  sessionId: null,
       detailTab: null,
       groupKey: null,
       groupTab: null,
@@ -1654,7 +1655,7 @@
     // swap out the temp entry. No blind polling — only the RPC knows the
     // exact sessionId, and matching on agent+timestamp races across
     // concurrent calls.
-    void createAgentDefinitionSession({
+    void runAgentDefinition({
       agentId: agent.id,
       title: initialMessage ? `${initialMessage} ${formatSessionTime(new Date())}` : `${agent.name} ${formatSessionTime(new Date())}`,
       workspaceId: runWorkspaceMode === 'git' || runWorkspaceMode === 'file' ? runWorkspaceId : '',
@@ -1662,28 +1663,28 @@
       guestImage: agent.guestImage,
       message: '',
       provider: agent.provider,
-    }).then((sessionId) => {
-      if (ctx.resolved || !sessionId) return;
+    }).then(({ sandboxId }) => {
+      if (ctx.resolved || !sandboxId) return;
       resolve();
       // The session just created may still be PENDING in listWorkSessions;
       // fetch it so we can update the temp entry and start status polling.
       listWorkSessions(50).then(({ sessions }) => {
-        const real = sessions.find((s) => s.id === sessionId);
+        const real = sessions.find((s) => s.id === sandboxId);
         runs = sortRunsByUpdatedTime(runs.map((r) => r.id === tempId
-          ? real ? { ...pending, ...sessionToRun(real), id: sessionId, input: pending.input || sessionToRun(real).input } : { ...r, id: sessionId }
+          ? real ? { ...pending, ...sessionToRun(real), id: sandboxId, input: pending.input || sessionToRun(real).input } : { ...r, id: sandboxId }
           : r));
-        selectedRunId = sessionId;
-        selectedConversationId = sessionId;
-        conversationId = sessionId;
-        selectedContextKey = `manual:${sessionId}`;
-        const fresh = runs.find((r) => r.id === sessionId);
+        selectedRunId = sandboxId;
+        selectedConversationId = sandboxId;
+        conversationId = sandboxId;
+        selectedContextKey = `manual:${sandboxId}`;
+        const fresh = runs.find((r) => r.id === sandboxId);
         if (fresh) {
           startWatching(fresh);
-          startStatusFallbackPoll(sessionId);
+          startStatusFallbackPoll(sandboxId);
         }
-        message = `工作会话已创建：${sessionId}`;
+        message = `工作会话已创建：${sandboxId}`;
         messageTimer = setTimeout(() => { message = ''; }, 5000);
-        sendInitialMessage(sessionId);
+        sendInitialMessage(sandboxId);
       }).catch(() => {});
     }).catch(() => {
       // RPC failed — nothing we can do without a sessionId.

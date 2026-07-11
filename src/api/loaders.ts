@@ -1,6 +1,6 @@
 import { apiFetchJson } from './http';
 import { projectClient, runClient } from './client';
-import { RunSource, RunStatus, type Project, type ResolvedTrigger, type RunSummary, type SchedulerSummary, type TriggerSpec } from '../gen/agentcompose/v2/agentcompose_pb.js';
+import { ProjectValidationSeverity, RunSource, RunStatus, type Project, type ResolvedTrigger, type RunSummary, type SchedulerSummary, type TriggerSpec } from '../gen/agentcompose/v2/agentcompose_pb.js';
 
 export type AutomationTask = {
   id: string;
@@ -172,7 +172,31 @@ export async function setAutomationTriggerEnabled(loaderId: string, triggerId: s
 }
 
 export async function validateAutomationTask(script: string, runtime: string): Promise<ValidateAutomationTaskResult> {
-  void script; void runtime; return { triggers: [], warnings: [] };
+  if (runtime !== 'scheduler') throw new Error(`不支持的自动化运行时：${runtime}`);
+  const response = await projectClient.validateProject({
+    spec: {
+      name: 'ui-automation-validation',
+      agents: [{
+        name: 'automation',
+        provider: 'codex',
+        scheduler: { enabled: true, script, sandboxPolicy: 'sticky', triggers: [] },
+      }],
+    },
+  });
+  const errors = response.issues.filter((issue) => issue.severity === ProjectValidationSeverity.ERROR);
+  if (!response.valid || errors.length > 0) {
+    const details = (errors.length > 0 ? errors : response.issues)
+      .map((issue) => issue.path ? `${issue.path}: ${issue.message}` : issue.message)
+      .filter(Boolean)
+      .join('\n');
+    throw new Error(details || '自动化脚本校验失败');
+  }
+  return {
+    triggers: [],
+    warnings: response.issues
+      .filter((issue) => issue.severity === ProjectValidationSeverity.WARNING)
+      .map((issue) => issue.path ? `${issue.path}: ${issue.message}` : issue.message),
+  };
 }
 
 export async function runAutomationTaskNow(loaderId: string, payloadJson: string, triggerId = ''): Promise<AutomationRun> {

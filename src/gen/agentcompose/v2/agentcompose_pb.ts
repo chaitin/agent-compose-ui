@@ -3229,6 +3229,55 @@ export class EnvVarSpec extends Message<EnvVarSpec> {
 }
 
 /**
+ * @generated from message agentcompose.v2.EnvVarUpdateSpec
+ */
+export class EnvVarUpdateSpec extends Message<EnvVarUpdateSpec> {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name = "";
+
+  /**
+   * @generated from field: optional string value = 2;
+   */
+  value?: string;
+
+  /**
+   * @generated from field: bool secret = 3;
+   */
+  secret = false;
+
+  constructor(data?: PartialMessage<EnvVarUpdateSpec>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.EnvVarUpdateSpec";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "value", kind: "scalar", T: 9 /* ScalarType.STRING */, opt: true },
+    { no: 3, name: "secret", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): EnvVarUpdateSpec {
+    return new EnvVarUpdateSpec().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): EnvVarUpdateSpec {
+    return new EnvVarUpdateSpec().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): EnvVarUpdateSpec {
+    return new EnvVarUpdateSpec().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: EnvVarUpdateSpec | PlainMessage<EnvVarUpdateSpec> | undefined, b: EnvVarUpdateSpec | PlainMessage<EnvVarUpdateSpec> | undefined): boolean {
+    return proto3.util.equals(EnvVarUpdateSpec, a, b);
+  }
+}
+
+/**
  * @generated from message agentcompose.v2.WorkspaceSpec
  */
 export class WorkspaceSpec extends Message<WorkspaceSpec> {
@@ -9921,9 +9970,9 @@ export class GetGlobalEnvResponse extends Message<GetGlobalEnvResponse> {
  */
 export class UpdateGlobalEnvRequest extends Message<UpdateGlobalEnvRequest> {
   /**
-   * @generated from field: repeated agentcompose.v2.EnvVarSpec env = 1;
+   * @generated from field: repeated agentcompose.v2.EnvVarUpdateSpec env = 1;
    */
-  env: EnvVarSpec[] = [];
+  env: EnvVarUpdateSpec[] = [];
 
   constructor(data?: PartialMessage<UpdateGlobalEnvRequest>) {
     super();
@@ -9933,7 +9982,7 @@ export class UpdateGlobalEnvRequest extends Message<UpdateGlobalEnvRequest> {
   static readonly runtime: typeof proto3 = proto3;
   static readonly typeName = "agentcompose.v2.UpdateGlobalEnvRequest";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
-    { no: 1, name: "env", kind: "message", T: EnvVarSpec, repeated: true },
+    { no: 1, name: "env", kind: "message", T: EnvVarUpdateSpec, repeated: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): UpdateGlobalEnvRequest {

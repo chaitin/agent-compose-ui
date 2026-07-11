@@ -24,6 +24,7 @@
     "@bufbuild/protoc-gen-es": "^1.10.1",
     "@connectrpc/protoc-gen-connect-es": "^1.7.0",
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
+    "@types/node": "^26.1.1",
     "typescript": "^5.9.3",
     "vite": "^7.1.9"
   }

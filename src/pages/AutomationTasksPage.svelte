@@ -293,7 +293,7 @@ scheduler.interval("heartbeat", function heartbeat() {
     error = '';
     try {
       const result = await validateAutomationTask(scriptForDraft(draft), 'scheduler');
-      draftTriggers = result.triggers;
+      if (result.triggers.length > 0) draftTriggers = result.triggers;
       draft.codeValidationStatus = 'passed';
       showMessage('校验通过');
     } catch (err) {
@@ -320,7 +320,7 @@ scheduler.interval("heartbeat", function heartbeat() {
     try {
       const script = scriptForDraft(draft);
       const validation = await validateAutomationTask(script, 'scheduler');
-      draftTriggers = validation.triggers;
+      if (validation.triggers.length > 0) draftTriggers = validation.triggers;
       draft.codeValidationStatus = 'passed';
       const task = await saveAutomationTask({
         id: draft.id || undefined,

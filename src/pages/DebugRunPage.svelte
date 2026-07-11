@@ -107,7 +107,7 @@
     }
     try {
       const target = await getProjectRunDebugTarget(id);
-      return await getWorkSession(target.sessionId);
+      return await getWorkSession(target.sandboxId);
     } catch (err) {
       lastError = err;
     }
@@ -195,7 +195,7 @@
 <div class="debug-workbench">
   <section class="debug-card debug-terminal-panel">
     <RuntimeCommandTerminal
-      sessionId={sessionId}
+      sandboxId={sessionId}
       disabled={!terminalAvailable}
       disabledReason={terminalDisabledReason}
     />

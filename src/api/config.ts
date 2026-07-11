@@ -1,5 +1,5 @@
 import { capabilityClient, settingsClient } from './client';
-import { apiFetchJson } from './http';
+import { apiFetch, apiFetchJson } from './http';
 
 export type CapabilityGatewayConfig = {
   addr: string;
@@ -173,7 +173,7 @@ export async function updateEnvItems(envItems: EnvItem[]): Promise<void> {
       .filter((item) => item.name.trim())
       .map((item) => ({
         name: item.name.trim(),
-        value: item.value,
+        ...(item.valueKnown ? { value: item.value } : {}),
         secret: item.secret,
       })),
   });
