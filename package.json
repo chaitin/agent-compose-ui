@@ -6,13 +6,14 @@
   "scripts": {
     "build:ui": "vite build",
     "dev:ui": "vite",
+    "gen:api": "rm -rf src/gen && mkdir -p src/gen && protoc --plugin=./node_modules/.bin/protoc-gen-es --plugin=./node_modules/.bin/protoc-gen-connect-es -I ../agent-compose/proto --es_out src/gen --es_opt target=ts,import_extension=.js --connect-es_out src/gen --connect-es_opt target=ts,import_extension=.js health/v1/health.proto agentcompose/v2/agentcompose.proto && node scripts/normalize-generated-eof.mjs src/gen",
     "check:ui": "vite build",
     "check:server": "go test ./...",
     "build:image": "docker build -f nginx/Dockerfile -t agent-compose-ui:local ."
   },
   "dependencies": {
     "@ant-design/icons-svg": "^4.4.2",
-    "@chaitin-ai/agent-compose-client": "^0.1.0",
+    "@bufbuild/protobuf": "^1.10.1",
     "@connectrpc/connect": "^1.7.0",
     "@connectrpc/connect-web": "^1.7.0",
     "@xterm/addon-fit": "^0.11.0",
@@ -20,6 +21,8 @@
     "xterm": "^5.3.0"
   },
   "devDependencies": {
+    "@bufbuild/protoc-gen-es": "^1.10.1",
+    "@connectrpc/protoc-gen-connect-es": "^1.7.0",
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
     "typescript": "^5.9.3",
     "vite": "^7.1.9"
