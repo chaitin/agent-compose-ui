@@ -38,4 +38,6 @@ Recent history uses short imperative commits with prefixes such as `fix:` and `f
 
 ## Security & Configuration Tips
 
-Do not commit secrets. Auth depends on `AUTH_USERNAME`, `AUTH_PASSWORD`, and `AUTH_SECRET`; tests should set these with `t.Setenv`. The frontend consumes `@chaitin-ai/agent-compose-client`; do not add generated proto files.
+Do not commit secrets. Auth depends on `AUTH_USERNAME`, `AUTH_PASSWORD`, and `AUTH_SECRET`; tests should set these with `t.Setenv`.
+
+The backend repository's protobuf definitions are the only API source of truth. The frontend tracks the generated `agentcompose/v2` and `health/v1` TypeScript clients directly in this repository so backend and UI changes can be reviewed together across repositories. Regenerate them with the documented generator; never edit generated protobuf or Connect client files by hand. Do not reintroduce the published `@chaitin-ai/agent-compose-client` package.
