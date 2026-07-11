@@ -22,7 +22,7 @@
     watchWorkSession,
   } from '../api/sessions';
   import { automationRunToRun, sessionToRun, type ProductRun } from '../model/runs';
-  import { CellType } from '@chaitin-ai/agent-compose-client/agentcompose/v1/agentcompose_pb.js';
+  import { CellType } from '../api/sessions';
   import { defaultGuestImage } from '../model/runtime';
   import { appPath } from '../paths';
   import { formatBeijingTime } from '../time';

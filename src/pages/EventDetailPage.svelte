@@ -28,7 +28,7 @@
     type WorkSessionEvent,
   } from '../api/sessions';
   import { apiPath } from '../paths';
-  import { CellType } from '@chaitin-ai/agent-compose-client/agentcompose/v1/agentcompose_pb.js';
+  import { CellType } from '../api/sessions';
   import { mapLoaderRunStatus, mapSessionStatus, statusTone } from '../model/runs';
   import { appPath } from '../paths';
   import { formatBeijingTime } from '../time';

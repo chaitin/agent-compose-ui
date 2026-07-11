@@ -1,5 +1,5 @@
 import type { AutomationRun } from '../api/loaders';
-import type { CellType } from '@chaitin-ai/agent-compose-client/agentcompose/v1/agentcompose_pb.js';
+import type { CellType } from '../api/sessions';
 import type { WorkSession } from '../api/sessions';
 
 export type ProductRun = {
