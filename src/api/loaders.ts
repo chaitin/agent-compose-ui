@@ -210,13 +210,13 @@ export async function getAutomationRun(loaderId: string, runId: string): Promise
 }
 
 export async function listRecentAutomationRuns(loaderIds: string[], limit = 10): Promise<AutomationRun[]> {
-  const runs = await Promise.all(
-    loaderIds.map(async (loaderId) => {
-      const response = await runClient.listRuns({ schedulerId: loaderId, limit });
-      return response.runs.map((run)=>runFromV2(run));
-    }),
-  );
-  return runs.flat().sort((left, right) => compareDateDesc(left.startedAt, right.startedAt));
+  if (loaderIds.length === 0) return [];
+  const allowed = new Set(loaderIds);
+  const response = await runClient.listRuns({ source: RunSource.SCHEDULER, limit });
+  return response.runs
+    .filter((run) => allowed.has(run.schedulerId))
+    .map((run) => runFromV2(run))
+    .sort((left, right) => compareDateDesc(left.startedAt, right.startedAt));
 }
 
 export async function listAutomationEvents(loaderId: string, limit = 50): Promise<AutomationEvent[]> {
