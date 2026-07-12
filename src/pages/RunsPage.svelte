@@ -2503,19 +2503,22 @@
   }
 
   function cellToMessages(cell: Awaited<ReturnType<typeof listWorkSessionCells>>[number]): ProductRun['messages'][] {
-    const agent = cellMessage(cell);
-    if (agent.role !== 'agent' || !cell.source?.trim()) return [agent];
-    // Agent cells carry the user's input in cell.source. Surface it as a
-    // distinct user message so both input and output appear in the chat.
+    const hasInput = Boolean(cell.source?.trim());
+    const hasOutput = Boolean(cell.output?.trim() || cell.stopReason?.trim() || cell.running);
     const user: ProductRun['messages'][number] = {
-      id: `${cell.id}-input`,
-      renderKey: `${cell.id}-input`,
+      id: hasOutput ? `${cell.id}-input` : cell.id,
+      renderKey: hasOutput ? `${cell.id}-input` : cell.id,
       role: 'user',
       type: cell.type,
       source: cell.source,
       content: '',
       at: cell.createdAt || cell.id,
     };
+    if (hasInput && !hasOutput) return [user];
+    const agent = cellMessage(cell);
+    if (agent.role !== 'agent' || !hasInput) return [agent];
+    // Legacy agent cells can carry both the user's input and the assistant's
+    // output. Split only those combined cells into two chat messages.
     return [user, agent];
   }
 
