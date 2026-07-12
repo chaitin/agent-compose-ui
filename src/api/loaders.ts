@@ -152,6 +152,8 @@ export async function getAutomationTask(id: string): Promise<AutomationTaskDetai
   return { ...taskFromV2(found), script: response.spec?.script ?? '', triggers: response.triggers.map(triggerFromResolved), envItems: [] };
 }
 
+export async function resolveAutomationSessionTarget(id:string):Promise<{projectId:string;agentName:string}|undefined>{const found=await findScheduler(id);return found?{projectId:found.projectId,agentName:found.agentName}:undefined}
+
 export async function saveAutomationTask(input: SaveAutomationTaskInput): Promise<AutomationTaskDetail> {
   const target = input.id ? await findScheduler(input.id) : await findProjectAgent(input.agentId || input.defaultAgent); if (!target) throw new Error('自动化任务必须关联项目智能体');
   const project = await loadProject(target.projectId); const agents = (project.spec?.agents ?? []).map((agent) => agent.name === target.agentName ? { ...agent, scheduler: { enabled: input.enabled, script: input.script, sandboxPolicy: input.sessionPolicy, triggers: agent.scheduler?.triggers ?? [] } } : agent);

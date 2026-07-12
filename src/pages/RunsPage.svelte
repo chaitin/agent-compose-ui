@@ -8,11 +8,12 @@
   import { FitAddon } from '@xterm/addon-fit';
 
   import AntIcon from '../components/AntIcon.svelte';
-  import { getAutomationRun, listAutomationEvents, listAutomationTasks, listRecentAutomationRuns, runAutomationTaskNow, type AutomationTask } from '../api/loaders';
+  import { getAutomationRun, listAutomationEvents, listAutomationTasks, listRecentAutomationRuns, resolveAutomationSessionTarget, runAutomationTaskNow, type AutomationTask } from '../api/loaders';
   import { runAgentDefinition, listAgentDefinitions, type AgentDefinition } from '../api/agents';
   import { listWorkspacePresets, type WorkspacePreset } from '../api/config';
   import {
     getWorkSessionStatus,
+    getWorkSessionRunTarget,
     listWorkSessionCells,
     listWorkSessionEvents,
     listWorkSessions,
@@ -20,6 +21,7 @@
     sendWorkSessionMessageStream,
     stopWorkSession,
     watchWorkSession,
+    type WorkSessionRunTarget,
   } from '../api/sessions';
   import { automationRunToRun, sessionToRun, type ProductRun } from '../model/runs';
   import { CellType } from '../api/sessions';
@@ -159,6 +161,7 @@
   let taskFilter = '';
   let keyword = '';
   let runs: ProductRun[] = [];
+  let conversationTargets = new Map<string, WorkSessionRunTarget>();
   let agentDefinitions: AgentDefinition[] = [];
   let automationTasks: AutomationTask[] = [];
   let selectedAgentId = '';
@@ -2305,7 +2308,7 @@
   }
 
   function canSendMessage(run: ProductRun): boolean {
-    return run.type === 'work_session' && run.status === '运行中' && !isReplyPending(run);
+    return run.type === 'work_session' && run.status === '运行中' && conversationTargets.has(run.id) && !isReplyPending(run);
   }
 
   function displayStatus(run: ProductRun): string {
@@ -2357,6 +2360,7 @@
     if (run.status === '已停止') return '运行已停止';
     if (run.status === '启动失败') return '运行启动失败';
     if (run.status !== '运行中') return '运行未运行';
+    if (!conversationTargets.has(run.id)) return '旧会话缺少可用项目/智能体，仅供查看';
     return 'Shift + Enter 换行';
   }
 
@@ -2915,6 +2919,14 @@
       const agentById = new Map(agents.map((agent) => [agent.id, agent]));
       agentDefinitions = agents;
       automationTasks = tasks;
+      const targetEntries = await Promise.all(sessions.map(async (session) => {
+        const runTarget = await getWorkSessionRunTarget(session.id).catch(() => undefined);
+        if (runTarget) return [session.id, runTarget] as const;
+        const loaderID = tagValue(session.tags, 'loader_id');
+        const automationTarget = loaderID ? await resolveAutomationSessionTarget(loaderID).catch(() => undefined) : undefined;
+        return automationTarget ? [session.id, automationTarget] as const : null;
+      }));
+      conversationTargets = new Map(targetEntries.filter((entry): entry is readonly [string, WorkSessionRunTarget] => entry !== null));
       const sessionRuns = sessions.map((session) => {
         const productRun = sessionToRun(session);
         const agentID = tagValue(session.tags, 'agent_id');
@@ -3842,7 +3854,7 @@
             }
             : item);
         }
-      }, controller.signal);
+      }, controller.signal, conversationTargets.get(run.id));
       await scrollMessagesToBottom();
     } catch (err) {
       if (!controller.signal.aborted) {

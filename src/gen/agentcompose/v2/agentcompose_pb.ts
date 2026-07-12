@@ -11068,3 +11068,260 @@ export class GetCapabilityCatalogResponse extends Message<GetCapabilityCatalogRe
     return proto3.util.equals(GetCapabilityCatalogResponse, a, b);
   }
 }
+
+/**
+ * @generated from message agentcompose.v2.ListSandboxHistoryRequest
+ */
+export class ListSandboxHistoryRequest extends Message<ListSandboxHistoryRequest> {
+  /**
+   * @generated from field: string sandbox_id = 1;
+   */
+  sandboxId = "";
+
+  constructor(data?: PartialMessage<ListSandboxHistoryRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.ListSandboxHistoryRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "sandbox_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListSandboxHistoryRequest {
+    return new ListSandboxHistoryRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ListSandboxHistoryRequest {
+    return new ListSandboxHistoryRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ListSandboxHistoryRequest {
+    return new ListSandboxHistoryRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ListSandboxHistoryRequest | PlainMessage<ListSandboxHistoryRequest> | undefined, b: ListSandboxHistoryRequest | PlainMessage<ListSandboxHistoryRequest> | undefined): boolean {
+    return proto3.util.equals(ListSandboxHistoryRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.SandboxHistoryCell
+ */
+export class SandboxHistoryCell extends Message<SandboxHistoryCell> {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id = "";
+
+  /**
+   * @generated from field: string type = 2;
+   */
+  type = "";
+
+  /**
+   * @generated from field: string source = 3;
+   */
+  source = "";
+
+  /**
+   * @generated from field: string stdout = 4;
+   */
+  stdout = "";
+
+  /**
+   * @generated from field: string stderr = 5;
+   */
+  stderr = "";
+
+  /**
+   * @generated from field: string output = 6;
+   */
+  output = "";
+
+  /**
+   * @generated from field: int32 exit_code = 7;
+   */
+  exitCode = 0;
+
+  /**
+   * @generated from field: bool success = 8;
+   */
+  success = false;
+
+  /**
+   * @generated from field: bool running = 9;
+   */
+  running = false;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp created_at = 10;
+   */
+  createdAt?: Timestamp;
+
+  /**
+   * @generated from field: string agent = 11;
+   */
+  agent = "";
+
+  /**
+   * @generated from field: string agent_thread_id = 12;
+   */
+  agentThreadId = "";
+
+  /**
+   * @generated from field: string stop_reason = 13;
+   */
+  stopReason = "";
+
+  constructor(data?: PartialMessage<SandboxHistoryCell>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.SandboxHistoryCell";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "type", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "source", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "stdout", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "stderr", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 6, name: "output", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 7, name: "exit_code", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 8, name: "success", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 9, name: "running", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 10, name: "created_at", kind: "message", T: Timestamp },
+    { no: 11, name: "agent", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 12, name: "agent_thread_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 13, name: "stop_reason", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SandboxHistoryCell {
+    return new SandboxHistoryCell().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): SandboxHistoryCell {
+    return new SandboxHistoryCell().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): SandboxHistoryCell {
+    return new SandboxHistoryCell().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: SandboxHistoryCell | PlainMessage<SandboxHistoryCell> | undefined, b: SandboxHistoryCell | PlainMessage<SandboxHistoryCell> | undefined): boolean {
+    return proto3.util.equals(SandboxHistoryCell, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.SandboxHistoryEvent
+ */
+export class SandboxHistoryEvent extends Message<SandboxHistoryEvent> {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id = "";
+
+  /**
+   * @generated from field: string type = 2;
+   */
+  type = "";
+
+  /**
+   * @generated from field: string level = 3;
+   */
+  level = "";
+
+  /**
+   * @generated from field: string message = 4;
+   */
+  message = "";
+
+  /**
+   * @generated from field: google.protobuf.Timestamp created_at = 5;
+   */
+  createdAt?: Timestamp;
+
+  constructor(data?: PartialMessage<SandboxHistoryEvent>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.SandboxHistoryEvent";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "type", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "level", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "message", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "created_at", kind: "message", T: Timestamp },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SandboxHistoryEvent {
+    return new SandboxHistoryEvent().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): SandboxHistoryEvent {
+    return new SandboxHistoryEvent().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): SandboxHistoryEvent {
+    return new SandboxHistoryEvent().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: SandboxHistoryEvent | PlainMessage<SandboxHistoryEvent> | undefined, b: SandboxHistoryEvent | PlainMessage<SandboxHistoryEvent> | undefined): boolean {
+    return proto3.util.equals(SandboxHistoryEvent, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.ListSandboxHistoryResponse
+ */
+export class ListSandboxHistoryResponse extends Message<ListSandboxHistoryResponse> {
+  /**
+   * @generated from field: repeated agentcompose.v2.SandboxHistoryCell cells = 1;
+   */
+  cells: SandboxHistoryCell[] = [];
+
+  /**
+   * @generated from field: repeated agentcompose.v2.SandboxHistoryEvent events = 2;
+   */
+  events: SandboxHistoryEvent[] = [];
+
+  /**
+   * @generated from field: bool legacy_history = 3;
+   */
+  legacyHistory = false;
+
+  constructor(data?: PartialMessage<ListSandboxHistoryResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.ListSandboxHistoryResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "cells", kind: "message", T: SandboxHistoryCell, repeated: true },
+    { no: 2, name: "events", kind: "message", T: SandboxHistoryEvent, repeated: true },
+    { no: 3, name: "legacy_history", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListSandboxHistoryResponse {
+    return new ListSandboxHistoryResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ListSandboxHistoryResponse {
+    return new ListSandboxHistoryResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ListSandboxHistoryResponse {
+    return new ListSandboxHistoryResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ListSandboxHistoryResponse | PlainMessage<ListSandboxHistoryResponse> | undefined, b: ListSandboxHistoryResponse | PlainMessage<ListSandboxHistoryResponse> | undefined): boolean {
+    return proto3.util.equals(ListSandboxHistoryResponse, a, b);
+  }
+}
+
