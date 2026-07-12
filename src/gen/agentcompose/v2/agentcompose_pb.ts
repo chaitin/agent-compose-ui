@@ -1802,11 +1802,6 @@ export class ProjectScheduler extends Message<ProjectScheduler> {
   schedulerId = "";
 
   /**
-   * @generated from field: string managed_loader_id = 4;
-   */
-  managedLoaderId = "";
-
-  /**
    * @generated from field: bool enabled = 5;
    */
   enabled = false;
@@ -1827,7 +1822,6 @@ export class ProjectScheduler extends Message<ProjectScheduler> {
     { no: 1, name: "project_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "agent_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 3, name: "scheduler_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 4, name: "managed_loader_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 5, name: "enabled", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 6, name: "trigger_count", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
   ]);
