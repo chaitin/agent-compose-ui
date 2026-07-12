@@ -12,7 +12,6 @@
   import { runAgentDefinition, listAgentDefinitions, type AgentDefinition } from '../api/agents';
   import { listWorkspacePresets, type WorkspacePreset } from '../api/config';
   import {
-    getWorkSessionStatus,
     getWorkSessionRunTarget,
     listWorkSessionCells,
     listWorkSessionEvents,
@@ -162,6 +161,10 @@
   let keyword = '';
   let runs: ProductRun[] = [];
   let conversationTargets = new Map<string, WorkSessionRunTarget>();
+  let activeSendRenderKey = '';
+  let activeUserRenderKey = '';
+  let activeUserRunId = '';
+  let loadRequest: Promise<void> | null = null;
   let agentDefinitions: AgentDefinition[] = [];
   let automationTasks: AutomationTask[] = [];
   let selectedAgentId = '';
@@ -293,18 +296,10 @@
         stopWatching();
       }
     };
-    const refreshOnFocus = () => {
-      if (document.visibilityState === 'visible' && !loading) {
-        resumeVisibleWatch();
-        void load();
-      }
-    };
     window.addEventListener('popstate', syncFromURL);
-    window.addEventListener('focus', refreshOnFocus);
     document.addEventListener('visibilitychange', handleVisible);
     return () => {
       window.removeEventListener('popstate', syncFromURL);
-      window.removeEventListener('focus', refreshOnFocus);
       document.removeEventListener('visibilitychange', handleVisible);
     };
   });
@@ -2538,9 +2533,13 @@
     if (!next.id) {
       return [...messages, next];
     }
-    const index = messages.findIndex((message) => message.id === next.id);
+    const index = messages.findIndex((message) => message.id === next.id || Boolean(next.renderKey && message.renderKey === next.renderKey));
     if (index < 0) {
-      const pendingIndex = messages.findIndex((message) => message.role === next.role && message.running && !message.id);
+      // RunAgentStream identifies the in-flight assistant turn by run ID while
+      // WatchSandbox identifies the same turn by cell ID. Let the pushed cell
+      // take over the current running placeholder and retain its stable render
+      // key so the terminal RunAgentStream event merges back into one card.
+      const pendingIndex = messages.findIndex((message) => message.role === next.role && (message.running || Boolean(activeSendRenderKey && message.renderKey === activeSendRenderKey)));
       if (pendingIndex >= 0) {
         const updated = [...messages];
         const existing = updated[pendingIndex];
@@ -2560,6 +2559,21 @@
       renderKey: existing.renderKey || next.renderKey || next.id,
       content: mergeMessageContent(existing, next),
     };
+    return updated;
+  }
+
+  function upsertWatchedMessage(messages: ProductRun['messages'], next: ProductRun['messages'][number], runId: string): ProductRun['messages'] {
+    if (next.role !== 'user' || activeUserRunId !== runId || !activeUserRenderKey) {
+      return upsertMessage(messages, next);
+    }
+    const pendingIndex = messages.findIndex((message) => message.role === 'user' && message.renderKey === activeUserRenderKey);
+    if (pendingIndex < 0) {
+      return upsertMessage(messages, next);
+    }
+    const updated = [...messages];
+    updated[pendingIndex] = { ...next, renderKey: activeUserRenderKey };
+    activeUserRenderKey = '';
+    activeUserRunId = '';
     return updated;
   }
 
@@ -2906,7 +2920,18 @@
     return `${(seconds / 3600).toFixed(1)}h`;
   }
 
-  async function load(): Promise<void> {
+  function load(): Promise<void> {
+    if (loadRequest) return loadRequest;
+    const request = loadOnce();
+    loadRequest = request;
+    void request.then(
+      () => { if (loadRequest === request) loadRequest = null; },
+      () => { if (loadRequest === request) loadRequest = null; },
+    );
+    return request;
+  }
+
+  async function loadOnce(): Promise<void> {
     loading = true;
     error = '';
     loadedGroupKeys = new Set();
@@ -2922,14 +2947,8 @@
       const agentById = new Map(agents.map((agent) => [agent.id, agent]));
       agentDefinitions = agents;
       automationTasks = tasks;
-      const targetEntries = await Promise.all(sessions.map(async (session) => {
-        const runTarget = await getWorkSessionRunTarget(session.id).catch(() => undefined);
-        if (runTarget) return [session.id, runTarget] as const;
-        const loaderID = tagValue(session.tags, 'loader_id');
-        const automationTarget = loaderID ? await resolveAutomationSessionTarget(loaderID).catch(() => undefined) : undefined;
-        return automationTarget ? [session.id, automationTarget] as const : null;
-      }));
-      conversationTargets = new Map(targetEntries.filter((entry): entry is readonly [string, WorkSessionRunTarget] => entry !== null));
+      const visibleSessionIDs = new Set(sessions.map((session) => session.id));
+      conversationTargets = new Map([...conversationTargets].filter(([id]) => visibleSessionIDs.has(id)));
       const sessionRuns = sessions.map((session) => {
         const productRun = sessionToRun(session);
         const agentID = tagValue(session.tags, 'agent_id');
@@ -2967,42 +2986,12 @@
         }),
       ]);
       runs = initialRuns;
-      const hydratePromise = hydrateFirstUserMessages(initialRuns);
       await syncSelectionAfterRunsLoaded();
-      hydratePromise.then((hydrated) => {
-        const inputMap = new Map(hydrated.map((r) => [r.id, r.input]));
-        runs = runs.map((r) => {
-          const input = inputMap.get(r.id);
-          return input !== undefined ? { ...r, input } : r;
-        });
-      });
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
       loading = false;
     }
-  }
-
-  async function hydrateFirstUserMessages(targets: ProductRun[]): Promise<ProductRun[]> {
-    const toHydrate = targets.filter((r) => r.type === 'work_session' && r.messageCount > 0);
-    if (toHydrate.length === 0) return targets;
-    const results = await Promise.all(
-      toHydrate.map(async (run) => {
-        try {
-          const cells = await listWorkSessionCells(run.id);
-          const firstSource = cells.find((c) => c.source?.trim())?.source?.trim() || '';
-          return { id: run.id, input: firstSource };
-        } catch {
-          return { id: run.id, input: '' };
-        }
-      }),
-    );
-    const inputMap = new Map(results.map((r) => [r.id, r.input]));
-    return targets.map((run) => {
-      const input = inputMap.get(run.id);
-      if (input === undefined) return run;
-      return { ...run, input: input || run.input };
-    });
   }
 
   async function loadMoreManualConversations(): Promise<void> {
@@ -3030,8 +3019,7 @@
               automation: loaderName && loaderName !== '-' ? loaderName : task?.name || loaderID ? (task?.name || loaderID) : '-',
             };
           });
-        const hydratedNewRuns = await hydrateFirstUserMessages(newRuns);
-        runs = sortRunsByUpdatedTime([...runs, ...hydratedNewRuns]);
+        runs = sortRunsByUpdatedTime([...runs, ...newRuns]);
         sessionOffset += result.sessions.length;
         sessionHasMore = result.hasMore;
       } catch { /* ignore */ }
@@ -3151,29 +3139,15 @@
     error = '';
     try {
       if (run.type === 'work_session') {
-        // Avoid overwriting optimistic action status. If there is an active
-        // sessionAction for this run (resume/stop), skip getWorkSessionStatus so the
-        // action handler's result (or the watch stream) updates the status.
-        const hasActiveAction = sessionAction?.runId === run.id;
-        const [session, cells, events] = await Promise.all([
-          hasActiveAction ? Promise.resolve(null) : getWorkSessionStatus(run.id).catch(() => null),
+        const targetPromise = ensureConversationTarget(run);
+        const [cells, events] = await Promise.all([
           listWorkSessionCells(run.id).catch(() => []),
           listWorkSessionEvents(run.id).catch(() => []),
         ]);
-        const sessionRun = session ? sessionToRun(session) : null;
+        await targetPromise;
         runs = runs.map((item) => item.id === run.id
           ? {
             ...item,
-            ...(sessionRun || {}),
-            status: hasActiveAction ? item.status : (sessionRun?.status || item.status),
-            rawStatus: hasActiveAction ? item.rawStatus : (sessionRun?.rawStatus || item.rawStatus),
-            title: item.title,
-            automation: item.automation,
-            agent: item.agent,
-            agentId: item.agentId,
-            workspace: item.workspace,
-            sourceSessionTags: item.sourceSessionTags,
-            trigger: item.trigger,
             messages: cells.flatMap(cellToMessages),
             events: events.map((event) => ({
               type: event.type,
@@ -3219,6 +3193,16 @@
         scheduleMessageBottomCorrection();
       }
     }
+  }
+
+  async function ensureConversationTarget(run: ProductRun): Promise<void> {
+    if (conversationTargets.has(run.id)) return;
+    let target = await getWorkSessionRunTarget(run.id).catch(() => undefined);
+    if (!target) {
+      const loaderID = tagValue(run.sourceSessionTags, 'loader_id') || run.automationId;
+      target = loaderID ? await resolveAutomationSessionTarget(loaderID).catch(() => undefined) : undefined;
+    }
+    if (target) conversationTargets = new Map(conversationTargets).set(run.id, target);
   }
 
   async function loadGroupDetail(group: RunGroup): Promise<void> {
@@ -3676,15 +3660,13 @@
               if (item.id !== runId) return item;
               let messages = item.messages;
               for (const msg of cellToMessages(event.cell)) {
-                if (msg.role === 'user' && messages.some((m) => m.role === 'user' && (m.source || m.content || '') === (msg.source || msg.content || ''))) {
-                  continue;
-                }
-                messages = upsertMessage(messages, applyPendingChunks(msg));
+                messages = upsertWatchedMessage(messages, applyPendingChunks(msg), runId);
               }
               return { ...item, messages };
             });
             if (event.cell.agent && !event.cell.running) {
               sendingMessage = false;
+              activeSendRenderKey = '';
             }
             void scrollMessagesToBottom();
           } else if (event.type === 'chunk') {
@@ -3798,15 +3780,19 @@
     messageAbort = controller;
     sendingMessage = true;
     error = '';
+    let pendingRenderKey = '';
     try {
       const sentText = messageText.trim();
       const isFirstUserMessage = !run.messages.some((m) => m.role === 'user');
       const pendingMessageId = `pending-${Date.now()}`;
-      const pendingRenderKey = pendingMessageId;
+      pendingRenderKey = pendingMessageId;
+      activeSendRenderKey = pendingRenderKey;
+      activeUserRenderKey = `user-${pendingRenderKey}`;
+      activeUserRunId = run.id;
       messageText = '';
       runs = runs.map((item) => item.id === run.id
         ? { ...item, title: isFirstUserMessage ? sentText : item.title, input: isFirstUserMessage ? sentText : item.input, messages: [...item.messages,
-            { renderKey: `user-${pendingRenderKey}`, role: 'user', source: sentText, content: '', at: new Date().toISOString() },
+            { renderKey: activeUserRenderKey, role: 'user', source: sentText, content: '', at: new Date().toISOString() },
             { id: pendingMessageId, renderKey: pendingRenderKey, role: 'agent', content: '', at: new Date().toISOString(), running: true, agent: run.agentProvider || 'codex', type: CellType.AGENT },
           ] }
         : item);
@@ -3861,6 +3847,11 @@
       await scrollMessagesToBottom();
     } catch (err) {
       if (!controller.signal.aborted) {
+        activeSendRenderKey = '';
+        if (activeUserRunId === run.id) {
+          activeUserRenderKey = '';
+          activeUserRunId = '';
+        }
         error = err instanceof Error ? err.message : String(err);
         await loadRunDetail(run);
       }
@@ -3868,6 +3859,13 @@
       if (messageAbort === controller) {
         messageAbort = null;
         sendingMessage = false;
+        setTimeout(() => {
+          if (activeSendRenderKey === pendingRenderKey) activeSendRenderKey = '';
+          if (activeUserRunId === run.id && activeUserRenderKey === `user-${pendingRenderKey}`) {
+            activeUserRenderKey = '';
+            activeUserRunId = '';
+          }
+        }, 5000);
       }
     }
   }

@@ -665,6 +665,50 @@ proto3.util.setEnumType(CacheStatus, "agentcompose.v2.CacheStatus", [
 ]);
 
 /**
+ * @generated from enum agentcompose.v2.SandboxWatchEventType
+ */
+export enum SandboxWatchEventType {
+  /**
+   * @generated from enum value: SANDBOX_WATCH_EVENT_TYPE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: SANDBOX_WATCH_EVENT_TYPE_SANDBOX_UPDATED = 1;
+   */
+  SANDBOX_UPDATED = 1,
+
+  /**
+   * @generated from enum value: SANDBOX_WATCH_EVENT_TYPE_CELL_STARTED = 2;
+   */
+  CELL_STARTED = 2,
+
+  /**
+   * @generated from enum value: SANDBOX_WATCH_EVENT_TYPE_CELL_OUTPUT = 3;
+   */
+  CELL_OUTPUT = 3,
+
+  /**
+   * @generated from enum value: SANDBOX_WATCH_EVENT_TYPE_CELL_COMPLETED = 4;
+   */
+  CELL_COMPLETED = 4,
+
+  /**
+   * @generated from enum value: SANDBOX_WATCH_EVENT_TYPE_EVENT_ADDED = 5;
+   */
+  EVENT_ADDED = 5,
+}
+// Retrieve enum metadata with: proto3.getEnumType(SandboxWatchEventType)
+proto3.util.setEnumType(SandboxWatchEventType, "agentcompose.v2.SandboxWatchEventType", [
+  { no: 0, name: "SANDBOX_WATCH_EVENT_TYPE_UNSPECIFIED" },
+  { no: 1, name: "SANDBOX_WATCH_EVENT_TYPE_SANDBOX_UPDATED" },
+  { no: 2, name: "SANDBOX_WATCH_EVENT_TYPE_CELL_STARTED" },
+  { no: 3, name: "SANDBOX_WATCH_EVENT_TYPE_CELL_OUTPUT" },
+  { no: 4, name: "SANDBOX_WATCH_EVENT_TYPE_CELL_COMPLETED" },
+  { no: 5, name: "SANDBOX_WATCH_EVENT_TYPE_EVENT_ADDED" },
+]);
+
+/**
  * @generated from message agentcompose.v2.ValidateProjectRequest
  */
 export class ValidateProjectRequest extends Message<ValidateProjectRequest> {
@@ -11322,6 +11366,116 @@ export class ListSandboxHistoryResponse extends Message<ListSandboxHistoryRespon
 
   static equals(a: ListSandboxHistoryResponse | PlainMessage<ListSandboxHistoryResponse> | undefined, b: ListSandboxHistoryResponse | PlainMessage<ListSandboxHistoryResponse> | undefined): boolean {
     return proto3.util.equals(ListSandboxHistoryResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.WatchSandboxRequest
+ */
+export class WatchSandboxRequest extends Message<WatchSandboxRequest> {
+  /**
+   * @generated from field: string sandbox_id = 1;
+   */
+  sandboxId = "";
+
+  constructor(data?: PartialMessage<WatchSandboxRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.WatchSandboxRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "sandbox_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): WatchSandboxRequest {
+    return new WatchSandboxRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): WatchSandboxRequest {
+    return new WatchSandboxRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): WatchSandboxRequest {
+    return new WatchSandboxRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: WatchSandboxRequest | PlainMessage<WatchSandboxRequest> | undefined, b: WatchSandboxRequest | PlainMessage<WatchSandboxRequest> | undefined): boolean {
+    return proto3.util.equals(WatchSandboxRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.WatchSandboxResponse
+ */
+export class WatchSandboxResponse extends Message<WatchSandboxResponse> {
+  /**
+   * @generated from field: agentcompose.v2.SandboxWatchEventType event_type = 1;
+   */
+  eventType = SandboxWatchEventType.UNSPECIFIED;
+
+  /**
+   * @generated from field: agentcompose.v2.Sandbox sandbox = 2;
+   */
+  sandbox?: Sandbox;
+
+  /**
+   * @generated from field: agentcompose.v2.SandboxHistoryCell cell = 3;
+   */
+  cell?: SandboxHistoryCell;
+
+  /**
+   * @generated from field: agentcompose.v2.SandboxHistoryEvent event = 4;
+   */
+  event?: SandboxHistoryEvent;
+
+  /**
+   * @generated from field: string cell_id = 5;
+   */
+  cellId = "";
+
+  /**
+   * @generated from field: string chunk = 6;
+   */
+  chunk = "";
+
+  /**
+   * @generated from field: agentcompose.v2.StdioStream stream = 7;
+   */
+  stream = StdioStream.UNSPECIFIED;
+
+  constructor(data?: PartialMessage<WatchSandboxResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.WatchSandboxResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "event_type", kind: "enum", T: proto3.getEnumType(SandboxWatchEventType) },
+    { no: 2, name: "sandbox", kind: "message", T: Sandbox },
+    { no: 3, name: "cell", kind: "message", T: SandboxHistoryCell },
+    { no: 4, name: "event", kind: "message", T: SandboxHistoryEvent },
+    { no: 5, name: "cell_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 6, name: "chunk", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 7, name: "stream", kind: "enum", T: proto3.getEnumType(StdioStream) },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): WatchSandboxResponse {
+    return new WatchSandboxResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): WatchSandboxResponse {
+    return new WatchSandboxResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): WatchSandboxResponse {
+    return new WatchSandboxResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: WatchSandboxResponse | PlainMessage<WatchSandboxResponse> | undefined, b: WatchSandboxResponse | PlainMessage<WatchSandboxResponse> | undefined): boolean {
+    return proto3.util.equals(WatchSandboxResponse, a, b);
   }
 }
 

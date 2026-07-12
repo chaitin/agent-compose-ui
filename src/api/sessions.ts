@@ -1,4 +1,4 @@
-import { RunAgentStreamEventType, RunEventKind, RunSandboxCleanupPolicy, RunSource, type Sandbox } from '../gen/agentcompose/v2/agentcompose_pb.js';
+import { RunAgentStreamEventType, RunEventKind, RunSandboxCleanupPolicy, RunSource, SandboxWatchEventType, type Sandbox } from '../gen/agentcompose/v2/agentcompose_pb.js';
 import { runClient, sandboxClient } from './client';
 
 export enum CellType { UNSPECIFIED=0, SHELL=1, JAVASCRIPT=2, PYTHON=3, AGENT=4 }
@@ -16,15 +16,73 @@ export async function getWorkSessionStatus(id:string):Promise<WorkSession>{retur
 export async function stopWorkSession(id:string):Promise<WorkSession>{const response=await sandboxClient.stopSandbox({sandboxId:id});if(!response.sandbox)throw new Error('停止会话失败');return sessionFromSandbox(response.sandbox)}
 export async function resumeWorkSession(id:string):Promise<WorkSession>{const response=await sandboxClient.resumeSandbox({sandboxId:id});if(!response.sandbox)throw new Error('恢复会话失败');return sessionFromSandbox(response.sandbox)}
 
-export async function listWorkSessionCells(id:string):Promise<WorkSessionCell[]>{const runs=await runsForSandbox(id);if(!runs.length){const response=await sandboxClient.listSandboxHistory({sandboxId:id});return response.cells.map((item)=>({id:item.id,source:item.source,output:item.output||[item.stdout,item.stderr].filter(Boolean).join('\n'),type:legacyCellType(item.type),exitCode:item.exitCode,success:item.success,createdAt:timestampString(item.createdAt),agent:item.agent,agentSessionId:item.agentThreadId,stopReason:item.stopReason||'旧会话历史',running:item.running}))}const cells:WorkSessionCell[]=[];for(const run of runs){let token='';let historyAvailable=false;do{const response=await runClient.listRunEvents({runId:run.runId,limit:500,pageToken:token});historyAvailable ||= response.historyAvailable;for(const item of response.events){if(item.kind!==RunEventKind.USER_MESSAGE&&item.kind!==RunEventKind.AGENT_MESSAGE)continue;cells.push({id:item.id,source:item.kind===RunEventKind.USER_MESSAGE?item.text:'',output:item.kind===RunEventKind.AGENT_MESSAGE?item.text:'',type:CellType.AGENT,exitCode:item.exitCode,success:item.success,createdAt:timestampString(item.createdAt),agent:item.agent,agentSessionId:'',stopReason:item.stopReason,running:false})}token=response.nextPageToken}while(token);if(!historyAvailable){let logs='';for await(const chunk of runClient.followRunLogs({runId:run.runId,projectId:run.projectId,follow:false,tailLines:1000})){logs+=chunk.data}if(logs)cells.push({id:`${run.runId}-legacy-log`,source:'',output:logs,type:CellType.AGENT,exitCode:0,success:true,createdAt:run.createdAt,agent:run.agentName,agentSessionId:'',stopReason:'旧运行：仅日志记录',running:false})}}return cells.sort((left,right)=>left.createdAt.localeCompare(right.createdAt))}
-export async function listWorkSessionEvents(id:string):Promise<WorkSessionEvent[]>{const runs=await runsForSandbox(id);if(!runs.length){const response=await sandboxClient.listSandboxHistory({sandboxId:id});return response.events.map((item)=>({id:item.id,type:item.type,level:item.level,message:item.message,createdAt:timestampString(item.createdAt)}))}const events:WorkSessionEvent[]=[];for(const run of runs){let token='';do{const response=await runClient.listRunEvents({runId:run.runId,limit:500,pageToken:token});events.push(...response.events.filter((v)=>v.kind===RunEventKind.STATUS).map((v)=>({id:v.id,type:'run.status',level:v.success?'info':'error',message:v.stopReason||v.payloadJson,createdAt:timestampString(v.createdAt)})));token=response.nextPageToken}while(token)}return events.sort((left,right)=>left.createdAt.localeCompare(right.createdAt))}
+type WorkSessionHistory = { cells: WorkSessionCell[]; events: WorkSessionEvent[] };
+const historyRequests = new Map<string, Promise<WorkSessionHistory>>();
+const sandboxRunRequests = new Map<string, ReturnType<typeof runClient.listRuns>>();
+
+export async function listWorkSessionCells(id:string):Promise<WorkSessionCell[]>{return (await workSessionHistory(id)).cells}
+export async function listWorkSessionEvents(id:string):Promise<WorkSessionEvent[]>{return (await workSessionHistory(id)).events}
+
+function workSessionHistory(id:string):Promise<WorkSessionHistory>{
+  const existing=historyRequests.get(id);
+  if(existing)return existing;
+  const request=loadWorkSessionHistory(id);
+  historyRequests.set(id,request);
+  const clear=()=>setTimeout(()=>historyRequests.delete(id),1000);
+  void request.then(clear,clear);
+  return request;
+}
+
+async function loadWorkSessionHistory(id:string):Promise<WorkSessionHistory>{
+  const runs=await runsForSandbox(id);
+  if(!runs.length){
+    const response=await sandboxClient.listSandboxHistory({sandboxId:id});
+    return {
+      cells:response.cells.map((item)=>({id:item.id,source:item.source,output:item.output||[item.stdout,item.stderr].filter(Boolean).join('\n'),type:legacyCellType(item.type),exitCode:item.exitCode,success:item.success,createdAt:timestampString(item.createdAt),agent:item.agent,agentSessionId:item.agentThreadId,stopReason:item.stopReason||'旧会话历史',running:item.running})),
+      events:response.events.map((item)=>({id:item.id,type:item.type,level:item.level,message:item.message,createdAt:timestampString(item.createdAt)})),
+    };
+  }
+  const cells:WorkSessionCell[]=[];
+  const events:WorkSessionEvent[]=[];
+  for(const run of runs){
+    let token='';
+    let historyAvailable=false;
+    do{
+      const response=await runClient.listRunEvents({runId:run.runId,limit:500,pageToken:token});
+      historyAvailable ||= response.historyAvailable;
+      for(const item of response.events){
+        if(item.kind===RunEventKind.USER_MESSAGE||item.kind===RunEventKind.AGENT_MESSAGE)cells.push({id:item.id,source:item.kind===RunEventKind.USER_MESSAGE?item.text:'',output:item.kind===RunEventKind.AGENT_MESSAGE?item.text:'',type:CellType.AGENT,exitCode:item.exitCode,success:item.success,createdAt:timestampString(item.createdAt),agent:item.agent,agentSessionId:'',stopReason:item.stopReason,running:false});
+        else if(item.kind===RunEventKind.STATUS)events.push({id:item.id,type:'run.status',level:item.success?'info':'error',message:item.stopReason||item.payloadJson,createdAt:timestampString(item.createdAt)});
+      }
+      token=response.nextPageToken;
+    }while(token);
+    if(!historyAvailable){
+      let logs='';
+      for await(const chunk of runClient.followRunLogs({runId:run.runId,projectId:run.projectId,follow:false,tailLines:1000}))logs+=chunk.data;
+      if(logs)cells.push({id:`${run.runId}-legacy-log`,source:'',output:logs,type:CellType.AGENT,exitCode:0,success:true,createdAt:run.createdAt,agent:run.agentName,agentSessionId:'',stopReason:'旧运行：仅日志记录',running:false});
+    }
+  }
+  cells.sort((left,right)=>left.createdAt.localeCompare(right.createdAt));
+  events.sort((left,right)=>left.createdAt.localeCompare(right.createdAt));
+  return {cells,events};
+}
 export async function getWorkSessionRunTarget(id:string):Promise<WorkSessionRunTarget|undefined>{const run=await latestRunForSandbox(id);return run?{projectId:run.projectId,agentName:run.agentName}:undefined}
 export async function sendWorkSessionMessage(id:string,agent:string,message:string):Promise<void>{await sendWorkSessionMessageStream(id,agent,message,()=>{})}
 export async function sendWorkSessionMessageStream(id:string,_agent:string,message:string,onEvent:(event:{type:'started'|'chunk'|'completed';runId:string;chunk?:string;isStderr?:boolean;run?:{id:string;agent:string;message:string;output:string;exitCode:number;success:boolean;createdAt:string;agentSessionId:string;stopReason:string;running:boolean}})=>void,signal?:AbortSignal,target?:WorkSessionRunTarget):Promise<void>{const previous=await latestRunForSandbox(id);const resolved=previous?{projectId:previous.projectId,agentName:previous.agentName}:target;if(!resolved)throw new Error('旧工作会话没有可用的 v2 项目和智能体，只能查看历史；请从智能体页面发起新运行');for await(const event of runClient.runAgentStream({projectId:resolved.projectId,agentName:resolved.agentName,prompt:message,source:RunSource.MANUAL,sandboxId:id,cleanupPolicy:RunSandboxCleanupPolicy.KEEP_RUNNING},{signal})){if(event.eventType===RunAgentStreamEventType.STARTED)onEvent({type:'started',runId:event.runId});else if(event.eventType===RunAgentStreamEventType.OUTPUT)onEvent({type:'chunk',runId:event.runId,chunk:event.chunk,isStderr:event.stream===2});else if(event.eventType===RunAgentStreamEventType.COMPLETED){const run=event.run;onEvent({type:'completed',runId:event.runId,run:run?{id:run.runId,agent:run.agentName,message,output:'',exitCode:run.exitCode,success:run.status===3,createdAt:run.createdAt,agentSessionId:'',stopReason:run.error,running:false}:undefined})}}}
-export async function watchWorkSession(id:string,onEvent:(event:WorkSessionWatchEvent)=>void,signal?:AbortSignal):Promise<void>{let previous='';while(!signal?.aborted){const session=await getWorkSessionStatus(id);const key=`${session.status}:${session.updatedAt}`;if(key!==previous){onEvent({type:'session',session});previous=key}await new Promise<void>((resolve)=>setTimeout(resolve,2000))}}
+export async function watchWorkSession(id:string,onEvent:(event:WorkSessionWatchEvent)=>void,signal?:AbortSignal):Promise<void>{for await(const item of sandboxClient.watchSandbox({sandboxId:id},{signal})){if(item.eventType===SandboxWatchEventType.SANDBOX_UPDATED&&item.sandbox){onEvent({type:'session',session:sessionFromSandbox(item.sandbox)})}else if((item.eventType===SandboxWatchEventType.CELL_STARTED||item.eventType===SandboxWatchEventType.CELL_COMPLETED)&&item.cell){const cell=item.cell;onEvent({type:'cell',cell:{id:cell.id,source:cell.source,output:cell.output||[cell.stdout,cell.stderr].filter(Boolean).join('\n'),type:legacyCellType(cell.type),exitCode:cell.exitCode,success:cell.success,createdAt:timestampString(cell.createdAt),agent:cell.agent,agentSessionId:cell.agentThreadId,stopReason:cell.stopReason,running:cell.running}})}else if(item.eventType===SandboxWatchEventType.EVENT_ADDED&&item.event){onEvent({type:'event',event:{id:item.event.id,type:item.event.type,level:item.event.level,message:item.event.message,createdAt:timestampString(item.event.createdAt)}})}else if(item.eventType===SandboxWatchEventType.CELL_OUTPUT){onEvent({type:'chunk',cellId:item.cellId,chunk:item.chunk,isStderr:item.stream===2})}}}
 
-async function latestRunForSandbox(id:string){const response=await runClient.listRuns({sandboxId:id,limit:1});return response.runs[0]}
-async function runsForSandbox(id:string){const response=await runClient.listRuns({sandboxId:id,limit:500});return [...response.runs].sort((left,right)=>(left.createdAt||left.runId).localeCompare(right.createdAt||right.runId))}
+async function latestRunForSandbox(id:string){const runs=await runsForSandbox(id);return runs[runs.length-1]}
+async function runsForSandbox(id:string){
+  let request=sandboxRunRequests.get(id);
+  if(!request){
+    request=runClient.listRuns({sandboxId:id,limit:500});
+    sandboxRunRequests.set(id,request);
+    const clear=()=>setTimeout(()=>sandboxRunRequests.delete(id),1000);
+    void request.then(clear,clear);
+  }
+  const response=await request;
+  return [...response.runs].sort((left,right)=>(left.createdAt||left.runId).localeCompare(right.createdAt||right.runId));
+}
 function legacyCellType(value:string):CellType{switch(value.trim().toLowerCase()){case'shell':return CellType.SHELL;case'javascript':return CellType.JAVASCRIPT;case'python':return CellType.PYTHON;default:return CellType.AGENT}}
 function sessionFromSandbox(item:Sandbox):WorkSession{return{id:item.sandboxId,title:item.title,status:item.status,driver:item.driver,guestImage:item.image,workspacePath:item.workspacePath,triggerSource:item.triggerSource,createdAt:timestampString(item.createdAt),updatedAt:timestampString(item.updatedAt),cellCount:item.cellCount,eventCount:item.eventCount,tags:item.tags.map((v)=>({name:v.name,value:v.value}))}}
 function timestampString(value?:{seconds:bigint;nanos:number}){return value?new Date(Number(value.seconds)*1000+value.nanos/1e6).toISOString():''}
