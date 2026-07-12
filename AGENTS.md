@@ -6,7 +6,7 @@ This repository contains a Svelte 5 + Vite UI and a small Go UI server/proxy. Fr
 
 ## Build, Test, and Development Commands
 
-- `npm run dev:ui`: start Vite on `http://127.0.0.1:5174`, proxying daemon calls to `http://127.0.0.1:7410`.
+- `npm run dev:ui`: start Vite on `0.0.0.0:5174`, proxying daemon calls to `http://127.0.0.1:7410`.
 - `npm run build:ui`: build the Svelte app into `dist/`.
 - `npm run check:ui`: run the same Vite production build as the frontend check.
 - `npm run check:server` or `go test ./...`: run all Go tests.
