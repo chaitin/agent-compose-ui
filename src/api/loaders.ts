@@ -236,7 +236,7 @@ export async function listAutomationEvents(loaderId: string, limit = 50): Promis
   }));
 }
 
-async function findScheduler(id:string):Promise<SchedulerSummary|undefined>{let token='';do{const response=await projectClient.listSchedulers({limit:500,pageToken:token});const found=response.schedulers.find((value)=>value.schedulerId===id);if(found)return found;token=response.nextPageToken}while(token);return undefined}
+async function findScheduler(id:string):Promise<SchedulerSummary|undefined>{let token='';do{const response=await projectClient.listSchedulers({limit:500,cursor:token});const found=response.schedulers.find((value)=>value.schedulerId===id);if(found)return found;token=response.nextCursor}while(token);return undefined}
 async function findSchedulerByAgent(projectId:string,agentName:string){const response=await projectClient.listSchedulers({limit:500});return response.schedulers.find((value)=>value.projectId===projectId&&value.agentName===agentName)}
 async function loadProject(projectId:string):Promise<Project>{const response=await projectClient.getProject({project:{projectId},includeSpec:true});if(!response.project)throw new Error('项目不存在');return response.project}
 async function findProjectAgent(id:string):Promise<{projectId:string;agentName:string}|undefined>{let offset=0;for(;;){const listed=await projectClient.listProjects({limit:200,offset});for(const summary of listed.projects){const project=await loadProject(summary.projectId);const agent=project.agents.find((value)=>value.managedAgentId===id||value.agentName===id);if(agent)return{projectId:summary.projectId,agentName:agent.agentName}}if(!listed.hasMore)return undefined;offset=listed.nextOffset}}

@@ -9,7 +9,7 @@ export type WorkSessionEvent={id:string;type:string;level:string;message:string;
 export type WorkSessionWatchEvent={type:'session';session:WorkSession}|{type:'event';event:WorkSessionEvent}|{type:'cell';cell:WorkSessionCell}|{type:'chunk';cellId:string;chunk:string;isStderr:boolean};
 export type WorkSessionRunTarget={projectId:string;agentName:string};
 
-export async function listWorkSessions(limit=50,offset=0):Promise<{sessions:WorkSession[];hasMore:boolean;totalCount:number}>{let token='';let skipped=0;const sessions:WorkSession[]=[];for(;;){const response=await sandboxClient.listSandboxes({limit:Math.min(500,limit+offset),pageToken:token});for(const item of response.sandboxes){if(skipped++<offset)continue;if(sessions.length<limit)sessions.push(sessionFromSandbox(item))}token=response.nextPageToken;if(!token||sessions.length>=limit)return{sessions,hasMore:Boolean(token)||response.sandboxes.length>sessions.length,totalCount:offset+sessions.length+(token?1:0)}}}
+export async function listWorkSessions(limit=50,offset=0):Promise<{sessions:WorkSession[];hasMore:boolean;totalCount:number}>{let token='';let skipped=0;const sessions:WorkSession[]=[];for(;;){const response=await sandboxClient.listSandboxes({limit:Math.min(500,limit+offset),cursor:token});for(const item of response.sandboxes){if(skipped++<offset)continue;if(sessions.length<limit)sessions.push(sessionFromSandbox(item))}token=response.nextCursor;if(!token||sessions.length>=limit)return{sessions,hasMore:Boolean(token)||response.sandboxes.length>sessions.length,totalCount:offset+sessions.length+(token?1:0)}}}
 export async function getWorkSession(id:string,_options:{includeProxy?:boolean}={}):Promise<WorkSessionDetail>{const response=await sandboxClient.getSandbox({sandboxId:id});if(!response.sandbox)throw new Error('工作会话不存在');return{...sessionFromSandbox(response.sandbox),proxyPath:response.sandbox.proxyPath,notebookUrl:response.sandbox.notebookUrl}}
 export async function getWorkSessionProxy(id:string){const value=await getWorkSession(id);return{proxyPath:value.proxyPath,notebookUrl:value.notebookUrl}}
 export async function getWorkSessionStatus(id:string):Promise<WorkSession>{return getWorkSession(id)}
@@ -48,13 +48,13 @@ async function loadWorkSessionHistory(id:string):Promise<WorkSessionHistory>{
     let token='';
     let historyAvailable=false;
     do{
-      const response=await runClient.listRunEvents({runId:run.runId,limit:500,pageToken:token});
+      const response=await runClient.listRunEvents({runId:run.runId,limit:500,cursor:token});
       historyAvailable ||= response.historyAvailable;
       for(const item of response.events){
         if(item.kind===RunEventKind.USER_MESSAGE||item.kind===RunEventKind.AGENT_MESSAGE)cells.push({id:item.id,source:item.kind===RunEventKind.USER_MESSAGE?item.text:'',output:item.kind===RunEventKind.AGENT_MESSAGE?item.text:'',type:CellType.AGENT,exitCode:item.exitCode,success:item.success,createdAt:timestampString(item.createdAt),agent:item.agent,agentSessionId:'',stopReason:item.stopReason,running:false});
         else if(item.kind===RunEventKind.STATUS)events.push({id:item.id,type:'run.status',level:item.success?'info':'error',message:item.stopReason||item.payloadJson,createdAt:timestampString(item.createdAt)});
       }
-      token=response.nextPageToken;
+      token=response.nextCursor;
     }while(token);
     if(!historyAvailable){
       let logs='';

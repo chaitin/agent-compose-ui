@@ -2067,9 +2067,9 @@ export class ListSchedulersRequest extends Message<ListSchedulersRequest> {
   limit = 0;
 
   /**
-   * @generated from field: string page_token = 3;
+   * @generated from field: string cursor = 3;
    */
-  pageToken = "";
+  cursor = "";
 
   constructor(data?: PartialMessage<ListSchedulersRequest>) {
     super();
@@ -2081,7 +2081,7 @@ export class ListSchedulersRequest extends Message<ListSchedulersRequest> {
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "query", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "limit", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
-    { no: 3, name: "page_token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "cursor", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListSchedulersRequest {
@@ -2190,9 +2190,9 @@ export class ListSchedulersResponse extends Message<ListSchedulersResponse> {
   schedulers: SchedulerSummary[] = [];
 
   /**
-   * @generated from field: string next_page_token = 2;
+   * @generated from field: string next_cursor = 2;
    */
-  nextPageToken = "";
+  nextCursor = "";
 
   constructor(data?: PartialMessage<ListSchedulersResponse>) {
     super();
@@ -2203,7 +2203,7 @@ export class ListSchedulersResponse extends Message<ListSchedulersResponse> {
   static readonly typeName = "agentcompose.v2.ListSchedulersResponse";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "schedulers", kind: "message", T: SchedulerSummary, repeated: true },
-    { no: 2, name: "next_page_token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "next_cursor", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListSchedulersResponse {
@@ -2243,9 +2243,9 @@ export class ListSchedulerEventsRequest extends Message<ListSchedulerEventsReque
   limit = 0;
 
   /**
-   * @generated from field: string page_token = 4;
+   * @generated from field: string cursor = 4;
    */
-  pageToken = "";
+  cursor = "";
 
   constructor(data?: PartialMessage<ListSchedulerEventsRequest>) {
     super();
@@ -2258,7 +2258,7 @@ export class ListSchedulerEventsRequest extends Message<ListSchedulerEventsReque
     { no: 1, name: "project", kind: "message", T: ProjectRef },
     { no: 2, name: "agent_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 3, name: "limit", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
-    { no: 4, name: "page_token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "cursor", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListSchedulerEventsRequest {
@@ -2367,9 +2367,9 @@ export class ListSchedulerEventsResponse extends Message<ListSchedulerEventsResp
   events: SchedulerEvent[] = [];
 
   /**
-   * @generated from field: string next_page_token = 2;
+   * @generated from field: string next_cursor = 2;
    */
-  nextPageToken = "";
+  nextCursor = "";
 
   constructor(data?: PartialMessage<ListSchedulerEventsResponse>) {
     super();
@@ -2380,7 +2380,7 @@ export class ListSchedulerEventsResponse extends Message<ListSchedulerEventsResp
   static readonly typeName = "agentcompose.v2.ListSchedulerEventsResponse";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "events", kind: "message", T: SchedulerEvent, repeated: true },
-    { no: 2, name: "next_page_token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "next_cursor", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListSchedulerEventsResponse {
@@ -4739,9 +4739,9 @@ export class ListRunEventsRequest extends Message<ListRunEventsRequest> {
   limit = 0;
 
   /**
-   * @generated from field: string page_token = 3;
+   * @generated from field: string cursor = 3;
    */
-  pageToken = "";
+  cursor = "";
 
   constructor(data?: PartialMessage<ListRunEventsRequest>) {
     super();
@@ -4753,7 +4753,7 @@ export class ListRunEventsRequest extends Message<ListRunEventsRequest> {
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "run_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "limit", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
-    { no: 3, name: "page_token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "cursor", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListRunEventsRequest {
@@ -4886,9 +4886,9 @@ export class ListRunEventsResponse extends Message<ListRunEventsResponse> {
   events: RunEvent[] = [];
 
   /**
-   * @generated from field: string next_page_token = 2;
+   * @generated from field: string next_cursor = 2;
    */
-  nextPageToken = "";
+  nextCursor = "";
 
   /**
    * @generated from field: bool history_available = 3;
@@ -4904,7 +4904,7 @@ export class ListRunEventsResponse extends Message<ListRunEventsResponse> {
   static readonly typeName = "agentcompose.v2.ListRunEventsResponse";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "events", kind: "message", T: RunEvent, repeated: true },
-    { no: 2, name: "next_page_token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "next_cursor", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 3, name: "history_available", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
   ]);
 
@@ -5308,9 +5308,9 @@ export class ListSandboxesRequest extends Message<ListSandboxesRequest> {
   limit = 0;
 
   /**
-   * @generated from field: string page_token = 2;
+   * @generated from field: string cursor = 2;
    */
-  pageToken = "";
+  cursor = "";
 
   constructor(data?: PartialMessage<ListSandboxesRequest>) {
     super();
@@ -5321,7 +5321,7 @@ export class ListSandboxesRequest extends Message<ListSandboxesRequest> {
   static readonly typeName = "agentcompose.v2.ListSandboxesRequest";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "limit", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
-    { no: 2, name: "page_token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "cursor", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListSandboxesRequest {
@@ -5351,9 +5351,9 @@ export class ListSandboxesResponse extends Message<ListSandboxesResponse> {
   sandboxes: Sandbox[] = [];
 
   /**
-   * @generated from field: string next_page_token = 2;
+   * @generated from field: string next_cursor = 2;
    */
-  nextPageToken = "";
+  nextCursor = "";
 
   constructor(data?: PartialMessage<ListSandboxesResponse>) {
     super();
@@ -5364,7 +5364,7 @@ export class ListSandboxesResponse extends Message<ListSandboxesResponse> {
   static readonly typeName = "agentcompose.v2.ListSandboxesResponse";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "sandboxes", kind: "message", T: Sandbox, repeated: true },
-    { no: 2, name: "next_page_token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "next_cursor", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListSandboxesResponse {
