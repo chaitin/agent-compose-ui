@@ -44,19 +44,19 @@ async function loadWorkSessionHistory(id:string):Promise<WorkSessionHistory>{
   }
   const cells:WorkSessionCell[]=[];
   const events:WorkSessionEvent[]=[];
+  const historyAvailableRunIds=new Set<string>();
+  let cursor='';
+  do{
+    const response=await runClient.listSandboxRunEvents({sandboxId:id,limit:500,cursor});
+    for(const runId of response.historyAvailableRunIds)historyAvailableRunIds.add(runId);
+    for(const item of response.events){
+      if(item.kind===RunEventKind.USER_MESSAGE||item.kind===RunEventKind.AGENT_MESSAGE)cells.push({id:item.id,source:item.kind===RunEventKind.USER_MESSAGE?item.text:'',output:item.kind===RunEventKind.AGENT_MESSAGE?item.text:'',type:CellType.AGENT,exitCode:item.exitCode,success:item.success,createdAt:timestampString(item.createdAt),agent:item.agent,agentSessionId:'',stopReason:item.stopReason,running:false});
+      else if(item.kind===RunEventKind.STATUS)events.push({id:item.id,type:'run.status',level:item.success?'info':'error',message:item.stopReason||item.payloadJson,createdAt:timestampString(item.createdAt)});
+    }
+    cursor=response.nextCursor;
+  }while(cursor);
   for(const run of runs){
-    let token='';
-    let historyAvailable=false;
-    do{
-      const response=await runClient.listRunEvents({runId:run.runId,limit:500,cursor:token});
-      historyAvailable ||= response.historyAvailable;
-      for(const item of response.events){
-        if(item.kind===RunEventKind.USER_MESSAGE||item.kind===RunEventKind.AGENT_MESSAGE)cells.push({id:item.id,source:item.kind===RunEventKind.USER_MESSAGE?item.text:'',output:item.kind===RunEventKind.AGENT_MESSAGE?item.text:'',type:CellType.AGENT,exitCode:item.exitCode,success:item.success,createdAt:timestampString(item.createdAt),agent:item.agent,agentSessionId:'',stopReason:item.stopReason,running:false});
-        else if(item.kind===RunEventKind.STATUS)events.push({id:item.id,type:'run.status',level:item.success?'info':'error',message:item.stopReason||item.payloadJson,createdAt:timestampString(item.createdAt)});
-      }
-      token=response.nextCursor;
-    }while(token);
-    if(!historyAvailable){
+    if(!historyAvailableRunIds.has(run.runId)){
       let logs='';
       for await(const chunk of runClient.followRunLogs({runId:run.runId,projectId:run.projectId,follow:false,tailLines:1000}))logs+=chunk.data;
       if(logs)cells.push({id:`${run.runId}-legacy-log`,source:'',output:logs,type:CellType.AGENT,exitCode:0,success:true,createdAt:run.createdAt,agent:run.agentName,agentSessionId:'',stopReason:'旧运行：仅日志记录',running:false});

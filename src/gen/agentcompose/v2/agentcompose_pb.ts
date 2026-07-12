@@ -4926,6 +4926,104 @@ export class ListRunEventsResponse extends Message<ListRunEventsResponse> {
 }
 
 /**
+ * @generated from message agentcompose.v2.ListSandboxRunEventsRequest
+ */
+export class ListSandboxRunEventsRequest extends Message<ListSandboxRunEventsRequest> {
+  /**
+   * @generated from field: string sandbox_id = 1;
+   */
+  sandboxId = "";
+
+  /**
+   * @generated from field: uint32 limit = 2;
+   */
+  limit = 0;
+
+  /**
+   * @generated from field: string cursor = 3;
+   */
+  cursor = "";
+
+  constructor(data?: PartialMessage<ListSandboxRunEventsRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.ListSandboxRunEventsRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "sandbox_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "limit", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
+    { no: 3, name: "cursor", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListSandboxRunEventsRequest {
+    return new ListSandboxRunEventsRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ListSandboxRunEventsRequest {
+    return new ListSandboxRunEventsRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ListSandboxRunEventsRequest {
+    return new ListSandboxRunEventsRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ListSandboxRunEventsRequest | PlainMessage<ListSandboxRunEventsRequest> | undefined, b: ListSandboxRunEventsRequest | PlainMessage<ListSandboxRunEventsRequest> | undefined): boolean {
+    return proto3.util.equals(ListSandboxRunEventsRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.ListSandboxRunEventsResponse
+ */
+export class ListSandboxRunEventsResponse extends Message<ListSandboxRunEventsResponse> {
+  /**
+   * @generated from field: repeated agentcompose.v2.RunEvent events = 1;
+   */
+  events: RunEvent[] = [];
+
+  /**
+   * @generated from field: string next_cursor = 2;
+   */
+  nextCursor = "";
+
+  /**
+   * @generated from field: repeated string history_available_run_ids = 3;
+   */
+  historyAvailableRunIds: string[] = [];
+
+  constructor(data?: PartialMessage<ListSandboxRunEventsResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.ListSandboxRunEventsResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "events", kind: "message", T: RunEvent, repeated: true },
+    { no: 2, name: "next_cursor", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "history_available_run_ids", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListSandboxRunEventsResponse {
+    return new ListSandboxRunEventsResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ListSandboxRunEventsResponse {
+    return new ListSandboxRunEventsResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ListSandboxRunEventsResponse {
+    return new ListSandboxRunEventsResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ListSandboxRunEventsResponse | PlainMessage<ListSandboxRunEventsResponse> | undefined, b: ListSandboxRunEventsResponse | PlainMessage<ListSandboxRunEventsResponse> | undefined): boolean {
+    return proto3.util.equals(ListSandboxRunEventsResponse, a, b);
+  }
+}
+
+/**
  * @generated from message agentcompose.v2.RemoveSandboxRequest
  */
 export class RemoveSandboxRequest extends Message<RemoveSandboxRequest> {
@@ -11478,4 +11576,3 @@ export class WatchSandboxResponse extends Message<WatchSandboxResponse> {
     return proto3.util.equals(WatchSandboxResponse, a, b);
   }
 }
-
