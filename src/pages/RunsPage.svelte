@@ -10,7 +10,6 @@
   import AntIcon from '../components/AntIcon.svelte';
   import { getAutomationRun, listAutomationEvents, listAutomationTasks, listRecentAutomationRuns, resolveAutomationSessionTarget, runAutomationTaskNow, type AutomationTask } from '../api/loaders';
   import { runAgentDefinition, listAgentDefinitions, type AgentDefinition } from '../api/agents';
-  import { listWorkspacePresets, type WorkspacePreset } from '../api/config';
   import {
     getWorkSessionRunTarget,
     listWorkSessionCells,
@@ -161,6 +160,9 @@
   let keyword = '';
   let runs: ProductRun[] = [];
   let conversationTargets = new Map<string, WorkSessionRunTarget>();
+  const conversationTargetRequests = new Map<string, Promise<void>>();
+  let conversationTargetResolving = new Set<string>();
+  let conversationTargetResolved = new Set<string>();
   let activeSendRenderKey = '';
   let activeSendRunId = '';
   let activeSendSandboxId = '';
@@ -205,11 +207,8 @@
   let sessionAction: { runId: string; type: 'stop' | 'resume' } | null = null;
   let automationActionRunId = '';
   let runAgent: AgentDefinition | null = null;
-  let runWorkspaceMode: 'empty' | 'file' | 'git' = 'empty';
-  let runWorkspaceId = '';
   let runTask = '';
   let running = false;
-  let workspaces: WorkspacePreset[] = [];
   let message = '';
   let messageTimer: ReturnType<typeof setTimeout> | null = null;
   let copiedId = '';
@@ -256,6 +255,9 @@
   $: automationTaskItems = conversationTaskItems.filter((item) => item.kind === 'automation_task');
   $: selectedRun = selectedRunId ? currentAgentBaseRuns.find((run) => run.id === selectedRunId) || selectedAgentObservation?.runs.find((run) => run.id === selectedRunId) || null : null;
   $: selectedChatRun = resolveSelectedChatRun(workbenchMode, selectedConversationId, selectedRunId, selectedAgentObservation, currentAgentRuns, currentAgentBaseRuns);
+  $: if (selectedChatRun?.type === 'work_session' && !conversationTargets.has(selectedChatRun.id)) {
+    void ensureConversationTarget(selectedChatRun);
+  }
   $: timelineCriteria = {
     taskId: selectedTaskId,
     timeRange: timelineTimeRange,
@@ -1515,8 +1517,6 @@
 
   function openRun(agent: AgentDefinition): void {
     runAgent = agent;
-    runWorkspaceMode = agent.workFiles.source === 'git' || agent.workFiles.source === 'file' ? agent.workFiles.source : 'empty';
-    runWorkspaceId = agent.workspaceId;
     runTask = '';
     running = false;
     error = '';
@@ -1531,16 +1531,6 @@
   function closeRunFromKey(event: KeyboardEvent): void {
     if (event.key === 'Escape' || event.key === 'Enter' || event.key === ' ') {
       closeRun();
-    }
-  }
-
-  function onRunWorkspaceModeChange(): void {
-    if (runWorkspaceMode === 'empty') {
-      runWorkspaceId = '';
-      return;
-    }
-    if (!runWorkspaceId || workspaces.find((workspace) => workspace.id === runWorkspaceId)?.type !== runWorkspaceMode) {
-      runWorkspaceId = workspaces.find((workspace) => workspace.type === runWorkspaceMode)?.id ?? '';
     }
   }
 
@@ -1585,7 +1575,6 @@
       pending,
       resolved: false,
       statusPollTimer: null as ReturnType<typeof setTimeout> | null,
-      initialMessageSent: false,
     };
 
     running = true;
@@ -1644,27 +1633,14 @@
       ctx.statusPollTimer = setTimeout(statusPoll, 3000);
     }
 
-    function sendInitialMessage(sessionId: string): void {
-      if (ctx.initialMessageSent || !initialMessage) return;
-      ctx.initialMessageSent = true;
-      const provider = (agent.provider || 'codex').trim().toLowerCase();
-      if (provider === 'claude' || provider === 'gemini' || provider === 'codex' || provider === 'opencode') {
-        void sendWorkSessionMessageStream(sessionId, provider, initialMessage, () => {}).catch(() => {});
-      }
-    }
-
     // Fire RPC to create the session. When it returns with a sessionId we
     // swap out the temp entry. No blind polling — only the RPC knows the
     // exact sessionId, and matching on agent+timestamp races across
     // concurrent calls.
     void runAgentDefinition({
       agentId: agent.id,
-      title: initialMessage ? `${initialMessage} ${formatSessionTime(new Date())}` : `${agent.name} ${formatSessionTime(new Date())}`,
-      workspaceId: runWorkspaceMode === 'git' || runWorkspaceMode === 'file' ? runWorkspaceId : '',
       driver: agent.driver || 'docker',
-      guestImage: agent.guestImage,
-      message: '',
-      provider: agent.provider,
+      message: initialMessage,
     }).then(({ sandboxId }) => {
       if (ctx.resolved || !sandboxId) return;
       resolve();
@@ -1686,7 +1662,6 @@
         }
         message = `工作会话已创建：${sandboxId}`;
         messageTimer = setTimeout(() => { message = ''; }, 5000);
-        sendInitialMessage(sandboxId);
       }).catch(() => {});
     }).catch(() => {
       // RPC failed — nothing we can do without a sessionId.
@@ -2359,6 +2334,7 @@
     if (run.status === '已停止') return '运行已停止';
     if (run.status === '启动失败') return '运行启动失败';
     if (run.status !== '运行中') return '运行未运行';
+    if (!conversationTargets.has(run.id) && (!conversationTargetResolved.has(run.id) || conversationTargetResolving.has(run.id))) return '正在解析会话项目/智能体...';
     if (!conversationTargets.has(run.id)) return '旧会话缺少可用项目/智能体，仅供查看';
     return 'Shift + Enter 换行';
   }
@@ -2963,8 +2939,7 @@
       const sessions = sessionResult.sessions;
       sessionOffset = 50;
       sessionHasMore = sessionResult.hasMore;
-      const [tasks, agents, presets] = await Promise.all([listAutomationTasks(), listAgentDefinitions(), listWorkspacePresets()]);
-      workspaces = presets.filter((item) => item.type === 'git' || item.type === 'file');
+      const [tasks, agents] = await Promise.all([listAutomationTasks(), listAgentDefinitions()]);
       const automationRuns = await listRecentAutomationRuns(tasks.map((item) => item.id), 20);
       const taskById = new Map(tasks.map((task) => [task.id, task]));
       const agentById = new Map(agents.map((agent) => [agent.id, agent]));
@@ -3220,12 +3195,25 @@
 
   async function ensureConversationTarget(run: ProductRun): Promise<void> {
     if (conversationTargets.has(run.id)) return;
-    let target = await getWorkSessionRunTarget(run.id).catch(() => undefined);
-    if (!target) {
-      const loaderID = tagValue(run.sourceSessionTags, 'loader_id') || run.automationId;
-      target = loaderID ? await resolveAutomationSessionTarget(loaderID).catch(() => undefined) : undefined;
+    const pending = conversationTargetRequests.get(run.id);
+    if (pending) return pending;
+    conversationTargetResolving = new Set(conversationTargetResolving).add(run.id);
+    const request = (async () => {
+      let target = await getWorkSessionRunTarget(run.id).catch(() => undefined);
+      if (!target) {
+        const loaderID = tagValue(run.sourceSessionTags, 'loader_id') || run.automationId;
+        target = loaderID ? await resolveAutomationSessionTarget(loaderID).catch(() => undefined) : undefined;
+      }
+      if (target) conversationTargets = new Map(conversationTargets).set(run.id, target);
+    })();
+    conversationTargetRequests.set(run.id, request);
+    try {
+      await request;
+    } finally {
+      if (conversationTargetRequests.get(run.id) === request) conversationTargetRequests.delete(run.id);
+      conversationTargetResolving = new Set([...conversationTargetResolving].filter((id) => id !== run.id));
+      conversationTargetResolved = new Set(conversationTargetResolved).add(run.id);
     }
-    if (target) conversationTargets = new Map(conversationTargets).set(run.id, target);
   }
 
   async function loadGroupDetail(group: RunGroup): Promise<void> {
@@ -4550,7 +4538,7 @@
       <h2 id="agent-run-title">智能体运行</h2>
       <div class="toolbar">
         <button on:click={closeRun} disabled={running}>取消</button>
-        <button class="primary" on:click={runSelectedAgent} disabled={running || (runWorkspaceMode !== 'empty' && !runWorkspaceId)}>{running ? '运行中...' : '运行'}</button>
+        <button class="primary" on:click={runSelectedAgent} disabled={running}>{running ? '运行中...' : '运行'}</button>
       </div>
     </div>
     <div class="drawer-body drawer-form agent-run-form">
@@ -4567,27 +4555,6 @@
         <div><span>运行驱动</span><b>{runAgent.driver || 'docker'}</b></div>
         <div><span>运行镜像</span><b>{runAgent.guestImage || defaultGuestImage}</b></div>
       </div>
-
-      <fieldset class="form-item radio-field run-workspace-field">
-        <legend>会话文件</legend>
-        <div class="segmented-grid">
-          <label class:active={runWorkspaceMode === 'empty'}><input type="radio" bind:group={runWorkspaceMode} value="empty" on:change={onRunWorkspaceModeChange}> 空白开始</label>
-          <label class:active={runWorkspaceMode === 'git'}><input type="radio" bind:group={runWorkspaceMode} value="git" on:change={onRunWorkspaceModeChange}> Git workspace</label>
-          <label class:active={runWorkspaceMode === 'file'}><input type="radio" bind:group={runWorkspaceMode} value="file" on:change={onRunWorkspaceModeChange}> 文件 workspace</label>
-        </div>
-      </fieldset>
-
-      {#if runWorkspaceMode === 'git' || runWorkspaceMode === 'file'}
-        <label class="form-item">
-          <span>{runWorkspaceMode === 'git' ? 'Git workspace preset' : '文件 workspace preset'}</span>
-          <select bind:value={runWorkspaceId}>
-            <option value="">请选择</option>
-            {#each workspaces.filter((workspace) => workspace.type === runWorkspaceMode) as workspace}
-              <option value={workspace.id}>{workspace.name}</option>
-            {/each}
-          </select>
-        </label>
-      {/if}
 
       <label class="form-item run-task-input">
         <span>初始消息</span>

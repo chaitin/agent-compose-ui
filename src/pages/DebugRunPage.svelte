@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Code, ConnectError } from '@connectrpc/connect';
   import { createEventDispatcher, onDestroy, onMount } from 'svelte';
 
   import { getProjectRunDebugTarget } from '../api/runs';
@@ -79,7 +80,7 @@
     sessionId = '';
     stopStatusPolling();
     try {
-      session = await loadDebugSessionWithRetry(runId);
+      session = await loadDebugSession(runId);
       sessionId = session.id;
       const normalized = statusLabel(session.status);
       if (normalized !== '运行中' && normalized !== '启动失败' && normalized !== '已停止') {
@@ -93,25 +94,34 @@
     }
   }
 
-  async function loadDebugSessionWithRetry(id: string, maxRetries = 5): Promise<WorkSessionDetail> {
+  async function loadDebugSession(id: string): Promise<WorkSessionDetail> {
+    let sandboxId: string;
+    try {
+      const target = await getProjectRunDebugTarget(id);
+      sandboxId = target.sandboxId;
+    } catch (err) {
+      if (ConnectError.from(err).code !== Code.NotFound) throw err;
+      return getWorkSession(id);
+    }
+    return getWorkSessionWithRetry(sandboxId);
+  }
+
+  async function getWorkSessionWithRetry(id: string): Promise<WorkSessionDetail> {
     let lastError: unknown;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
       try {
         return await getWorkSession(id);
       } catch (err) {
         lastError = err;
-        if (attempt < maxRetries) {
-          await new Promise((resolve) => setTimeout(resolve, Math.min(1000 * Math.pow(2, attempt), 8000)));
-        }
+        if (ConnectError.from(err).code !== Code.NotFound) throw err;
+        await delay(500);
       }
     }
-    try {
-      const target = await getProjectRunDebugTarget(id);
-      return await getWorkSession(target.sandboxId);
-    } catch (err) {
-      lastError = err;
-    }
     throw lastError;
+  }
+
+  function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   async function retryProxy(): Promise<void> {

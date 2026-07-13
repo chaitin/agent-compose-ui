@@ -35,8 +35,6 @@
   let editDraft: AgentDraft | null = null;
   let deleteConfirming = false;
   let runAgent: AgentDraft | null = null;
-  let runWorkspaceMode: WorkSource = 'empty';
-  let runWorkspaceId = '';
   let runTask = '';
   let running = false;
   let workspaces: WorkspacePreset[] = [];
@@ -282,8 +280,6 @@
   function openRun(agent: AgentDraft): void {
     if (isDeletedAgent(agent) || running) return;
     runAgent = agent;
-    runWorkspaceMode = agent.workSource === 'git' || agent.workSource === 'file' ? agent.workSource : 'empty';
-    runWorkspaceId = agent.workspaceId;
     runTask = '';
     error = '';
     message = '';
@@ -306,20 +302,16 @@
     error = '';
     message = '';
     try {
-      const task = runTask.trim();
-      const title = task ? `${task} ${formatSessionTime(new Date())}` : `${runAgent.name} ${formatSessionTime(new Date())}`;
 	  const { runId, sandboxId } = await runAgentDefinition({
         agentId: runAgent.id,
-        title,
-        workspaceId: runWorkspaceMode === 'git' || runWorkspaceMode === 'file' ? runWorkspaceId : '',
         driver: runAgent.driver || 'docker',
-        guestImage: runAgent.guestImage,
         message: runTask,
-        provider: runAgent.provider,
       });
 	  showMessage(sandboxId ? `工作会话已创建：${sandboxId}` : '工作会话已创建');
 	  closeRun();
-	  window.location.assign(runId ? appPath(`/runs?runId=${encodeURIComponent(runId)}`) : appPath('/runs'));
+	  window.location.assign(sandboxId
+	    ? appPath(`/runs?sandboxId=${encodeURIComponent(sandboxId)}`)
+	    : runId ? appPath(`/runs?runId=${encodeURIComponent(runId)}`) : appPath('/runs'));
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -405,16 +397,6 @@
     }
   }
 
-  function onRunWorkspaceModeChange(): void {
-    if (runWorkspaceMode === 'empty') {
-      runWorkspaceId = '';
-      return;
-    }
-    if (!runWorkspaceId || workspaces.find((workspace) => workspace.id === runWorkspaceId)?.type !== runWorkspaceMode) {
-      runWorkspaceId = workspaces.find((workspace) => workspace.type === runWorkspaceMode)?.id ?? '';
-    }
-  }
-
   function runStatusText(agent: AgentDraft): string {
     return agent.currentRun.text || '暂无运行';
   }
@@ -434,11 +416,6 @@
 
   function formatDateTime(value: string): string {
     return formatBeijingTime(value);
-  }
-
-  function formatSessionTime(date: Date): string {
-    const pad = (value: number) => String(value).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
   }
 </script>
 
@@ -683,7 +660,7 @@
       <h2 id="agent-run-title">智能体运行</h2>
       <div class="toolbar">
         <button on:click={closeRun} disabled={running}>取消</button>
-        <button class="primary" on:click={runSelectedAgent} disabled={running || (runWorkspaceMode !== 'empty' && !runWorkspaceId)}>{running ? '运行中...' : '运行'}</button>
+        <button class="primary" on:click={runSelectedAgent} disabled={running}>{running ? '运行中...' : '运行'}</button>
       </div>
     </div>
     <div class="drawer-body drawer-form agent-run-form">
@@ -700,27 +677,6 @@
         <div><span>运行驱动</span><b>{runAgent.driver || 'docker'}</b></div>
         <div><span>运行镜像</span><b>{runAgent.guestImage || defaultGuestImage}</b></div>
       </div>
-
-      <fieldset class="form-item radio-field run-workspace-field">
-        <legend>会话文件</legend>
-        <div class="segmented-grid">
-          <label class:active={runWorkspaceMode === 'empty'}><input type="radio" bind:group={runWorkspaceMode} value="empty" on:change={onRunWorkspaceModeChange}> 空白开始</label>
-          <label class:active={runWorkspaceMode === 'git'}><input type="radio" bind:group={runWorkspaceMode} value="git" on:change={onRunWorkspaceModeChange}> Git workspace</label>
-          <label class:active={runWorkspaceMode === 'file'}><input type="radio" bind:group={runWorkspaceMode} value="file" on:change={onRunWorkspaceModeChange}> 文件 workspace</label>
-        </div>
-      </fieldset>
-
-      {#if runWorkspaceMode === 'git' || runWorkspaceMode === 'file'}
-        <label class="form-item">
-          <span>{runWorkspaceMode === 'git' ? 'Git workspace preset' : '文件 workspace preset'}</span>
-          <select bind:value={runWorkspaceId}>
-            <option value="">请选择</option>
-            {#each workspaces.filter((workspace) => workspace.type === runWorkspaceMode) as workspace}
-              <option value={workspace.id}>{workspace.name}</option>
-            {/each}
-          </select>
-        </label>
-      {/if}
 
       <label class="form-item run-task-input">
         <span>初始消息</span>

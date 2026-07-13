@@ -1,5 +1,5 @@
 import { RunAgentStreamEventType, RunEventKind, RunSandboxCleanupPolicy, RunSource, SandboxWatchEventType, type Sandbox } from '../gen/agentcompose/v2/agentcompose_pb.js';
-import { projectClient, runClient, sandboxClient } from './client';
+import { runClient, sandboxClient } from './client';
 
 export enum CellType { UNSPECIFIED=0, SHELL=1, JAVASCRIPT=2, PYTHON=3, AGENT=4 }
 export type WorkSession={id:string;title:string;status:string;driver:string;guestImage:string;workspacePath:string;triggerSource:string;createdAt:string;updatedAt:string;cellCount:number;eventCount:number;tags:Array<{name:string;value:string}>};
@@ -9,7 +9,7 @@ export type WorkSessionEvent={id:string;type:string;level:string;message:string;
 export type WorkSessionWatchEvent={type:'session';session:WorkSession}|{type:'event';event:WorkSessionEvent}|{type:'cell';cell:WorkSessionCell}|{type:'chunk';cellId:string;chunk:string;isStderr:boolean};
 export type WorkSessionRunTarget={projectId:string;agentName:string};
 
-export async function listWorkSessions(limit=50,offset=0):Promise<{sessions:WorkSession[];hasMore:boolean;totalCount:number}>{let token='';let skipped=0;const sessions:WorkSession[]=[];for(;;){const response=await sandboxClient.listSandboxes({limit:Math.min(500,limit+offset),cursor:token});for(const item of response.sandboxes){if(skipped++<offset)continue;if(sessions.length<limit)sessions.push(sessionFromSandbox(item))}token=response.nextCursor;if(!token||sessions.length>=limit)return{sessions,hasMore:Boolean(token)||response.sandboxes.length>sessions.length,totalCount:offset+sessions.length+(token?1:0)}}}
+export async function listWorkSessions(limit=50,offset=0):Promise<{sessions:WorkSession[];hasMore:boolean;totalCount:number}>{let token='';let skipped=0;const sessions:WorkSession[]=[];for(;;){const response=await sandboxClient.listSandboxes({limit:Math.min(500,limit+offset),cursor:token});const pageStartCount=sessions.length;let usablePageCount=0;for(const item of response.sandboxes){if(skipped++<offset)continue;usablePageCount++;if(sessions.length<limit)sessions.push(sessionFromSandbox(item))}token=response.nextCursor;if(!token||sessions.length>=limit)return{sessions,hasMore:Boolean(token)||usablePageCount>limit-pageStartCount,totalCount:offset+sessions.length+(token?1:0)}}}
 export async function getWorkSession(id:string,_options:{includeProxy?:boolean}={}):Promise<WorkSessionDetail>{const response=await sandboxClient.getSandbox({sandboxId:id});if(!response.sandbox)throw new Error('工作会话不存在');return{...sessionFromSandbox(response.sandbox),proxyPath:response.sandbox.proxyPath,notebookUrl:response.sandbox.notebookUrl}}
 export async function getWorkSessionProxy(id:string){const value=await getWorkSession(id);return{proxyPath:value.proxyPath,notebookUrl:value.notebookUrl}}
 export async function getWorkSessionStatus(id:string):Promise<WorkSession>{return getWorkSession(id)}
@@ -72,14 +72,9 @@ export async function getWorkSessionRunTarget(id:string):Promise<WorkSessionRunT
   const run=await latestRunForSandbox(id);
   if(run)return{projectId:run.projectId,agentName:run.agentName};
   const response=await sandboxClient.getSandbox({sandboxId:id});
-  const projectId=tagValue(response.sandbox?.tags??[],'project');
-  const agentName=tagValue(response.sandbox?.tags??[],'agent');
-  if(!projectId||!agentName)return undefined;
-  const projectResponse=await projectClient.getProject({project:{projectId}});
-  const project=projectResponse.project;
-  const agent=project?.agents.find((item)=>item.agentName===agentName&&item.enabled);
-  if(!project?.summary?.projectId||!agent)return undefined;
-  return{projectId:project.summary.projectId,agentName:agent.agentName};
+  const projectId=response.sandbox?.projectId.trim()??'';
+  const agentName=response.sandbox?.agentName.trim()??'';
+  return projectId&&agentName?{projectId,agentName}:undefined;
 }
 export async function sendWorkSessionMessage(id:string,agent:string,message:string):Promise<void>{await sendWorkSessionMessageStream(id,agent,message,()=>{})}
 export async function sendWorkSessionMessageStream(id:string,_agent:string,message:string,onEvent:(event:{type:'started'|'chunk'|'completed';runId:string;chunk?:string;isStderr?:boolean;run?:{id:string;agent:string;message:string;output:string;exitCode:number;success:boolean;createdAt:string;agentSessionId:string;stopReason:string;running:boolean}})=>void,signal?:AbortSignal,target?:WorkSessionRunTarget):Promise<void>{const previous=await latestRunForSandbox(id);const resolved=previous?{projectId:previous.projectId,agentName:previous.agentName}:target;if(!resolved)throw new Error('旧工作会话没有可用的 v2 项目和智能体，只能查看历史；请从智能体页面发起新运行');for await(const event of runClient.runAgentStream({projectId:resolved.projectId,agentName:resolved.agentName,prompt:message,source:RunSource.MANUAL,sandboxId:id,cleanupPolicy:RunSandboxCleanupPolicy.KEEP_RUNNING},{signal})){if(event.eventType===RunAgentStreamEventType.STARTED)onEvent({type:'started',runId:event.runId});else if(event.eventType===RunAgentStreamEventType.OUTPUT)onEvent({type:'chunk',runId:event.runId,chunk:event.chunk,isStderr:event.stream===2});else if(event.eventType===RunAgentStreamEventType.COMPLETED){const run=event.run;onEvent({type:'completed',runId:event.runId,run:run?{id:run.runId,agent:run.agentName,message,output:'',exitCode:run.exitCode,success:run.status===3,createdAt:run.createdAt,agentSessionId:'',stopReason:run.error,running:false}:undefined})}}}

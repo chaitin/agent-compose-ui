@@ -49,7 +49,7 @@ export type ProductRun = {
 
 export function sessionToRun(session: WorkSession): ProductRun {
   const agentID = tagValue(session.tags, 'agent_id');
-  const agentName = tagValue(session.tags, 'agent_name') || tagValue(session.tags, 'agent_definition') || tagValue(session.tags, 'agent_template');
+  const agentName = tagValue(session.tags, 'agent_name') || tagValue(session.tags, 'agent') || tagValue(session.tags, 'agent_definition') || tagValue(session.tags, 'agent_template');
   const loaderID = tagValue(session.tags, 'loader_id');
   const loaderName = tagValue(session.tags, 'loader_name');
   return {
