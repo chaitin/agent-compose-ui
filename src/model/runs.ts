@@ -27,6 +27,7 @@ export type ProductRun = {
   input: string;
   messages: Array<{
     id?: string;
+    runId?: string;
     renderKey?: string;
     role: 'user' | 'agent' | 'system';
     type?: CellType;

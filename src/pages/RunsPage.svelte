@@ -162,8 +162,12 @@
   let runs: ProductRun[] = [];
   let conversationTargets = new Map<string, WorkSessionRunTarget>();
   let activeSendRenderKey = '';
+  let activeSendRunId = '';
+  let activeSendSandboxId = '';
   let activeUserRenderKey = '';
   let activeUserRunId = '';
+  const sendMessageKeys = new Map<string, { user: string; agent: string }>();
+  const locallyStreamedCellIds = new Set<string>();
   let loadRequest: Promise<void> | null = null;
   let agentDefinitions: AgentDefinition[] = [];
   let automationTasks: AutomationTask[] = [];
@@ -2473,6 +2477,10 @@
     return message.role === 'agent' ? stripAgentResultPayload(content) : content;
   }
 
+  function correlatedRenderKey(runId: string | undefined, role: 'user' | 'agent', fallback: string): string {
+    return (runId ? sendMessageKeys.get(runId)?.[role] : '') || fallback;
+  }
+
   function mergeMessageContent(existing: ProductRun['messages'][number], next: ProductRun['messages'][number]): string {
     return agentMessageContent(next, mergeCellContent(agentMessageContent(next, existing.content), agentMessageContent(next, next.content)));
   }
@@ -2481,7 +2489,8 @@
     const role = cell.agent ? 'agent' : 'user';
     return {
       id: cell.id,
-      renderKey: cell.id,
+      runId: cell.runId,
+      renderKey: correlatedRenderKey(cell.runId, role, cell.id),
       role,
       type: cell.type,
       agent: cell.agent,
@@ -2502,7 +2511,8 @@
     const hasOutput = Boolean(cell.output?.trim() || cell.stopReason?.trim() || cell.running);
     const user: ProductRun['messages'][number] = {
       id: hasOutput ? `${cell.id}-input` : cell.id,
-      renderKey: hasOutput ? `${cell.id}-input` : cell.id,
+      runId: cell.runId,
+      renderKey: correlatedRenderKey(cell.runId, 'user', hasOutput ? `${cell.id}-input` : cell.id),
       role: 'user',
       type: cell.type,
       source: cell.source,
@@ -2539,12 +2549,24 @@
       // WatchSandbox identifies the same turn by cell ID. Let the pushed cell
       // take over the current running placeholder and retain its stable render
       // key so the terminal RunAgentStream event merges back into one card.
-      const pendingIndex = messages.findIndex((message) => message.role === next.role && (message.running || Boolean(activeSendRenderKey && message.renderKey === activeSendRenderKey)));
+      const isActiveSendMessage = Boolean(
+        next.runId
+        && next.runId === activeSendRunId
+        && activeSendSandboxId,
+      );
+      const pendingIndex = isActiveSendMessage
+        ? messages.findIndex((message) => message.role === next.role && (
+          message.runId === next.runId
+          || (next.role === 'agent' && Boolean(activeSendRenderKey && message.renderKey === activeSendRenderKey))
+          || (next.role === 'user' && Boolean(activeUserRenderKey && message.renderKey === activeUserRenderKey))
+        ))
+        : -1;
       if (pendingIndex >= 0) {
         const updated = [...messages];
         const existing = updated[pendingIndex];
         updated[pendingIndex] = {
           ...next,
+          runId: next.runId || existing.runId,
           renderKey: existing.renderKey || next.renderKey || next.id,
           content: mergeMessageContent(existing, next),
         };
@@ -2556,6 +2578,7 @@
     const existing = updated[index];
     updated[index] = {
       ...next,
+      runId: next.runId || existing.runId,
       renderKey: existing.renderKey || next.renderKey || next.id,
       content: mergeMessageContent(existing, next),
     };
@@ -3656,20 +3679,40 @@
               ? { ...item, events: [...item.events, { type: event.event.type, level: event.event.level, message: event.event.message, createdAt: event.event.createdAt }] }
               : item);
           } else if (event.type === 'cell') {
+            if (activeSendSandboxId === runId) {
+              locallyStreamedCellIds.add(event.cell.id);
+              if (locallyStreamedCellIds.size > 100) {
+                locallyStreamedCellIds.delete(locallyStreamedCellIds.values().next().value as string);
+              }
+            }
+            const cell = activeSendSandboxId === runId && activeSendRunId
+              ? { ...event.cell, runId: activeSendRunId }
+              : event.cell;
+            const activeKeys = activeSendSandboxId === runId
+              ? (activeSendRunId ? sendMessageKeys.get(activeSendRunId) : { user: activeUserRenderKey, agent: activeSendRenderKey })
+              : undefined;
             runs = runs.map((item) => {
               if (item.id !== runId) return item;
               let messages = item.messages;
-              for (const msg of cellToMessages(event.cell)) {
-                messages = upsertWatchedMessage(messages, applyPendingChunks(msg), runId);
+              for (const msg of cellToMessages(cell)) {
+                const activeKey = msg.role === 'system' ? '' : activeKeys?.[msg.role];
+                const correlated = activeKey
+                  ? { ...msg, renderKey: activeKey }
+                  : msg;
+                messages = upsertWatchedMessage(messages, applyPendingChunks(correlated), runId);
               }
               return { ...item, messages };
             });
-            if (event.cell.agent && !event.cell.running) {
+            if (cell.agent && !cell.running) {
               sendingMessage = false;
               activeSendRenderKey = '';
             }
             void scrollMessagesToBottom();
           } else if (event.type === 'chunk') {
+            // RunAgentStream is authoritative for a message sent by this page.
+            // WatchSandbox delivers the same cell chunks for cross-client
+            // updates; consuming both would append the assistant output twice.
+            if (locallyStreamedCellIds.has(event.cellId)) return;
             const applied = appendAgentChunk(runId, event.cellId, event.chunk);
             if (!applied) {
               appendPendingChunk(event.cellId, event.chunk);
@@ -3787,6 +3830,8 @@
       const pendingMessageId = `pending-${Date.now()}`;
       pendingRenderKey = pendingMessageId;
       activeSendRenderKey = pendingRenderKey;
+      activeSendRunId = '';
+      activeSendSandboxId = run.id;
       activeUserRenderKey = `user-${pendingRenderKey}`;
       activeUserRunId = run.id;
       messageText = '';
@@ -3799,6 +3844,11 @@
       await scrollMessagesToBottom();
       await sendWorkSessionMessageStream(run.id, run.agentProvider || 'codex', sentText, (event) => {
         if (event.type === 'started' && event.runId) {
+          activeSendRunId = event.runId;
+          sendMessageKeys.set(event.runId, { user: `user-${pendingRenderKey}`, agent: pendingRenderKey });
+          if (sendMessageKeys.size > 100) {
+            sendMessageKeys.delete(sendMessageKeys.keys().next().value as string);
+          }
           runs = runs.map((item) => {
             if (item.id !== run.id) return item;
             const pending = item.messages.find((message) => message.id === pendingMessageId);
@@ -3807,13 +3857,17 @@
               const messages = item.messages
                 .filter((message) => message.id !== pendingMessageId)
                 .map((message) => message.id === event.runId
-                  ? { ...message, renderKey: pending.renderKey || message.renderKey, content: mergeMessageContent(message, pending) }
+                  ? { ...message, runId: event.runId, renderKey: pending.renderKey || message.renderKey, content: mergeMessageContent(message, pending) }
                   : message);
               return { ...item, messages };
             }
             return {
               ...item,
-              messages: item.messages.map((message) => message.id === pendingMessageId ? { ...message, id: event.runId, renderKey: message.renderKey || pendingRenderKey } : message),
+              messages: item.messages.map((message) => {
+                if (message.id === pendingMessageId) return { ...message, id: event.runId, runId: event.runId, renderKey: message.renderKey || pendingRenderKey };
+                if (message.renderKey === activeUserRenderKey) return { ...message, runId: event.runId };
+                return message;
+              }),
             };
           });
         } else if (event.type === 'chunk' && event.chunk) {
@@ -3827,6 +3881,7 @@
               ...item,
               messages: upsertMessage(item.messages, {
                 id: event.run?.id || event.runId,
+                runId: event.runId,
                 renderKey: pendingRenderKey,
                 role: 'agent',
                 agent: event.run?.agent || run.agentProvider || 'codex',
@@ -3848,6 +3903,8 @@
     } catch (err) {
       if (!controller.signal.aborted) {
         activeSendRenderKey = '';
+        activeSendRunId = '';
+        activeSendSandboxId = '';
         if (activeUserRunId === run.id) {
           activeUserRenderKey = '';
           activeUserRunId = '';
@@ -3861,6 +3918,10 @@
         sendingMessage = false;
         setTimeout(() => {
           if (activeSendRenderKey === pendingRenderKey) activeSendRenderKey = '';
+          if (activeSendSandboxId === run.id) {
+            activeSendRunId = '';
+            activeSendSandboxId = '';
+          }
           if (activeUserRunId === run.id && activeUserRenderKey === `user-${pendingRenderKey}`) {
             activeUserRenderKey = '';
             activeUserRunId = '';
