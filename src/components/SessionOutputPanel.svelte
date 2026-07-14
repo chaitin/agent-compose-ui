@@ -170,6 +170,7 @@
     try {
       await refresh();
       await tick();
+      cancelSearch();
       if (search.query.trim()) applySearch(preferredMatch);
       await scrollToBottom();
     } catch {
