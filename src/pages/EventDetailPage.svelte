@@ -67,6 +67,7 @@
     appliedQuery: string;
     matches: OutputSearchMatch[];
     currentIndex: number;
+    locateCurrent: boolean;
   };
 
   let loading = true;
@@ -400,13 +401,14 @@
   }
 
   async function refreshSessionTrace(link: TopicEventSession): Promise<void> {
-    const searchState = outputSearchState(link.sessionId);
-    const currentMatch = searchState.matches[searchState.currentIndex];
     const nextTrace = await loadSessionTrace(link);
     sessionTraces = sessionTraces.map((trace) => trace.link.sessionId === link.sessionId ? nextTrace : trace);
+    const searchState = outputSearchState(link.sessionId);
+    const currentMatch = searchState.matches[searchState.currentIndex];
     if (searchState.query.trim()) {
       applyOutputSearch(link.sessionId, currentMatch);
-    } else {
+    }
+    if (!searchState.locateCurrent) {
       await scrollSessionMessagesToBottom(link.sessionId);
     }
   }
@@ -417,15 +419,16 @@
     refreshingSessionId = sessionId;
     error = '';
     try {
-      const searchState = outputSearchState(sessionId);
-      const currentMatch = searchState.matches[searchState.currentIndex];
       const cells = await listWorkSessionCells(sessionId);
       sessionTraces = sessionTraces.map((item) => item.link.sessionId === sessionId ? { ...item, cells } : item);
+      const searchState = outputSearchState(sessionId);
+      const currentMatch = searchState.matches[searchState.currentIndex];
+      cancelScheduledOutputSearch(sessionId);
       if (searchState.query.trim()) {
+        outputSearches = { ...outputSearches, [sessionId]: { ...searchState, locateCurrent: false } };
         applyOutputSearch(sessionId, currentMatch);
-      } else {
-        await scrollSessionMessagesToBottom(sessionId);
       }
+      await scrollSessionMessagesToBottom(sessionId);
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -465,14 +468,15 @@
   function updateSearchOrScrollToBottom(sessionId: string): void {
     const searchState = outputSearchState(sessionId);
     if (searchState.query.trim()) {
-      scheduleOutputSearch(sessionId, searchState.query);
-    } else {
+      scheduleOutputSearch(sessionId, searchState.query, searchState.locateCurrent);
+    }
+    if (!searchState.locateCurrent) {
       void scrollSessionMessagesToBottom(sessionId);
     }
   }
 
   function defaultOutputSearchState(): OutputSearchState {
-    return { query: '', appliedQuery: '', matches: [], currentIndex: -1 };
+    return { query: '', appliedQuery: '', matches: [], currentIndex: -1, locateCurrent: false };
   }
 
   function outputSearchState(sessionId: string): OutputSearchState {
@@ -511,19 +515,23 @@
     return matches;
   }
 
-  function scheduleOutputSearch(sessionId: string, query: string): void {
+  function cancelScheduledOutputSearch(sessionId: string): void {
+    const timer = outputSearchTimers.get(sessionId);
+    if (timer) clearTimeout(timer);
+    outputSearchTimers.delete(sessionId);
+  }
+
+  function scheduleOutputSearch(sessionId: string, query: string, locateCurrent = true): void {
     const previous = outputSearchState(sessionId);
     const queryChanged = query.trim() !== previous.appliedQuery;
     outputSearches = {
       ...outputSearches,
       [sessionId]: query.trim()
-        ? { ...previous, query, currentIndex: queryChanged ? -1 : previous.currentIndex }
-        : { query, appliedQuery: '', matches: [], currentIndex: -1 },
+        ? { ...previous, query, currentIndex: queryChanged ? -1 : previous.currentIndex, locateCurrent }
+        : { query, appliedQuery: '', matches: [], currentIndex: -1, locateCurrent: false },
     };
-    const existingTimer = outputSearchTimers.get(sessionId);
-    if (existingTimer) clearTimeout(existingTimer);
+    cancelScheduledOutputSearch(sessionId);
     if (!query.trim()) {
-      outputSearchTimers.delete(sessionId);
       return;
     }
     const timer = setTimeout(() => {
@@ -550,7 +558,7 @@
       ...outputSearches,
       [sessionId]: { ...previous, appliedQuery: previous.query.trim(), matches, currentIndex },
     };
-    if (currentIndex >= 0) void scrollToOutputMatch(sessionId, matches[currentIndex]);
+    if (currentIndex >= 0 && previous.locateCurrent) void scrollToOutputMatch(sessionId, matches[currentIndex]);
   }
 
   function moveOutputSearch(sessionId: string, direction: -1 | 1): void {
@@ -564,7 +572,7 @@
     const state = outputSearchState(sessionId);
     if (state.matches.length === 0) return;
     const currentIndex = (state.currentIndex + direction + state.matches.length) % state.matches.length;
-    outputSearches = { ...outputSearches, [sessionId]: { ...state, currentIndex } };
+    outputSearches = { ...outputSearches, [sessionId]: { ...state, currentIndex, locateCurrent: true } };
     void scrollToOutputMatch(sessionId, state.matches[currentIndex]);
   }
 
