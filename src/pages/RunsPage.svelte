@@ -160,9 +160,9 @@
   let keyword = '';
   let runs: ProductRun[] = [];
   let conversationTargets = new Map<string, WorkSessionRunTarget>();
+  let unavailableConversationReasons = new Map<string, string>();
   const conversationTargetRequests = new Map<string, Promise<void>>();
-  let conversationTargetResolving = new Set<string>();
-  let conversationTargetResolved = new Set<string>();
+  let conversationTargetVersion = 0;
   let activeSendRenderKey = '';
   let activeSendRunId = '';
   let activeSendSandboxId = '';
@@ -2334,7 +2334,8 @@
     if (run.status === '已停止') return '运行已停止';
     if (run.status === '启动失败') return '运行启动失败';
     if (run.status !== '运行中') return '运行未运行';
-    if (!conversationTargets.has(run.id) && (!conversationTargetResolved.has(run.id) || conversationTargetResolving.has(run.id))) return '正在解析会话项目/智能体...';
+    const unavailableReason = unavailableConversationReasons.get(run.id);
+    if (unavailableReason) return unavailableReason;
     if (!conversationTargets.has(run.id)) return '旧会话缺少可用项目/智能体，仅供查看';
     return 'Shift + Enter 换行';
   }
@@ -2943,20 +2944,32 @@
       const automationRuns = await listRecentAutomationRuns(tasks.map((item) => item.id), 20);
       const taskById = new Map(tasks.map((task) => [task.id, task]));
       const agentById = new Map(agents.map((agent) => [agent.id, agent]));
+      const agentByProjectAndName = new Map(
+        agents
+          .filter((agent) => agent.projectId && agent.name)
+          .map((agent) => [`${agent.projectId}\u0000${agent.name}`, agent]),
+      );
       agentDefinitions = agents;
       automationTasks = tasks;
       const visibleSessionIDs = new Set(sessions.map((session) => session.id));
       conversationTargets = new Map([...conversationTargets].filter(([id]) => visibleSessionIDs.has(id)));
+      unavailableConversationReasons = new Map([...unavailableConversationReasons].filter(([id]) => visibleSessionIDs.has(id)));
       const sessionRuns = sessions.map((session) => {
         const productRun = sessionToRun(session);
         const agentID = tagValue(session.tags, 'agent_id');
-        const agent = agentID ? agentById.get(agentID) : null;
+        const projectID = tagValue(session.tags, 'project');
+        const agent = agentID
+          ? agentById.get(agentID)
+          : agentByProjectAndName.get(`${projectID}\u0000${productRun.agent}`);
+        const sessionAgentID = agentID || agent?.id || (projectID && productRun.agent
+          ? `project:${encodeURIComponent(projectID)}:agent:${encodeURIComponent(productRun.agent)}`
+          : '');
         const loaderID = tagValue(session.tags, 'loader_id') || productRun.automationId;
         const loaderName = tagValue(session.tags, 'loader_name') || productRun.automation;
         const task = loaderID ? taskById.get(loaderID) : null;
         return {
           ...productRun,
-          agentId: agentID || productRun.agentId,
+          agentId: sessionAgentID || productRun.agentId,
           agent: agent?.name || productRun.agent || agentID,
           agentProvider: agent?.provider || productRun.agentProvider,
           automationId: loaderID,
@@ -2998,19 +3011,30 @@
       try {
         const result = await listWorkSessions(50, sessionOffset);
         const agentById = new Map(agentDefinitions.map((agent) => [agent.id, agent]));
+        const agentByProjectAndName = new Map(
+          agentDefinitions
+            .filter((agent) => agent.projectId && agent.name)
+            .map((agent) => [`${agent.projectId}\u0000${agent.name}`, agent]),
+        );
         const taskById = new Map(automationTasks.map((task) => [task.id, task]));
         const newRuns = result.sessions
           .filter((session) => !runs.some((run) => run.id === session.id))
           .map((session) => {
             const productRun = sessionToRun(session);
             const agentID = tagValue(session.tags, 'agent_id');
-            const agent = agentID ? agentById.get(agentID) : null;
+            const projectID = tagValue(session.tags, 'project');
+            const agent = agentID
+              ? agentById.get(agentID)
+              : agentByProjectAndName.get(`${projectID}\u0000${productRun.agent}`);
+            const sessionAgentID = agentID || agent?.id || (projectID && productRun.agent
+              ? `project:${encodeURIComponent(projectID)}:agent:${encodeURIComponent(productRun.agent)}`
+              : '');
             const loaderID = tagValue(session.tags, 'loader_id') || productRun.automationId;
             const loaderName = tagValue(session.tags, 'loader_name') || productRun.automation;
             const task = loaderID ? taskById.get(loaderID) : null;
             return {
               ...productRun,
-              agentId: agentID || productRun.agentId,
+              agentId: sessionAgentID || productRun.agentId,
               agent: agent?.name || productRun.agent || agentID,
               agentProvider: agent?.provider || productRun.agentProvider,
               automationId: loaderID,
@@ -3197,22 +3221,34 @@
     if (conversationTargets.has(run.id)) return;
     const pending = conversationTargetRequests.get(run.id);
     if (pending) return pending;
-    conversationTargetResolving = new Set(conversationTargetResolving).add(run.id);
     const request = (async () => {
       let target = await getWorkSessionRunTarget(run.id).catch(() => undefined);
       if (!target) {
         const loaderID = tagValue(run.sourceSessionTags, 'loader_id') || run.automationId;
         target = loaderID ? await resolveAutomationSessionTarget(loaderID).catch(() => undefined) : undefined;
       }
-      if (target) conversationTargets = new Map(conversationTargets).set(run.id, target);
+      if (target) {
+        const activeAgent = agentDefinitions.find((agent) =>
+          agent.projectId === target?.projectId && agent.name === target.agentName,
+        );
+        if (activeAgent?.enabled) {
+          unavailableConversationReasons = new Map([...unavailableConversationReasons].filter(([id]) => id !== run.id));
+          conversationTargets = new Map(conversationTargets).set(run.id, target);
+        } else {
+          conversationTargets = new Map([...conversationTargets].filter(([id]) => id !== run.id));
+          unavailableConversationReasons = new Map(unavailableConversationReasons).set(
+            run.id,
+            '关联项目或智能体已删除，无法继续对话',
+          );
+        }
+      }
     })();
     conversationTargetRequests.set(run.id, request);
     try {
       await request;
     } finally {
       if (conversationTargetRequests.get(run.id) === request) conversationTargetRequests.delete(run.id);
-      conversationTargetResolving = new Set([...conversationTargetResolving].filter((id) => id !== run.id));
-      conversationTargetResolved = new Set(conversationTargetResolved).add(run.id);
+      conversationTargetVersion += 1;
     }
   }
 
@@ -4074,7 +4110,7 @@
                           {/each}
                         {/if}
                       </div>
-                      <div class="run-message-composer" class:disabled={!canSendMessage(selectedChatRun) || sendingMessage}>
+                      <div class="run-message-composer" class:disabled={!canSendMessage(selectedChatRun) || sendingMessage} data-target-version={conversationTargetVersion}>
                         <textarea bind:value={messageText} disabled={!canSendMessage(selectedChatRun) || sendingMessage} on:keydown={(event) => handleMessageKeydown(event, selectedChatRun)} placeholder={isReplyPending(selectedChatRun) ? '等待当前回复完成' : messageInputHint(selectedChatRun)}></textarea>
                         <div class="run-input-actions">
                           <span class:waiting={isReplyPending(selectedChatRun)}>{isReplyPending(selectedChatRun) ? '等待当前回复完成' : messageInputHint(selectedChatRun)}</span>
