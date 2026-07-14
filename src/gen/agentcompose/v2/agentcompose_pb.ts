@@ -11576,3 +11576,113 @@ export class WatchSandboxResponse extends Message<WatchSandboxResponse> {
     return proto3.util.equals(WatchSandboxResponse, a, b);
   }
 }
+
+/**
+ * @generated from message agentcompose.v2.GenerateLLMRequest
+ */
+export class GenerateLLMRequest extends Message<GenerateLLMRequest> {
+  /**
+   * @generated from field: string prompt = 1;
+   */
+  prompt = "";
+
+  /**
+   * @generated from field: string model = 2;
+   */
+  model = "";
+
+  /**
+   * @generated from field: string output_schema = 3;
+   */
+  outputSchema = "";
+
+  constructor(data?: PartialMessage<GenerateLLMRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.GenerateLLMRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "prompt", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "model", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "output_schema", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GenerateLLMRequest {
+    return new GenerateLLMRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GenerateLLMRequest {
+    return new GenerateLLMRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GenerateLLMRequest {
+    return new GenerateLLMRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GenerateLLMRequest | PlainMessage<GenerateLLMRequest> | undefined, b: GenerateLLMRequest | PlainMessage<GenerateLLMRequest> | undefined): boolean {
+    return proto3.util.equals(GenerateLLMRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.GenerateLLMResponse
+ */
+export class GenerateLLMResponse extends Message<GenerateLLMResponse> {
+  /**
+   * @generated from field: string text = 1;
+   */
+  text = "";
+
+  /**
+   * @generated from field: string model = 2;
+   */
+  model = "";
+
+  /**
+   * @generated from field: string response_id = 3;
+   */
+  responseId = "";
+
+  /**
+   * @generated from field: string finish_reason = 4;
+   */
+  finishReason = "";
+
+  /**
+   * @generated from field: string json = 5;
+   */
+  json = "";
+
+  constructor(data?: PartialMessage<GenerateLLMResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.GenerateLLMResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "text", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "model", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "response_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "finish_reason", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "json", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GenerateLLMResponse {
+    return new GenerateLLMResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GenerateLLMResponse {
+    return new GenerateLLMResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GenerateLLMResponse {
+    return new GenerateLLMResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GenerateLLMResponse | PlainMessage<GenerateLLMResponse> | undefined, b: GenerateLLMResponse | PlainMessage<GenerateLLMResponse> | undefined): boolean {
+    return proto3.util.equals(GenerateLLMResponse, a, b);
+  }
+}
