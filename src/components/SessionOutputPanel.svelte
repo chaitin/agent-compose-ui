@@ -122,10 +122,11 @@
   }
 
   function moveSearch(direction: -1 | 1): void {
+    const applyingNewQuery = search.query.trim() !== search.appliedQuery;
     if (searchTimer) {
       cancelSearch();
       applySearch();
-      return;
+      if (applyingNewQuery) return;
     }
     if (search.matches.length === 0) return;
     const currentIndex = (search.currentIndex + direction + search.matches.length) % search.matches.length;
@@ -324,8 +325,8 @@
   .message-source { padding: 0; border: 0; border-radius: 0; background: transparent; color: #475569; line-height: 17px; overflow-wrap: anywhere; }
   .output-match { border-radius: 2px; background: #fa8c16; color: #172033; box-shadow: 0 0 0 2px rgba(250, 140, 22, 0.35); }
   .run-terminal-block { min-width: 0; overflow: hidden; }
-  .run-terminal-block .run-terminal-static,
-  .message-card > .run-terminal-static { overflow: visible; border: 0; border-radius: 0; background: transparent; }
+  .run-terminal-block .run-terminal-static { overflow: visible; border: 0; border-radius: 0; background: transparent; }
+  .message-card > .run-terminal-static { overflow: visible; }
   .empty { min-height: 0; display: grid; place-items: center; color: var(--muted); }
 
   .visually-hidden {
