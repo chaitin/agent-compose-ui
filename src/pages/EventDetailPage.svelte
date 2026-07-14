@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
 
   import {
     getAutomationRun,
@@ -54,6 +54,19 @@
     conversationTarget?: WorkSessionRunTarget;
   };
 
+  type OutputSearchMatch = {
+    cellId: string;
+    section: 'source' | 'output';
+    lineIndex: number;
+  };
+
+  type OutputSearchState = {
+    query: string;
+    appliedQuery: string;
+    matches: OutputSearchMatch[];
+    currentIndex: number;
+  };
+
   let loading = true;
   let error = '';
   let event: TopicEvent | null = null;
@@ -67,11 +80,23 @@
   let jupyterOpeningSessionId = '';
   let messageDrafts: Record<string, string> = {};
   let sendingSessionId = '';
+  let refreshingSessionId = '';
   let messageAbort: AbortController | null = null;
+  let outputSearches: Record<string, OutputSearchState> = {};
+  let copyFeedbacks: Record<string, string> = {};
+  let copyFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
   const cellListElements = new Map<string, HTMLElement>();
+  const outputLineElements = new Map<string, HTMLElement>();
+  const outputSearchTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   onMount(() => {
     void load();
+  });
+
+  onDestroy(() => {
+    messageAbort?.abort();
+    outputSearchTimers.forEach((timer) => clearTimeout(timer));
+    if (copyFeedbackTimer) clearTimeout(copyFeedbackTimer);
   });
 
   async function load(): Promise<void> {
@@ -82,6 +107,9 @@
     }
     loading = true;
     error = '';
+    outputSearchTimers.forEach((timer) => clearTimeout(timer));
+    outputSearchTimers.clear();
+    outputSearches = {};
     try {
       const [nextEvent, deliveries, links] = await Promise.all([
         getTopicEvent(eventId),
@@ -101,6 +129,7 @@
     } finally {
       loading = false;
     }
+    await scrollAllSessionMessagesToBottom();
   }
 
   async function loadRunTrace(delivery: TopicEventRun): Promise<RunTrace> {
@@ -375,6 +404,23 @@
     await scrollSessionMessagesToBottom(link.sessionId);
   }
 
+  async function refreshSessionOutput(trace: SessionTrace): Promise<void> {
+    const sessionId = trace.link.sessionId;
+    if (!sessionId || refreshingSessionId) return;
+    refreshingSessionId = sessionId;
+    error = '';
+    try {
+      const searchState = outputSearchState(sessionId);
+      const currentMatch = searchState.matches[searchState.currentIndex];
+      await refreshSessionTrace(trace.link);
+      if (searchState.query.trim()) applyOutputSearch(sessionId, currentMatch);
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      refreshingSessionId = '';
+    }
+  }
+
   function registerCellList(node: HTMLElement, sessionId: string): { destroy: () => void } {
     if (sessionId) {
       cellListElements.set(sessionId, node);
@@ -394,6 +440,207 @@
     if (node) {
       node.scrollTop = node.scrollHeight;
     }
+  }
+
+  async function scrollAllSessionMessagesToBottom(): Promise<void> {
+    await tick();
+    for (const trace of sessionTraces) {
+      const node = cellListElements.get(trace.link.sessionId);
+      if (node) node.scrollTop = node.scrollHeight;
+    }
+  }
+
+  function defaultOutputSearchState(): OutputSearchState {
+    return { query: '', appliedQuery: '', matches: [], currentIndex: -1 };
+  }
+
+  function outputSearchState(sessionId: string): OutputSearchState {
+    return outputSearches[sessionId] || defaultOutputSearchState();
+  }
+
+  function outputLines(value: string): string[] {
+    return value.split(/\r?\n/);
+  }
+
+  function findOutputMatches(trace: SessionTrace, query: string): OutputSearchMatch[] {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    if (!normalizedQuery) return [];
+    const matches: OutputSearchMatch[] = [];
+    for (const cell of visibleSessionCells(trace.cells)) {
+      const sections: Array<{ section: OutputSearchMatch['section']; value: string }> = [
+        { section: 'source', value: messageSource(cell) },
+        { section: 'output', value: messageOutput(cell) },
+      ];
+      for (const { section, value } of sections) {
+        if (!value) continue;
+        outputLines(value).forEach((line, lineIndex) => {
+          if (line.toLocaleLowerCase().includes(normalizedQuery)) {
+            matches.push({ cellId: cell.id, section, lineIndex });
+          }
+        });
+      }
+    }
+    return matches;
+  }
+
+  function scheduleOutputSearch(sessionId: string, query: string): void {
+    const previous = outputSearchState(sessionId);
+    const queryChanged = query.trim() !== previous.appliedQuery;
+    outputSearches = {
+      ...outputSearches,
+      [sessionId]: query.trim()
+        ? { ...previous, query, currentIndex: queryChanged ? -1 : previous.currentIndex }
+        : { query, appliedQuery: '', matches: [], currentIndex: -1 },
+    };
+    const existingTimer = outputSearchTimers.get(sessionId);
+    if (existingTimer) clearTimeout(existingTimer);
+    if (!query.trim()) {
+      outputSearchTimers.delete(sessionId);
+      return;
+    }
+    const timer = setTimeout(() => {
+      outputSearchTimers.delete(sessionId);
+      applyOutputSearch(sessionId);
+    }, 160);
+    outputSearchTimers.set(sessionId, timer);
+  }
+
+  function applyOutputSearch(sessionId: string, preferredMatch?: OutputSearchMatch): void {
+    const trace = sessionTraces.find((item) => item.link.sessionId === sessionId);
+    const previous = outputSearchState(sessionId);
+    if (!trace || !previous.query.trim()) return;
+    const matches = findOutputMatches(trace, previous.query);
+    const preferredIndex = preferredMatch
+      ? matches.findIndex((match) => outputMatchKey(sessionId, match) === outputMatchKey(sessionId, preferredMatch))
+      : -1;
+    const currentIndex = matches.length === 0
+      ? -1
+      : preferredIndex >= 0
+        ? preferredIndex
+        : Math.min(Math.max(previous.currentIndex, 0), matches.length - 1);
+    outputSearches = {
+      ...outputSearches,
+      [sessionId]: { ...previous, appliedQuery: previous.query.trim(), matches, currentIndex },
+    };
+    if (currentIndex >= 0) void scrollToOutputMatch(sessionId, matches[currentIndex]);
+  }
+
+  function moveOutputSearch(sessionId: string, direction: -1 | 1): void {
+    const pendingTimer = outputSearchTimers.get(sessionId);
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      outputSearchTimers.delete(sessionId);
+      applyOutputSearch(sessionId);
+      return;
+    }
+    const state = outputSearchState(sessionId);
+    if (state.matches.length === 0) return;
+    const currentIndex = (state.currentIndex + direction + state.matches.length) % state.matches.length;
+    outputSearches = { ...outputSearches, [sessionId]: { ...state, currentIndex } };
+    void scrollToOutputMatch(sessionId, state.matches[currentIndex]);
+  }
+
+  function handleOutputSearchKeydown(keyboardEvent: KeyboardEvent, sessionId: string): void {
+    if (keyboardEvent.key === 'Enter') {
+      keyboardEvent.preventDefault();
+      moveOutputSearch(sessionId, keyboardEvent.shiftKey ? -1 : 1);
+    } else if (keyboardEvent.key === 'Escape') {
+      scheduleOutputSearch(sessionId, '');
+    }
+  }
+
+  function outputMatchKey(sessionId: string, match: OutputSearchMatch): string {
+    return `${sessionId}\u0000${match.cellId}\u0000${match.section}\u0000${match.lineIndex}`;
+  }
+
+  function registerOutputLine(node: HTMLElement, key: string): { update: (nextKey: string) => void; destroy: () => void } {
+    let currentKey = '';
+    function update(nextKey: string): void {
+      if (currentKey && outputLineElements.get(currentKey) === node) outputLineElements.delete(currentKey);
+      currentKey = nextKey;
+      if (currentKey) outputLineElements.set(currentKey, node);
+    }
+    update(key);
+    return {
+      update,
+      destroy: () => {
+        if (currentKey && outputLineElements.get(currentKey) === node) outputLineElements.delete(currentKey);
+      },
+    };
+  }
+
+  async function scrollToOutputMatch(sessionId: string, match: OutputSearchMatch): Promise<void> {
+    await tick();
+    outputLineElements.get(outputMatchKey(sessionId, match))?.scrollIntoView({ block: 'center' });
+  }
+
+  function isCurrentOutputMatch(sessionId: string, cellId: string, section: OutputSearchMatch['section'], lineIndex: number): boolean {
+    const state = outputSearchState(sessionId);
+    const current = state.matches[state.currentIndex];
+    return Boolean(current && current.cellId === cellId && current.section === section && current.lineIndex === lineIndex);
+  }
+
+  function highlightedOutputParts(value: string, query: string): Array<{ text: string; matched: boolean; lineIndex: number }> {
+    if (!query) return [{ text: value, matched: false, lineIndex: 0 }];
+    const parts: Array<{ text: string; matched: boolean; lineIndex: number }> = [];
+    const normalizedValue = value.toLocaleLowerCase();
+    const normalizedQuery = query.toLocaleLowerCase();
+    let offset = 0;
+    let lineIndex = 0;
+    while (offset < value.length) {
+      const matchIndex = normalizedValue.indexOf(normalizedQuery, offset);
+      if (matchIndex < 0) break;
+      if (matchIndex > offset) {
+        const text = value.slice(offset, matchIndex);
+        parts.push({ text, matched: false, lineIndex });
+        lineIndex += (text.match(/\n/g) || []).length;
+      }
+      parts.push({ text: value.slice(matchIndex, matchIndex + query.length), matched: true, lineIndex });
+      offset = matchIndex + query.length;
+    }
+    if (offset < value.length) parts.push({ text: value.slice(offset), matched: false, lineIndex });
+    return parts.length > 0 ? parts : [{ text: value, matched: false, lineIndex: 0 }];
+  }
+
+  function sessionOutputText(trace: SessionTrace): string {
+    const blocks: string[] = [];
+    for (const cell of visibleSessionCells(trace.cells)) {
+      const source = messageSource(cell);
+      const output = messageOutput(cell);
+      if (source) blocks.push(`用户:\n${source}`);
+      if (output) blocks.push(`${cell.agent || '助手'}:\n${output}`);
+    }
+    return blocks.join('\n\n');
+  }
+
+  async function copyAllSessionOutput(trace: SessionTrace): Promise<void> {
+    const sessionId = trace.link.sessionId;
+    try {
+      await writeClipboardText(sessionOutputText(trace));
+      copyFeedbacks = { ...copyFeedbacks, [sessionId]: '已复制' };
+    } catch {
+      copyFeedbacks = { ...copyFeedbacks, [sessionId]: '复制失败' };
+    }
+    if (copyFeedbackTimer) clearTimeout(copyFeedbackTimer);
+    copyFeedbackTimer = setTimeout(() => {
+      copyFeedbacks = { ...copyFeedbacks, [sessionId]: '' };
+    }, 1600);
+  }
+
+  async function writeClipboardText(value: string): Promise<void> {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = value;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand('copy');
+    textarea.remove();
+    if (!copied) throw new Error('复制失败');
   }
 
   async function stopSession(trace: SessionTrace): Promise<void> {
@@ -692,6 +939,9 @@
           {:else}
             <div class="trace-list" class:single-session={sessionTraces.length === 1}>
               {#each sessionTraces as trace}
+                {@const sessionId = trace.link.sessionId}
+                {@const searchState = outputSearchState(sessionId)}
+                {@const visibleCells = visibleSessionCells(trace.cells)}
                 <article class="trace-card session-card">
                   <div class="trace-card-head">
                     <div>
@@ -699,11 +949,37 @@
                       <p>Session {trace.link.sessionId}</p>
                     </div>
                   </div>
-                  {#if visibleSessionCells(trace.cells).length > 0}
-                    <div class="inline-block session-output">
+                  <div class="inline-block session-output">
+                    <div class="session-output-head">
                       <h4>会话输出</h4>
-                      <div class="cell-list message-stack" use:registerCellList={trace.link.sessionId}>
-                        {#each visibleSessionCells(trace.cells) as cell}
+                      <div class="session-output-toolbar">
+                        <label class="output-search-field">
+                          <span class="visually-hidden">搜索会话输出</span>
+                          <input
+                            type="search"
+                            value={searchState.query}
+                            placeholder="搜索输出"
+                            disabled={visibleCells.length === 0}
+                            on:input={(inputEvent) => scheduleOutputSearch(sessionId, inputEvent.currentTarget.value)}
+                            on:keydown={(keyboardEvent) => handleOutputSearchKeydown(keyboardEvent, sessionId)}
+                          >
+                        </label>
+                        <span class="search-count" aria-live="polite">
+                          {searchState.matches.length > 0 ? `${searchState.currentIndex + 1}/${searchState.matches.length}` : '0/0'}
+                        </span>
+                        <button type="button" class="compact-button" disabled={searchState.matches.length === 0} on:click={() => moveOutputSearch(sessionId, -1)}>上一个</button>
+                        <button type="button" class="compact-button" disabled={searchState.matches.length === 0} on:click={() => moveOutputSearch(sessionId, 1)}>下一个</button>
+                        <button type="button" class="compact-button" disabled={Boolean(refreshingSessionId)} on:click={() => refreshSessionOutput(trace)}>
+                          {refreshingSessionId === sessionId ? '刷新中...' : '刷新'}
+                        </button>
+                        <button type="button" class="compact-button" disabled={visibleCells.length === 0} on:click={() => copyAllSessionOutput(trace)}>
+                          {copyFeedbacks[sessionId] || '拷贝全部'}
+                        </button>
+                      </div>
+                    </div>
+                    {#if visibleCells.length > 0}
+                      <div class="cell-list message-stack" use:registerCellList={sessionId}>
+                        {#each visibleCells as cell}
                           {#if messageSource(cell)}
                             <article class="message-card role-user">
                               <div class="message-cell-head">
@@ -717,7 +993,11 @@
                                   <span>{formatTime(cell.createdAt)}</span>
                                 </div>
                               </div>
-                              <pre class="message-source">{messageSource(cell)}</pre>
+                              <pre class="message-source">{#if searchState.appliedQuery}{#each highlightedOutputParts(messageSource(cell), searchState.appliedQuery) as part}{#if part.matched}<mark
+                                  class="output-match"
+                                  class:current-search-match={isCurrentOutputMatch(sessionId, cell.id, 'source', part.lineIndex)}
+                                  use:registerOutputLine={outputMatchKey(sessionId, { cellId: cell.id, section: 'source', lineIndex: part.lineIndex })}
+                                >{part.text}</mark>{:else}{part.text}{/if}{/each}{:else}{messageSource(cell)}{/if}</pre>
                             </article>
                           {/if}
                           {#if messageOutput(cell)}
@@ -736,19 +1016,27 @@
                             </div>
                             {#if isAgentCell(cell)}
                               <div class="run-terminal-block" class:running={cell.running}>
-                                <pre class="run-terminal-static">{messageOutput(cell)}</pre>
+                                <pre class="run-terminal-static">{#if searchState.appliedQuery}{#each highlightedOutputParts(messageOutput(cell), searchState.appliedQuery) as part}{#if part.matched}<mark
+                                    class="output-match"
+                                    class:current-search-match={isCurrentOutputMatch(sessionId, cell.id, 'output', part.lineIndex)}
+                                    use:registerOutputLine={outputMatchKey(sessionId, { cellId: cell.id, section: 'output', lineIndex: part.lineIndex })}
+                                  >{part.text}</mark>{:else}{part.text}{/if}{/each}{:else}{messageOutput(cell)}{/if}</pre>
                               </div>
                             {:else if messageOutput(cell)}
-                              <pre class="run-terminal-static">{messageOutput(cell)}</pre>
+                              <pre class="run-terminal-static">{#if searchState.appliedQuery}{#each highlightedOutputParts(messageOutput(cell), searchState.appliedQuery) as part}{#if part.matched}<mark
+                                  class="output-match"
+                                  class:current-search-match={isCurrentOutputMatch(sessionId, cell.id, 'output', part.lineIndex)}
+                                  use:registerOutputLine={outputMatchKey(sessionId, { cellId: cell.id, section: 'output', lineIndex: part.lineIndex })}
+                                >{part.text}</mark>{:else}{part.text}{/if}{/each}{:else}{messageOutput(cell)}{/if}</pre>
                             {/if}
                           </article>
                           {/if}
                         {/each}
                       </div>
-                    </div>
-                  {:else}
-                    <div class="empty compact-empty">暂无会话输出。</div>
-                  {/if}
+                    {:else}
+                      <div class="empty compact-empty">暂无会话输出。</div>
+                    {/if}
+                  </div>
                   <div class="message-composer" class:disabled={!canSendMessage(trace)}>
                     <textarea
                       rows="3"
@@ -1296,6 +1584,64 @@
     overflow: hidden;
   }
 
+  .session-output-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .session-output-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .output-search-field {
+    min-width: 120px;
+  }
+
+  .output-search-field input {
+    box-sizing: border-box;
+    width: clamp(120px, 16vw, 220px);
+    min-height: 28px;
+    padding: 4px 8px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--text);
+    background: #fff;
+    font: inherit;
+    font-size: 12px;
+  }
+
+  .output-search-field input:focus {
+    border-color: var(--primary);
+    outline: 2px solid rgba(47, 95, 208, 0.14);
+  }
+
+  .search-count {
+    min-width: 36px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    text-align: center;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
   h4 {
     margin: 0;
     color: var(--text);
@@ -1459,6 +1805,17 @@
     overflow-wrap: anywhere;
   }
 
+  .output-match {
+    border-radius: 2px;
+    background: #fadb14;
+    color: #172033;
+  }
+
+  .output-match.current-search-match {
+    background: #fa8c16;
+    box-shadow: 0 0 0 2px rgba(250, 140, 22, 0.35);
+  }
+
   .run-terminal-block {
     min-width: 0;
     overflow: hidden;
@@ -1555,7 +1912,7 @@
     min-height: 80px;
   }
 
-  .session-card > .compact-empty {
+  .session-output > .compact-empty {
     min-height: 0;
     align-self: stretch;
   }
@@ -1603,6 +1960,25 @@
 
     .session-actions {
       justify-content: flex-start;
+    }
+
+    .session-output-head,
+    .session-output-toolbar {
+      align-items: stretch;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+    }
+
+    .session-output-head {
+      flex-direction: column;
+    }
+
+    .output-search-field {
+      flex: 1 1 180px;
+    }
+
+    .output-search-field input {
+      width: 100%;
     }
   }
 </style>
