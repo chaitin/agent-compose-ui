@@ -5,7 +5,7 @@
 
   import { executeRuntimeCommandStream, type RuntimeExecResult } from '../api/exec';
 
-  export let sessionId = '';
+  export let sandboxId = '';
   export let runId = '';
   export let disabled = false;
   export let disabledReason = '';
@@ -32,8 +32,8 @@
   let result: RuntimeExecResult | null = null;
   let history: CommandHistoryItem[] = [];
 
-  $: canExecute = !disabled && !running && Boolean((sessionId || runId).trim()) && Boolean(command.trim());
-  $: targetLabel = sessionId ? `session ${sessionId}` : runId ? `run ${runId}` : '-';
+  $: canExecute = !disabled && !running && Boolean((sandboxId || runId).trim()) && Boolean(command.trim());
+  $: targetLabel = sandboxId ? `sandbox ${sandboxId}` : runId ? `run ${runId}` : '-';
 
   onMount(() => {
     if (!terminalNode) return;
@@ -119,7 +119,7 @@
 
     try {
       const finalResult = await executeRuntimeCommandStream({
-        sessionId,
+        sandboxId,
         runId,
         command: source,
         cwd,

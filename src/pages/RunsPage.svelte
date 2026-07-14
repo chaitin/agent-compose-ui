@@ -8,11 +8,10 @@
   import { FitAddon } from '@xterm/addon-fit';
 
   import AntIcon from '../components/AntIcon.svelte';
-  import { getAutomationRun, listAutomationEvents, listAutomationTasks, listRecentAutomationRuns, runAutomationTaskNow, type AutomationTask } from '../api/loaders';
-  import { createAgentDefinitionSession, listAgentDefinitions, type AgentDefinition } from '../api/agents';
-  import { listWorkspacePresets, type WorkspacePreset } from '../api/config';
+  import { getAutomationRun, listAutomationEvents, listAutomationTasks, listRecentAutomationRuns, resolveAutomationSessionTarget, runAutomationTaskNow, type AutomationTask } from '../api/loaders';
+  import { runAgentDefinition, listAgentDefinitions, type AgentDefinition } from '../api/agents';
   import {
-    getWorkSessionStatus,
+    getWorkSessionRunTarget,
     listWorkSessionCells,
     listWorkSessionEvents,
     listWorkSessions,
@@ -20,9 +19,10 @@
     sendWorkSessionMessageStream,
     stopWorkSession,
     watchWorkSession,
+    type WorkSessionRunTarget,
   } from '../api/sessions';
   import { automationRunToRun, sessionToRun, type ProductRun } from '../model/runs';
-  import { CellType } from '@chaitin-ai/agent-compose-client/agentcompose/v1/agentcompose_pb.js';
+  import { CellType } from '../api/sessions';
   import { defaultGuestImage } from '../model/runtime';
   import { appPath } from '../paths';
   import { formatBeijingTime } from '../time';
@@ -159,6 +159,18 @@
   let taskFilter = '';
   let keyword = '';
   let runs: ProductRun[] = [];
+  let conversationTargets = new Map<string, WorkSessionRunTarget>();
+  const conversationTargetRequests = new Map<string, Promise<void>>();
+  let conversationTargetResolving = new Set<string>();
+  let conversationTargetResolved = new Set<string>();
+  let activeSendRenderKey = '';
+  let activeSendRunId = '';
+  let activeSendSandboxId = '';
+  let activeUserRenderKey = '';
+  let activeUserRunId = '';
+  const sendMessageKeys = new Map<string, { user: string; agent: string }>();
+  const locallyStreamedCellIds = new Set<string>();
+  let loadRequest: Promise<void> | null = null;
   let agentDefinitions: AgentDefinition[] = [];
   let automationTasks: AutomationTask[] = [];
   let selectedAgentId = '';
@@ -195,11 +207,8 @@
   let sessionAction: { runId: string; type: 'stop' | 'resume' } | null = null;
   let automationActionRunId = '';
   let runAgent: AgentDefinition | null = null;
-  let runWorkspaceMode: 'empty' | 'file' | 'git' = 'empty';
-  let runWorkspaceId = '';
   let runTask = '';
   let running = false;
-  let workspaces: WorkspacePreset[] = [];
   let message = '';
   let messageTimer: ReturnType<typeof setTimeout> | null = null;
   let copiedId = '';
@@ -246,6 +255,9 @@
   $: automationTaskItems = conversationTaskItems.filter((item) => item.kind === 'automation_task');
   $: selectedRun = selectedRunId ? currentAgentBaseRuns.find((run) => run.id === selectedRunId) || selectedAgentObservation?.runs.find((run) => run.id === selectedRunId) || null : null;
   $: selectedChatRun = resolveSelectedChatRun(workbenchMode, selectedConversationId, selectedRunId, selectedAgentObservation, currentAgentRuns, currentAgentBaseRuns);
+  $: if (selectedChatRun?.type === 'work_session' && !conversationTargets.has(selectedChatRun.id)) {
+    void ensureConversationTarget(selectedChatRun);
+  }
   $: timelineCriteria = {
     taskId: selectedTaskId,
     timeRange: timelineTimeRange,
@@ -290,18 +302,10 @@
         stopWatching();
       }
     };
-    const refreshOnFocus = () => {
-      if (document.visibilityState === 'visible' && !loading) {
-        resumeVisibleWatch();
-        void load();
-      }
-    };
     window.addEventListener('popstate', syncFromURL);
-    window.addEventListener('focus', refreshOnFocus);
     document.addEventListener('visibilitychange', handleVisible);
     return () => {
       window.removeEventListener('popstate', syncFromURL);
-      window.removeEventListener('focus', refreshOnFocus);
       document.removeEventListener('visibilitychange', handleVisible);
     };
   });
@@ -402,11 +406,11 @@
     activeMode = workbenchMode;
     selectedConversationId = params.get('conversationId') || '';
     conversationId = selectedConversationId;
-    const requestedSessionId = params.get('sessionId') || '';
+	const requestedSandboxId = params.get('sandboxId') || params.get('sessionId') || '';
     const requestedRunId = params.get('runId') || '';
     selectedRunId = workbenchMode === 'chat'
-      ? (selectedConversationId || requestedSessionId || requestedRunId)
-      : (requestedRunId || requestedSessionId || selectedConversationId);
+	  ? (selectedConversationId || requestedSandboxId || requestedRunId)
+	  : (requestedRunId || requestedSandboxId || selectedConversationId);
     selectedAgentId = rawAgentId;
     selectedGroupKey = selectedAgentId;
     selectedContextKey = selectedTaskId ? `task:${selectedTaskId}` : (selectedRunId ? '' : 'overview');
@@ -468,7 +472,8 @@
       q: timelineQuery.trim() || null,
       mock: null,
       runId: selectedRunParam(),
-      sessionId: selectedSessionParam(),
+	  sandboxId: selectedSessionParam(),
+	  sessionId: null,
       detailTab: null,
       groupKey: null,
       groupTab: null,
@@ -1512,8 +1517,6 @@
 
   function openRun(agent: AgentDefinition): void {
     runAgent = agent;
-    runWorkspaceMode = agent.workFiles.source === 'git' || agent.workFiles.source === 'file' ? agent.workFiles.source : 'empty';
-    runWorkspaceId = agent.workspaceId;
     runTask = '';
     running = false;
     error = '';
@@ -1528,16 +1531,6 @@
   function closeRunFromKey(event: KeyboardEvent): void {
     if (event.key === 'Escape' || event.key === 'Enter' || event.key === ' ') {
       closeRun();
-    }
-  }
-
-  function onRunWorkspaceModeChange(): void {
-    if (runWorkspaceMode === 'empty') {
-      runWorkspaceId = '';
-      return;
-    }
-    if (!runWorkspaceId || workspaces.find((workspace) => workspace.id === runWorkspaceId)?.type !== runWorkspaceMode) {
-      runWorkspaceId = workspaces.find((workspace) => workspace.type === runWorkspaceMode)?.id ?? '';
     }
   }
 
@@ -1582,7 +1575,6 @@
       pending,
       resolved: false,
       statusPollTimer: null as ReturnType<typeof setTimeout> | null,
-      initialMessageSent: false,
     };
 
     running = true;
@@ -1641,49 +1633,35 @@
       ctx.statusPollTimer = setTimeout(statusPoll, 3000);
     }
 
-    function sendInitialMessage(sessionId: string): void {
-      if (ctx.initialMessageSent || !initialMessage) return;
-      ctx.initialMessageSent = true;
-      const provider = (agent.provider || 'codex').trim().toLowerCase();
-      if (provider === 'claude' || provider === 'gemini' || provider === 'codex' || provider === 'opencode') {
-        void sendWorkSessionMessageStream(sessionId, provider, initialMessage, () => {}).catch(() => {});
-      }
-    }
-
     // Fire RPC to create the session. When it returns with a sessionId we
     // swap out the temp entry. No blind polling — only the RPC knows the
     // exact sessionId, and matching on agent+timestamp races across
     // concurrent calls.
-    void createAgentDefinitionSession({
+    void runAgentDefinition({
       agentId: agent.id,
-      title: initialMessage ? `${initialMessage} ${formatSessionTime(new Date())}` : `${agent.name} ${formatSessionTime(new Date())}`,
-      workspaceId: runWorkspaceMode === 'git' || runWorkspaceMode === 'file' ? runWorkspaceId : '',
       driver: agent.driver || 'docker',
-      guestImage: agent.guestImage,
-      message: '',
-      provider: agent.provider,
-    }).then((sessionId) => {
-      if (ctx.resolved || !sessionId) return;
+      message: initialMessage,
+    }).then(({ sandboxId }) => {
+      if (ctx.resolved || !sandboxId) return;
       resolve();
       // The session just created may still be PENDING in listWorkSessions;
       // fetch it so we can update the temp entry and start status polling.
       listWorkSessions(50).then(({ sessions }) => {
-        const real = sessions.find((s) => s.id === sessionId);
+        const real = sessions.find((s) => s.id === sandboxId);
         runs = sortRunsByUpdatedTime(runs.map((r) => r.id === tempId
-          ? real ? { ...pending, ...sessionToRun(real), id: sessionId, input: pending.input || sessionToRun(real).input } : { ...r, id: sessionId }
+          ? real ? { ...pending, ...sessionToRun(real), id: sandboxId, input: pending.input || sessionToRun(real).input } : { ...r, id: sandboxId }
           : r));
-        selectedRunId = sessionId;
-        selectedConversationId = sessionId;
-        conversationId = sessionId;
-        selectedContextKey = `manual:${sessionId}`;
-        const fresh = runs.find((r) => r.id === sessionId);
+        selectedRunId = sandboxId;
+        selectedConversationId = sandboxId;
+        conversationId = sandboxId;
+        selectedContextKey = `manual:${sandboxId}`;
+        const fresh = runs.find((r) => r.id === sandboxId);
         if (fresh) {
           startWatching(fresh);
-          startStatusFallbackPoll(sessionId);
+          startStatusFallbackPoll(sandboxId);
         }
-        message = `工作会话已创建：${sessionId}`;
+        message = `工作会话已创建：${sandboxId}`;
         messageTimer = setTimeout(() => { message = ''; }, 5000);
-        sendInitialMessage(sessionId);
       }).catch(() => {});
     }).catch(() => {
       // RPC failed — nothing we can do without a sessionId.
@@ -2304,7 +2282,7 @@
   }
 
   function canSendMessage(run: ProductRun): boolean {
-    return run.type === 'work_session' && run.status === '运行中' && !isReplyPending(run);
+    return run.type === 'work_session' && run.status === '运行中' && conversationTargets.has(run.id) && !isReplyPending(run);
   }
 
   function displayStatus(run: ProductRun): string {
@@ -2356,6 +2334,8 @@
     if (run.status === '已停止') return '运行已停止';
     if (run.status === '启动失败') return '运行启动失败';
     if (run.status !== '运行中') return '运行未运行';
+    if (!conversationTargets.has(run.id) && (!conversationTargetResolved.has(run.id) || conversationTargetResolving.has(run.id))) return '正在解析会话项目/智能体...';
+    if (!conversationTargets.has(run.id)) return '旧会话缺少可用项目/智能体，仅供查看';
     return 'Shift + Enter 换行';
   }
 
@@ -2473,6 +2453,10 @@
     return message.role === 'agent' ? stripAgentResultPayload(content) : content;
   }
 
+  function correlatedRenderKey(runId: string | undefined, role: 'user' | 'agent', fallback: string): string {
+    return (runId ? sendMessageKeys.get(runId)?.[role] : '') || fallback;
+  }
+
   function mergeMessageContent(existing: ProductRun['messages'][number], next: ProductRun['messages'][number]): string {
     return agentMessageContent(next, mergeCellContent(agentMessageContent(next, existing.content), agentMessageContent(next, next.content)));
   }
@@ -2481,7 +2465,8 @@
     const role = cell.agent ? 'agent' : 'user';
     return {
       id: cell.id,
-      renderKey: cell.id,
+      runId: cell.runId,
+      renderKey: correlatedRenderKey(cell.runId, role, cell.id),
       role,
       type: cell.type,
       agent: cell.agent,
@@ -2498,19 +2483,23 @@
   }
 
   function cellToMessages(cell: Awaited<ReturnType<typeof listWorkSessionCells>>[number]): ProductRun['messages'][] {
-    const agent = cellMessage(cell);
-    if (agent.role !== 'agent' || !cell.source?.trim()) return [agent];
-    // Agent cells carry the user's input in cell.source. Surface it as a
-    // distinct user message so both input and output appear in the chat.
+    const hasInput = Boolean(cell.source?.trim());
+    const hasOutput = Boolean(cell.output?.trim() || cell.stopReason?.trim() || cell.running);
     const user: ProductRun['messages'][number] = {
-      id: `${cell.id}-input`,
-      renderKey: `${cell.id}-input`,
+      id: hasOutput ? `${cell.id}-input` : cell.id,
+      runId: cell.runId,
+      renderKey: correlatedRenderKey(cell.runId, 'user', hasOutput ? `${cell.id}-input` : cell.id),
       role: 'user',
       type: cell.type,
       source: cell.source,
       content: '',
       at: cell.createdAt || cell.id,
     };
+    if (hasInput && !hasOutput) return [user];
+    const agent = cellMessage(cell);
+    if (agent.role !== 'agent' || !hasInput) return [agent];
+    // Legacy agent cells can carry both the user's input and the assistant's
+    // output. Split only those combined cells into two chat messages.
     return [user, agent];
   }
 
@@ -2530,14 +2519,30 @@
     if (!next.id) {
       return [...messages, next];
     }
-    const index = messages.findIndex((message) => message.id === next.id);
+    const index = messages.findIndex((message) => message.id === next.id || Boolean(next.renderKey && message.renderKey === next.renderKey));
     if (index < 0) {
-      const pendingIndex = messages.findIndex((message) => message.role === next.role && message.running && !message.id);
+      // RunAgentStream identifies the in-flight assistant turn by run ID while
+      // WatchSandbox identifies the same turn by cell ID. Let the pushed cell
+      // take over the current running placeholder and retain its stable render
+      // key so the terminal RunAgentStream event merges back into one card.
+      const isActiveSendMessage = Boolean(
+        next.runId
+        && next.runId === activeSendRunId
+        && activeSendSandboxId,
+      );
+      const pendingIndex = isActiveSendMessage
+        ? messages.findIndex((message) => message.role === next.role && (
+          message.runId === next.runId
+          || (next.role === 'agent' && Boolean(activeSendRenderKey && message.renderKey === activeSendRenderKey))
+          || (next.role === 'user' && Boolean(activeUserRenderKey && message.renderKey === activeUserRenderKey))
+        ))
+        : -1;
       if (pendingIndex >= 0) {
         const updated = [...messages];
         const existing = updated[pendingIndex];
         updated[pendingIndex] = {
           ...next,
+          runId: next.runId || existing.runId,
           renderKey: existing.renderKey || next.renderKey || next.id,
           content: mergeMessageContent(existing, next),
         };
@@ -2549,9 +2554,25 @@
     const existing = updated[index];
     updated[index] = {
       ...next,
+      runId: next.runId || existing.runId,
       renderKey: existing.renderKey || next.renderKey || next.id,
       content: mergeMessageContent(existing, next),
     };
+    return updated;
+  }
+
+  function upsertWatchedMessage(messages: ProductRun['messages'], next: ProductRun['messages'][number], runId: string): ProductRun['messages'] {
+    if (next.role !== 'user' || activeUserRunId !== runId || !activeUserRenderKey) {
+      return upsertMessage(messages, next);
+    }
+    const pendingIndex = messages.findIndex((message) => message.role === 'user' && message.renderKey === activeUserRenderKey);
+    if (pendingIndex < 0) {
+      return upsertMessage(messages, next);
+    }
+    const updated = [...messages];
+    updated[pendingIndex] = { ...next, renderKey: activeUserRenderKey };
+    activeUserRenderKey = '';
+    activeUserRunId = '';
     return updated;
   }
 
@@ -2898,7 +2919,18 @@
     return `${(seconds / 3600).toFixed(1)}h`;
   }
 
-  async function load(): Promise<void> {
+  function load(): Promise<void> {
+    if (loadRequest) return loadRequest;
+    const request = loadOnce();
+    loadRequest = request;
+    void request.then(
+      () => { if (loadRequest === request) loadRequest = null; },
+      () => { if (loadRequest === request) loadRequest = null; },
+    );
+    return request;
+  }
+
+  async function loadOnce(): Promise<void> {
     loading = true;
     error = '';
     loadedGroupKeys = new Set();
@@ -2907,13 +2939,14 @@
       const sessions = sessionResult.sessions;
       sessionOffset = 50;
       sessionHasMore = sessionResult.hasMore;
-      const [tasks, agents, presets] = await Promise.all([listAutomationTasks(), listAgentDefinitions(), listWorkspacePresets()]);
-      workspaces = presets.filter((item) => item.type === 'git' || item.type === 'file');
+      const [tasks, agents] = await Promise.all([listAutomationTasks(), listAgentDefinitions()]);
       const automationRuns = await listRecentAutomationRuns(tasks.map((item) => item.id), 20);
       const taskById = new Map(tasks.map((task) => [task.id, task]));
       const agentById = new Map(agents.map((agent) => [agent.id, agent]));
       agentDefinitions = agents;
       automationTasks = tasks;
+      const visibleSessionIDs = new Set(sessions.map((session) => session.id));
+      conversationTargets = new Map([...conversationTargets].filter(([id]) => visibleSessionIDs.has(id)));
       const sessionRuns = sessions.map((session) => {
         const productRun = sessionToRun(session);
         const agentID = tagValue(session.tags, 'agent_id');
@@ -2951,42 +2984,12 @@
         }),
       ]);
       runs = initialRuns;
-      const hydratePromise = hydrateFirstUserMessages(initialRuns);
       await syncSelectionAfterRunsLoaded();
-      hydratePromise.then((hydrated) => {
-        const inputMap = new Map(hydrated.map((r) => [r.id, r.input]));
-        runs = runs.map((r) => {
-          const input = inputMap.get(r.id);
-          return input !== undefined ? { ...r, input } : r;
-        });
-      });
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
       loading = false;
     }
-  }
-
-  async function hydrateFirstUserMessages(targets: ProductRun[]): Promise<ProductRun[]> {
-    const toHydrate = targets.filter((r) => r.type === 'work_session' && r.messageCount > 0);
-    if (toHydrate.length === 0) return targets;
-    const results = await Promise.all(
-      toHydrate.map(async (run) => {
-        try {
-          const cells = await listWorkSessionCells(run.id);
-          const firstSource = cells.find((c) => c.source?.trim())?.source?.trim() || '';
-          return { id: run.id, input: firstSource };
-        } catch {
-          return { id: run.id, input: '' };
-        }
-      }),
-    );
-    const inputMap = new Map(results.map((r) => [r.id, r.input]));
-    return targets.map((run) => {
-      const input = inputMap.get(run.id);
-      if (input === undefined) return run;
-      return { ...run, input: input || run.input };
-    });
   }
 
   async function loadMoreManualConversations(): Promise<void> {
@@ -3014,8 +3017,7 @@
               automation: loaderName && loaderName !== '-' ? loaderName : task?.name || loaderID ? (task?.name || loaderID) : '-',
             };
           });
-        const hydratedNewRuns = await hydrateFirstUserMessages(newRuns);
-        runs = sortRunsByUpdatedTime([...runs, ...hydratedNewRuns]);
+        runs = sortRunsByUpdatedTime([...runs, ...newRuns]);
         sessionOffset += result.sessions.length;
         sessionHasMore = result.hasMore;
       } catch { /* ignore */ }
@@ -3135,29 +3137,15 @@
     error = '';
     try {
       if (run.type === 'work_session') {
-        // Avoid overwriting optimistic action status. If there is an active
-        // sessionAction for this run (resume/stop), skip getWorkSessionStatus so the
-        // action handler's result (or the watch stream) updates the status.
-        const hasActiveAction = sessionAction?.runId === run.id;
-        const [session, cells, events] = await Promise.all([
-          hasActiveAction ? Promise.resolve(null) : getWorkSessionStatus(run.id).catch(() => null),
+        const targetPromise = ensureConversationTarget(run);
+        const [cells, events] = await Promise.all([
           listWorkSessionCells(run.id).catch(() => []),
           listWorkSessionEvents(run.id).catch(() => []),
         ]);
-        const sessionRun = session ? sessionToRun(session) : null;
+        await targetPromise;
         runs = runs.map((item) => item.id === run.id
           ? {
             ...item,
-            ...(sessionRun || {}),
-            status: hasActiveAction ? item.status : (sessionRun?.status || item.status),
-            rawStatus: hasActiveAction ? item.rawStatus : (sessionRun?.rawStatus || item.rawStatus),
-            title: item.title,
-            automation: item.automation,
-            agent: item.agent,
-            agentId: item.agentId,
-            workspace: item.workspace,
-            sourceSessionTags: item.sourceSessionTags,
-            trigger: item.trigger,
             messages: cells.flatMap(cellToMessages),
             events: events.map((event) => ({
               type: event.type,
@@ -3202,6 +3190,29 @@
         void scrollMessagesToBottom();
         scheduleMessageBottomCorrection();
       }
+    }
+  }
+
+  async function ensureConversationTarget(run: ProductRun): Promise<void> {
+    if (conversationTargets.has(run.id)) return;
+    const pending = conversationTargetRequests.get(run.id);
+    if (pending) return pending;
+    conversationTargetResolving = new Set(conversationTargetResolving).add(run.id);
+    const request = (async () => {
+      let target = await getWorkSessionRunTarget(run.id).catch(() => undefined);
+      if (!target) {
+        const loaderID = tagValue(run.sourceSessionTags, 'loader_id') || run.automationId;
+        target = loaderID ? await resolveAutomationSessionTarget(loaderID).catch(() => undefined) : undefined;
+      }
+      if (target) conversationTargets = new Map(conversationTargets).set(run.id, target);
+    })();
+    conversationTargetRequests.set(run.id, request);
+    try {
+      await request;
+    } finally {
+      if (conversationTargetRequests.get(run.id) === request) conversationTargetRequests.delete(run.id);
+      conversationTargetResolving = new Set([...conversationTargetResolving].filter((id) => id !== run.id));
+      conversationTargetResolved = new Set(conversationTargetResolved).add(run.id);
     }
   }
 
@@ -3656,22 +3667,40 @@
               ? { ...item, events: [...item.events, { type: event.event.type, level: event.event.level, message: event.event.message, createdAt: event.event.createdAt }] }
               : item);
           } else if (event.type === 'cell') {
+            if (activeSendSandboxId === runId) {
+              locallyStreamedCellIds.add(event.cell.id);
+              if (locallyStreamedCellIds.size > 100) {
+                locallyStreamedCellIds.delete(locallyStreamedCellIds.values().next().value as string);
+              }
+            }
+            const cell = activeSendSandboxId === runId && activeSendRunId
+              ? { ...event.cell, runId: activeSendRunId }
+              : event.cell;
+            const activeKeys = activeSendSandboxId === runId
+              ? (activeSendRunId ? sendMessageKeys.get(activeSendRunId) : { user: activeUserRenderKey, agent: activeSendRenderKey })
+              : undefined;
             runs = runs.map((item) => {
               if (item.id !== runId) return item;
               let messages = item.messages;
-              for (const msg of cellToMessages(event.cell)) {
-                if (msg.role === 'user' && messages.some((m) => m.role === 'user' && (m.source || m.content || '') === (msg.source || msg.content || ''))) {
-                  continue;
-                }
-                messages = upsertMessage(messages, applyPendingChunks(msg));
+              for (const msg of cellToMessages(cell)) {
+                const activeKey = msg.role === 'system' ? '' : activeKeys?.[msg.role];
+                const correlated = activeKey
+                  ? { ...msg, renderKey: activeKey }
+                  : msg;
+                messages = upsertWatchedMessage(messages, applyPendingChunks(correlated), runId);
               }
               return { ...item, messages };
             });
-            if (event.cell.agent && !event.cell.running) {
+            if (cell.agent && !cell.running) {
               sendingMessage = false;
+              activeSendRenderKey = '';
             }
             void scrollMessagesToBottom();
           } else if (event.type === 'chunk') {
+            // RunAgentStream is authoritative for a message sent by this page.
+            // WatchSandbox delivers the same cell chunks for cross-client
+            // updates; consuming both would append the assistant output twice.
+            if (locallyStreamedCellIds.has(event.cellId)) return;
             const applied = appendAgentChunk(runId, event.cellId, event.chunk);
             if (!applied) {
               appendPendingChunk(event.cellId, event.chunk);
@@ -3782,21 +3811,32 @@
     messageAbort = controller;
     sendingMessage = true;
     error = '';
+    let pendingRenderKey = '';
     try {
       const sentText = messageText.trim();
       const isFirstUserMessage = !run.messages.some((m) => m.role === 'user');
       const pendingMessageId = `pending-${Date.now()}`;
-      const pendingRenderKey = pendingMessageId;
+      pendingRenderKey = pendingMessageId;
+      activeSendRenderKey = pendingRenderKey;
+      activeSendRunId = '';
+      activeSendSandboxId = run.id;
+      activeUserRenderKey = `user-${pendingRenderKey}`;
+      activeUserRunId = run.id;
       messageText = '';
       runs = runs.map((item) => item.id === run.id
         ? { ...item, title: isFirstUserMessage ? sentText : item.title, input: isFirstUserMessage ? sentText : item.input, messages: [...item.messages,
-            { renderKey: `user-${pendingRenderKey}`, role: 'user', source: sentText, content: '', at: new Date().toISOString() },
+            { renderKey: activeUserRenderKey, role: 'user', source: sentText, content: '', at: new Date().toISOString() },
             { id: pendingMessageId, renderKey: pendingRenderKey, role: 'agent', content: '', at: new Date().toISOString(), running: true, agent: run.agentProvider || 'codex', type: CellType.AGENT },
           ] }
         : item);
       await scrollMessagesToBottom();
       await sendWorkSessionMessageStream(run.id, run.agentProvider || 'codex', sentText, (event) => {
         if (event.type === 'started' && event.runId) {
+          activeSendRunId = event.runId;
+          sendMessageKeys.set(event.runId, { user: `user-${pendingRenderKey}`, agent: pendingRenderKey });
+          if (sendMessageKeys.size > 100) {
+            sendMessageKeys.delete(sendMessageKeys.keys().next().value as string);
+          }
           runs = runs.map((item) => {
             if (item.id !== run.id) return item;
             const pending = item.messages.find((message) => message.id === pendingMessageId);
@@ -3805,13 +3845,17 @@
               const messages = item.messages
                 .filter((message) => message.id !== pendingMessageId)
                 .map((message) => message.id === event.runId
-                  ? { ...message, renderKey: pending.renderKey || message.renderKey, content: mergeMessageContent(message, pending) }
+                  ? { ...message, runId: event.runId, renderKey: pending.renderKey || message.renderKey, content: mergeMessageContent(message, pending) }
                   : message);
               return { ...item, messages };
             }
             return {
               ...item,
-              messages: item.messages.map((message) => message.id === pendingMessageId ? { ...message, id: event.runId, renderKey: message.renderKey || pendingRenderKey } : message),
+              messages: item.messages.map((message) => {
+                if (message.id === pendingMessageId) return { ...message, id: event.runId, runId: event.runId, renderKey: message.renderKey || pendingRenderKey };
+                if (message.renderKey === activeUserRenderKey) return { ...message, runId: event.runId };
+                return message;
+              }),
             };
           });
         } else if (event.type === 'chunk' && event.chunk) {
@@ -3825,6 +3869,7 @@
               ...item,
               messages: upsertMessage(item.messages, {
                 id: event.run?.id || event.runId,
+                runId: event.runId,
                 renderKey: pendingRenderKey,
                 role: 'agent',
                 agent: event.run?.agent || run.agentProvider || 'codex',
@@ -3841,10 +3886,17 @@
             }
             : item);
         }
-      }, controller.signal);
+      }, controller.signal, conversationTargets.get(run.id));
       await scrollMessagesToBottom();
     } catch (err) {
       if (!controller.signal.aborted) {
+        activeSendRenderKey = '';
+        activeSendRunId = '';
+        activeSendSandboxId = '';
+        if (activeUserRunId === run.id) {
+          activeUserRenderKey = '';
+          activeUserRunId = '';
+        }
         error = err instanceof Error ? err.message : String(err);
         await loadRunDetail(run);
       }
@@ -3852,6 +3904,17 @@
       if (messageAbort === controller) {
         messageAbort = null;
         sendingMessage = false;
+        setTimeout(() => {
+          if (activeSendRenderKey === pendingRenderKey) activeSendRenderKey = '';
+          if (activeSendSandboxId === run.id) {
+            activeSendRunId = '';
+            activeSendSandboxId = '';
+          }
+          if (activeUserRunId === run.id && activeUserRenderKey === `user-${pendingRenderKey}`) {
+            activeUserRenderKey = '';
+            activeUserRunId = '';
+          }
+        }, 5000);
       }
     }
   }
@@ -4475,7 +4538,7 @@
       <h2 id="agent-run-title">智能体运行</h2>
       <div class="toolbar">
         <button on:click={closeRun} disabled={running}>取消</button>
-        <button class="primary" on:click={runSelectedAgent} disabled={running || (runWorkspaceMode !== 'empty' && !runWorkspaceId)}>{running ? '运行中...' : '运行'}</button>
+        <button class="primary" on:click={runSelectedAgent} disabled={running}>{running ? '运行中...' : '运行'}</button>
       </div>
     </div>
     <div class="drawer-body drawer-form agent-run-form">
@@ -4492,27 +4555,6 @@
         <div><span>运行驱动</span><b>{runAgent.driver || 'docker'}</b></div>
         <div><span>运行镜像</span><b>{runAgent.guestImage || defaultGuestImage}</b></div>
       </div>
-
-      <fieldset class="form-item radio-field run-workspace-field">
-        <legend>会话文件</legend>
-        <div class="segmented-grid">
-          <label class:active={runWorkspaceMode === 'empty'}><input type="radio" bind:group={runWorkspaceMode} value="empty" on:change={onRunWorkspaceModeChange}> 空白开始</label>
-          <label class:active={runWorkspaceMode === 'git'}><input type="radio" bind:group={runWorkspaceMode} value="git" on:change={onRunWorkspaceModeChange}> Git workspace</label>
-          <label class:active={runWorkspaceMode === 'file'}><input type="radio" bind:group={runWorkspaceMode} value="file" on:change={onRunWorkspaceModeChange}> 文件 workspace</label>
-        </div>
-      </fieldset>
-
-      {#if runWorkspaceMode === 'git' || runWorkspaceMode === 'file'}
-        <label class="form-item">
-          <span>{runWorkspaceMode === 'git' ? 'Git workspace preset' : '文件 workspace preset'}</span>
-          <select bind:value={runWorkspaceId}>
-            <option value="">请选择</option>
-            {#each workspaces.filter((workspace) => workspace.type === runWorkspaceMode) as workspace}
-              <option value={workspace.id}>{workspace.name}</option>
-            {/each}
-          </select>
-        </label>
-      {/if}
 
       <label class="form-item run-task-input">
         <span>初始消息</span>

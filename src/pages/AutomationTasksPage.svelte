@@ -78,7 +78,7 @@
   let deleteConfirmId = '';
 
   $: activeAgents = agents.filter((agent) => !agent.deletedAt && agent.enabled);
-  $: agentsById = new Map(agents.map((agent) => [agent.id, agent]));
+  $: agentsById = agentLookup(agents);
   $: selectedDraftAgent = agentsById.get(draft.agentId) ?? null;
   $: filteredTasks = tasks.filter((task) =>
     [task.name, task.description, task.defaultAgent, agentLabel(task.agentId), task.id].join(' ').toLowerCase().includes(keyword.toLowerCase()) &&
@@ -293,7 +293,7 @@ scheduler.interval("heartbeat", function heartbeat() {
     error = '';
     try {
       const result = await validateAutomationTask(scriptForDraft(draft), 'scheduler');
-      draftTriggers = result.triggers;
+      if (result.triggers.length > 0) draftTriggers = result.triggers;
       draft.codeValidationStatus = 'passed';
       showMessage('校验通过');
     } catch (err) {
@@ -319,15 +319,16 @@ scheduler.interval("heartbeat", function heartbeat() {
     error = '';
     try {
       const script = scriptForDraft(draft);
+      const triggers = triggersForDraft(draft);
       const validation = await validateAutomationTask(script, 'scheduler');
-      draftTriggers = validation.triggers;
+      if (validation.triggers.length > 0) draftTriggers = validation.triggers;
       draft.codeValidationStatus = 'passed';
       const task = await saveAutomationTask({
         id: draft.id || undefined,
         name: draft.name,
         description: draft.description,
         runtime: 'scheduler',
-        script,
+        script: draft.configMode === 'form' ? '' : script,
         workspaceId: selectedAgent.workspaceId,
         driver: selectedAgent.driver,
         guestImage: draft.guestImage || selectedAgent.guestImage,
@@ -338,6 +339,7 @@ scheduler.interval("heartbeat", function heartbeat() {
         concurrencyPolicy: draft.concurrencyPolicy,
         enabled: draft.enabled && draft.codeValidationStatus !== 'failed',
         envItems: draft.envItems,
+        triggers,
       });
       tasks = [task, ...tasks.filter((item) => item.id !== task.id)];
       // saveAutomationTask returns the full detail, including script + triggers
@@ -565,6 +567,16 @@ scheduler.cron(${triggerName}, "0 8 * * *", function ${handlerName}(payload) {
 `;
   }
 
+  function triggersForDraft(item: DraftTask) {
+    if (item.configMode !== 'form') return [];
+    const name = item.triggerName || 'default';
+    const prompt = item.taskInput || item.description || item.name;
+    if (item.triggerType === 'interval') return [{ name, kind: 'interval', interval: '60s', prompt, sandboxPolicy: item.sessionPolicy }];
+    if (item.triggerType === 'timeout') return [{ name, kind: 'timeout', timeout: '60s', prompt, sandboxPolicy: item.sessionPolicy }];
+    if (item.triggerType === 'event') return [{ name, kind: 'event', topic: 'agent-compose.*', prompt, sandboxPolicy: item.sessionPolicy }];
+    return [{ name, kind: 'cron', cron: '0 8 * * *', prompt, sandboxPolicy: item.sessionPolicy }];
+  }
+
   function triggerSummary(task: AutomationTask): string {
     if (task.triggerCount <= 0) return '未配置';
     if (task.triggerCount === 1) return '1 条规则';
@@ -578,6 +590,15 @@ scheduler.cron(${triggerName}, "0 8 * * *", function ${handlerName}(payload) {
 
   function providerForDraft(item: DraftTask): string {
     return agentsById.get(item.agentId)?.provider || item.defaultAgent || 'codex';
+  }
+
+  function agentLookup(items: AgentDefinition[]): Map<string, AgentDefinition> {
+    const result = new Map<string, AgentDefinition>();
+    for (const agent of items) {
+      result.set(agent.id, agent);
+      result.set(agent.name, agent);
+    }
+    return result;
   }
 
   function agentLabel(agentId: string): string {

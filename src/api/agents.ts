@@ -1,252 +1,31 @@
-import { agentClient, agentDefinitionClient } from './client';
-import {
-  AgentAvailabilityStatus,
-  AgentCurrentRunStatus,
-  AgentHealthStatus,
-  AgentWorkFilesSource,
-  type AgentDefinition as ProtoAgentDefinition,
-} from '@chaitin-ai/agent-compose-client/agentcompose/v1/agentcompose_pb.js';
+import { AgentSpec, AgentStatus, DriverSpec, EnvVarSpec, ProjectAgentAvailability, ProjectAgentHealth, RunSandboxCleanupPolicy, RunSource, RunStatus, WorkspaceSpec, type Project, type ProjectAgent } from '../gen/agentcompose/v2/agentcompose_pb.js';
+import { projectClient, runClient } from './client';
+import { listWorkspacePresets, type WorkspacePreset } from './config';
 
-export type AgentWorkFiles = {
-  source: 'empty' | 'file' | 'git';
-  workspaceId: string;
-  workspaceName: string;
-  workspaceType: string;
-  summary: string;
-  configJson: string;
-};
+export type AgentWorkFiles = { source: 'empty' | 'file' | 'git'; workspaceId: string; workspaceName: string; workspaceType: string; summary: string; configJson: string };
+export type AgentEnvItem = { name: string; value: string; secret: boolean };
+export type AgentRunSummary = { text: string; runningSessionCount: number; runningLoaderRunCount: number };
+export type AgentLatestRun = { runType: string; status: string; runId: string; title: string; at: string };
+export type AgentDefinition = { id:string;name:string;description:string;enabled:boolean;provider:string;model:string;systemPrompt:string;runtimeImageId:string;driver:string;guestImage:string;workspaceId:string;envItems:AgentEnvItem[];configJson:string;capsetIds:string[];availability:string;availabilityClass:'green'|'amber'|'red';health:string;healthClass:'green'|'amber'|'red';workFiles:AgentWorkFiles;currentRun:AgentRunSummary;latestRun:AgentLatestRun|null;createdAt:string;updatedAt:string;deletedAt:string;projectId?:string };
+export type AgentDefinitionInput = {name:string;description:string;enabled:boolean;provider:string;model:string;systemPrompt:string;runtimeImageId:string;driver:string;guestImage:string;workspaceId:string;envItems:AgentEnvItem[];configJson:string;capsetIds:string[]};
 
-export type AgentEnvItem = {
-  name: string;
-  value: string;
-  secret: boolean;
-};
+export async function listAgentDefinitions(query=''):Promise<AgentDefinition[]>{const projects=await listProjects();const result:AgentDefinition[]=[];for(const summary of projects){const response=await projectClient.getProject({project:{projectId:summary.projectId},includeSpec:true});const project=response.project;if(!project)continue;for(const agent of project.agents){const spec=project.spec?.agents.find((value)=>value.name===agent.agentName);const mapped=agentFromV2(project,agent,spec);if(!query||mapped.name.toLowerCase().includes(query.toLowerCase()))result.push(mapped)}}return result}
+export async function createAgentDefinition(input:AgentDefinitionInput):Promise<AgentDefinition>{const normalized=requestFromInput(input);const existing=await findUIProject();const agents=[...(existing?.spec?.agents??[]),await specFromInput(normalized)];const response=await projectClient.applyProject({spec:{...(existing?.spec??{}),name:existing?.spec?.name||'ui-agents',agents}});const agent=response.project?.agents.find((value)=>value.agentName===normalized.name);if(!response.project||!agent)throw new Error('智能体保存失败');return agentFromV2(response.project,agent,response.project.spec?.agents.find((value)=>value.name===agent.agentName))}
+export async function updateAgentDefinition(id:string,input:AgentDefinitionInput):Promise<AgentDefinition>{const found=await findAgent(id);if(!found)throw new Error('智能体不存在');const normalized=requestFromInput(input);const nextSpec=await specFromInput(normalized);const agents=(found.project.spec?.agents??[]).map((value)=>value.name===found.agent.agentName?nextSpec:value);const response=await projectClient.applyProject({spec:{...found.project.spec!,agents}});const agent=response.project?.agents.find((value)=>value.agentName===normalized.name);if(!response.project||!agent)throw new Error('智能体保存失败');return agentFromV2(response.project,agent,response.project.spec?.agents.find((value)=>value.name===agent.agentName))}
+export async function deleteAgentDefinition(id:string):Promise<void>{const found=await findAgent(id);if(!found)return;const agents=(found.project.spec?.agents??[]).filter((value)=>value.name!==found.agent.agentName);await projectClient.applyProject({spec:{...found.project.spec!,agents}})}
+export async function runAgentDefinition(input:{agentId:string;driver:string;message:string}):Promise<{runId:string;sandboxId:string}>{const found=await findAgent(input.agentId);if(!found)throw new Error('智能体不存在');const response=await runClient.runAgent({projectId:found.project.summary?.projectId??'',agentName:found.agent.agentName,prompt:input.message,source:RunSource.MANUAL,driver:input.driver,cleanupPolicy:RunSandboxCleanupPolicy.KEEP_RUNNING});return{runId:response.run?.summary?.runId??'',sandboxId:response.run?.summary?.sandboxId??''}}
 
-export type AgentRunSummary = {
-  text: string;
-  runningSessionCount: number;
-  runningLoaderRunCount: number;
-};
-
-export type AgentLatestRun = {
-  runType: string;
-  status: string;
-  runId: string;
-  title: string;
-  at: string;
-};
-
-export type AgentDefinition = {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  provider: string;
-  model: string;
-  systemPrompt: string;
-  runtimeImageId: string;
-  driver: string;
-  guestImage: string;
-  workspaceId: string;
-  envItems: AgentEnvItem[];
-  configJson: string;
-  capsetIds: string[];
-  availability: string;
-  availabilityClass: 'green' | 'amber' | 'red';
-  health: string;
-  healthClass: 'green' | 'amber' | 'red';
-  workFiles: AgentWorkFiles;
-  currentRun: AgentRunSummary;
-  latestRun: AgentLatestRun | null;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string;
-};
-
-export type AgentDefinitionInput = {
-  name: string;
-  description: string;
-  enabled: boolean;
-  provider: string;
-  model: string;
-  systemPrompt: string;
-  runtimeImageId: string;
-  driver: string;
-  guestImage: string;
-  workspaceId: string;
-  envItems: AgentEnvItem[];
-  configJson: string;
-  capsetIds: string[];
-};
-
-export async function listAgentDefinitions(query = ''): Promise<AgentDefinition[]> {
-  const response = await agentDefinitionClient.listAgentDefinitions({
-    query,
-    includeDisabled: true,
-    limit: 200,
-  });
-  return response.agents.map(agentFromProto);
-}
-
-export async function createAgentDefinition(input: AgentDefinitionInput): Promise<AgentDefinition> {
-  const response = await agentDefinitionClient.createAgentDefinition(requestFromInput(input));
-  if (!response.agent) {
-    throw new Error('智能体保存失败');
-  }
-  return agentFromProto(response.agent);
-}
-
-export async function updateAgentDefinition(id: string, input: AgentDefinitionInput): Promise<AgentDefinition> {
-  const response = await agentDefinitionClient.updateAgentDefinition({
-    agentId: id,
-    ...requestFromInput(input),
-  });
-  if (!response.agent) {
-    throw new Error('智能体保存失败');
-  }
-  return agentFromProto(response.agent);
-}
-
-export async function deleteAgentDefinition(id: string): Promise<void> {
-  await agentDefinitionClient.deleteAgentDefinition({ agentId: id });
-}
-
-export async function createAgentDefinitionSession(input: {
-  agentId: string;
-  title: string;
-  workspaceId: string;
-  driver: string;
-  guestImage: string;
-  message: string;
-  provider: string;
-}): Promise<string> {
-  const response = await agentDefinitionClient.createAgentSession({
-    agentId: input.agentId,
-    title: input.title,
-    workspaceId: input.workspaceId,
-    driver: input.driver,
-    guestImage: input.guestImage,
-  });
-  const sessionId = response.session?.summary?.sessionId ?? '';
-  const message = input.message.trim();
-  if (sessionId && message) {
-    await agentClient.sendAgentMessage({
-      sessionId,
-      agent: normalizeAgentProvider(input.provider),
-      message,
-    });
-  }
-  return sessionId;
-}
-
-function normalizeAgentProvider(value: string): string {
-  const provider = value.trim().toLowerCase();
-  if (provider === 'claude' || provider === 'gemini' || provider === 'codex' || provider === 'opencode') {
-    return provider;
-  }
-  throw new Error(`不支持的智能体 Provider：${value || '-'}`);
-}
-
-function requestFromInput(input: AgentDefinitionInput): AgentDefinitionInput {
-  return {
-    name: input.name.trim(),
-    description: input.description.trim(),
-    enabled: input.enabled,
-    provider: normalizeAgentProvider(input.provider),
-    model: input.model.trim(),
-    systemPrompt: input.systemPrompt.trim(),
-    runtimeImageId: input.runtimeImageId.trim(),
-    driver: input.driver.trim(),
-    guestImage: input.guestImage.trim(),
-    workspaceId: input.workspaceId.trim(),
-    envItems: input.envItems
-      .map((item) => ({ name: item.name.trim(), value: item.value, secret: item.secret }))
-      .filter((item) => item.name),
-    configJson: input.configJson.trim() || '{}',
-    capsetIds: input.capsetIds.map((id) => id.trim()).filter(Boolean),
-  };
-}
-
-function agentFromProto(item: ProtoAgentDefinition): AgentDefinition {
-  return {
-    id: item.agentId,
-    name: item.name,
-    description: item.description,
-    enabled: item.enabled,
-    provider: item.provider || 'codex',
-    model: item.model,
-    systemPrompt: item.systemPrompt,
-    runtimeImageId: item.runtimeImageId,
-    driver: item.driver,
-    guestImage: item.guestImage,
-    workspaceId: item.workFiles?.workspaceId ?? '',
-    envItems: item.envItems.map((env) => ({ name: env.name, value: env.value, secret: env.secret })),
-    configJson: item.configJson || '{}',
-    capsetIds: item.capsetIds ?? [],
-    availability: availabilityLabel(item.availabilityStatus),
-    availabilityClass: availabilityClass(item.availabilityStatus),
-    health: healthLabel(item.healthStatus),
-    healthClass: healthClass(item.healthStatus),
-    workFiles: {
-      source: workFilesSource(item.workFiles?.source),
-      workspaceId: item.workFiles?.workspaceId ?? '',
-      workspaceName: item.workFiles?.workspaceName ?? '',
-      workspaceType: item.workFiles?.workspaceType ?? '',
-      summary: item.workFiles?.summary ?? '',
-      configJson: item.workFiles?.configJson ?? '',
-    },
-    currentRun: {
-      text: item.currentRunSummary?.text || currentRunLabel(item.currentRunSummary?.status),
-      runningSessionCount: Number(item.currentRunSummary?.runningSessionCount ?? 0),
-      runningLoaderRunCount: Number(item.currentRunSummary?.runningLoaderRunCount ?? 0),
-    },
-    latestRun: item.latestRunSummary
-      ? {
-        runType: item.latestRunSummary.runType,
-        status: item.latestRunSummary.status,
-        runId: item.latestRunSummary.runId,
-        title: item.latestRunSummary.title,
-        at: item.latestRunSummary.at,
-      }
-      : null,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
-    deletedAt: item.deletedAt,
-  };
-}
-
-function availabilityLabel(status: AgentAvailabilityStatus): string {
-  if (status === AgentAvailabilityStatus.AVAILABLE) return '可用';
-  if (status === AgentAvailabilityStatus.UNAVAILABLE) return '不可用';
-  if (status === AgentAvailabilityStatus.VALIDATION_FAILED) return '校验失败';
-  return '未知';
-}
-
-function availabilityClass(status: AgentAvailabilityStatus): 'green' | 'amber' | 'red' {
-  if (status === AgentAvailabilityStatus.AVAILABLE) return 'green';
-  if (status === AgentAvailabilityStatus.UNAVAILABLE) return 'amber';
-  return 'red';
-}
-
-function healthLabel(status: AgentHealthStatus): string {
-  if (status === AgentHealthStatus.HEALTHY) return '健康';
-  if (status === AgentHealthStatus.AT_RISK) return '有风险';
-  return '未知';
-}
-
-function healthClass(status: AgentHealthStatus): 'green' | 'amber' | 'red' {
-  if (status === AgentHealthStatus.HEALTHY) return 'green';
-  if (status === AgentHealthStatus.AT_RISK) return 'amber';
-  return 'red';
-}
-
-function workFilesSource(source?: AgentWorkFilesSource): AgentWorkFiles['source'] {
-  if (source === AgentWorkFilesSource.FILE_WORKSPACE) return 'file';
-  if (source === AgentWorkFilesSource.GIT_WORKSPACE) return 'git';
-  return 'empty';
-}
-
-function currentRunLabel(status?: AgentCurrentRunStatus): string {
-  if (status === AgentCurrentRunStatus.HAS_RUNNING_SESSION) return '运行中';
-  return '暂无运行';
-}
+async function listProjects(){const result=[];let offset=0;for(;;){const response=await projectClient.listProjects({limit:200,offset});result.push(...response.projects);if(!response.hasMore)break;offset=response.nextOffset}return result}
+async function findUIProject():Promise<Project|undefined>{for(const summary of await listProjects()){if(summary.name==='ui-agents'){return (await projectClient.getProject({project:{projectId:summary.projectId},includeSpec:true})).project}}return undefined}
+async function findAgent(id:string):Promise<{project:Project;agent:ProjectAgent}|undefined>{const target=parseAgentFallbackId(id);for(const summary of await listProjects()){const project=(await projectClient.getProject({project:{projectId:summary.projectId},includeSpec:true})).project;if(!project)continue;if(target&&project.summary?.projectId!==target.projectId)continue;const agent=target?project.agents.find((value)=>value.agentName===target.agentName):project.agents.find((value)=>(Boolean(id)&&value.managedAgentId===id)||value.agentName===id);if(agent)return{project,agent}}return undefined}
+function requestFromInput(input:AgentDefinitionInput):AgentDefinitionInput{return{...input,name:input.name.trim(),provider:normalizeAgentProvider(input.provider),model:input.model.trim(),systemPrompt:input.systemPrompt.trim(),driver:input.driver.trim(),guestImage:input.guestImage.trim(),workspaceId:input.workspaceId.trim(),envItems:input.envItems.map((v)=>({...v,name:v.name.trim()})).filter((v)=>v.name),capsetIds:input.capsetIds.map((v)=>v.trim()).filter(Boolean)}}
+async function specFromInput(input:AgentDefinitionInput):Promise<AgentSpec>{return new AgentSpec({name:input.name,provider:input.provider,model:input.model,systemPrompt:input.systemPrompt,image:input.guestImage,driver:input.driver?new DriverSpec({name:input.driver}):undefined,env:input.envItems.map((value)=>new EnvVarSpec(value)),workspace:await workspaceSpecFromInput(input),capsetIds:input.capsetIds,status:input.enabled?AgentStatus.ENABLED:AgentStatus.DISABLED})}
+async function workspaceSpecFromInput(input:AgentDefinitionInput):Promise<WorkspaceSpec|undefined>{if(!input.workspaceId)return undefined;const preset=(await listWorkspacePresets()).find((value)=>value.id===input.workspaceId);if(!preset)throw new Error('Workspace 配置不存在');return workspaceSpecFromPreset(preset)}
+function workspaceSpecFromPreset(preset:WorkspacePreset):WorkspaceSpec{const config=jsonObject(preset.configJson);if(preset.type==='git')return new WorkspaceSpec({name:preset.id,provider:'git',url:stringValue(config.url)||stringValue(config.repo_url)||stringValue(config.repoUrl),branch:stringValue(config.branch),path:stringValue(config.path)||'.'});return new WorkspaceSpec({name:preset.id,provider:'local',path:stringValue(config.path)||preset.id})}
+function jsonObject(value:string):Record<string,unknown>{try{const parsed=JSON.parse(value||'{}');return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed as Record<string,unknown>:{}}catch{return{}}}
+function stringValue(value:unknown):string{return typeof value==='string'?value.trim():''}
+function normalizeAgentProvider(value:string):string{const provider=value.trim().toLowerCase();if(['claude','gemini','codex','opencode'].includes(provider))return provider;throw new Error(`不支持的智能体 Provider：${value||'-'}`)}
+function agentFromV2(project:Project,item:ProjectAgent,spec?:AgentSpec):AgentDefinition{const enabled=spec?spec.status!==AgentStatus.DISABLED:item.enabled;const workspaceId=spec?.workspace?.name??'';const projectId=project.summary?.projectId??'';const completeSpecProjection=Boolean(spec&&item.managedAgentId.trim()&&item.agentName.trim()&&item.provider.trim());const canonicalSpecMisread=completeSpecProjection&&item.availability===ProjectAgentAvailability.VALIDATION_FAILED;const availability=canonicalSpecMisread?(enabled?ProjectAgentAvailability.AVAILABLE:ProjectAgentAvailability.UNAVAILABLE):(enabled?item.availability:ProjectAgentAvailability.UNAVAILABLE);const health=canonicalSpecMisread&&item.latestRun?.status!==RunStatus.FAILED?ProjectAgentHealth.HEALTHY:item.health;return{id:agentIdFromV2(projectId,item),name:item.agentName,description:'',enabled,provider:item.provider||'codex',model:item.model,systemPrompt:spec?.systemPrompt??'',runtimeImageId:'',driver:item.driver,guestImage:item.image,workspaceId,envItems:(spec?.env??[]).map((v)=>({name:v.name,value:v.value,secret:v.secret})),configJson:'{}',capsetIds:spec?.capsetIds??[],availability:availability===ProjectAgentAvailability.AVAILABLE?'可用':availability===ProjectAgentAvailability.UNAVAILABLE?'不可用':availability===ProjectAgentAvailability.VALIDATION_FAILED?'校验失败':'未知',availabilityClass:availability===ProjectAgentAvailability.AVAILABLE?'green':availability===ProjectAgentAvailability.UNAVAILABLE?'amber':'red',health:health===ProjectAgentHealth.HEALTHY?'健康':health===ProjectAgentHealth.AT_RISK?'有风险':'未知',healthClass:health===ProjectAgentHealth.HEALTHY?'green':health===ProjectAgentHealth.AT_RISK?'amber':'red',workFiles:{source:spec?.workspace?.provider==='git'?'git':spec?.workspace?'file':'empty',workspaceId,workspaceName:spec?.workspace?.name??'',workspaceType:spec?.workspace?.provider??'',summary:spec?.workspace?.path??'',configJson:''},currentRun:{text:item.currentRun?.text??'暂无运行',runningSessionCount:item.currentRun?.runningRunCount??0,runningLoaderRunCount:item.currentRun?.runningSchedulerRunCount??0},latestRun:item.latestRun?{runType:item.latestRun.source===RunSource.SCHEDULER?'scheduler':'manual',status:RunStatus[item.latestRun.status]??'',runId:item.latestRun.runId,title:'',at:timestampString(item.latestRun.at)}:null,createdAt:'',updatedAt:'',deletedAt:'',projectId}}
+function agentIdFromV2(projectId:string,item:ProjectAgent):string{return item.managedAgentId.trim()||`project:${encodeURIComponent(projectId)}:agent:${encodeURIComponent(item.agentName)}`}
+function parseAgentFallbackId(id:string):{projectId:string;agentName:string}|undefined{const match=/^project:([^:]+):agent:(.+)$/.exec(id);return match?{projectId:decodeURIComponent(match[1]),agentName:decodeURIComponent(match[2])}:undefined}
+function timestampString(value?:{seconds:bigint;nanos:number}){return value?new Date(Number(value.seconds)*1000+value.nanos/1e6).toISOString():''}

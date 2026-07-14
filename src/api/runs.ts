@@ -2,7 +2,7 @@ import { runClient } from './client';
 
 export type ProjectRunDebugTarget = {
   runId: string;
-  sessionId: string;
+  sandboxId: string;
 };
 
 export async function getProjectRunDebugTarget(runId: string): Promise<ProjectRunDebugTarget> {
@@ -11,11 +11,11 @@ export async function getProjectRunDebugTarget(runId: string): Promise<ProjectRu
   if (!summary) {
     throw new Error('运行记录不存在');
   }
-  if (!summary.sessionId) {
+  if (!summary.sandboxId) {
     throw new Error('当前运行没有关联的调试会话');
   }
   return {
     runId: summary.runId,
-    sessionId: summary.sessionId,
+    sandboxId: summary.sandboxId,
   };
 }

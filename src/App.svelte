@@ -134,12 +134,12 @@
     }
   }
 
-  function navigateRunsWithRun(sessionId: string): void {
-    activePage = 'runs';
-    const nextPath = sessionId ? appPath(`/runs?sessionId=${encodeURIComponent(sessionId)}`) : appPath('/runs');
+  function navigateRunsWithRun(sandboxId: string): void {
+	activePage = 'runs';
+	const nextPath = sandboxId ? appPath(`/runs?sandboxId=${encodeURIComponent(sandboxId)}`) : appPath('/runs');
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     if (current !== nextPath) {
-      history.pushState({ page: 'runs', sessionId }, '', nextPath);
+		history.pushState({ page: 'runs', sandboxId }, '', nextPath);
     }
   }
 

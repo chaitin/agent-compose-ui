@@ -10,7 +10,7 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "types": ["svelte", "vite/client"]
+    "types": ["node", "svelte", "vite/client"]
   },
   "include": [
     "src/**/*.ts",

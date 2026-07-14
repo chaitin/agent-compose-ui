@@ -1,5 +1,6 @@
 import { apiFetchJson } from './http';
-import { loaderClient } from './client';
+import { projectClient, runClient } from './client';
+import { EventTriggerSpec, ProjectValidationSeverity, RunSource, RunStatus, TriggerSpec, type Project, type ResolvedTrigger, type RunSummary, type SchedulerSummary } from '../gen/agentcompose/v2/agentcompose_pb.js';
 
 export type AutomationTask = {
   id: string;
@@ -35,6 +36,8 @@ export type AutomationTrigger = {
   specJson: string;
   nextFireAt: string;
   lastFiredAt: string;
+  name: string;
+  prompt: string;
 };
 
 export type AutomationTaskDetail = AutomationTask & {
@@ -59,6 +62,18 @@ export type SaveAutomationTaskInput = {
   concurrencyPolicy: string;
   enabled: boolean;
   envItems?: Array<{ name: string; value: string; secret: boolean }>;
+  triggers?: AutomationTriggerInput[];
+};
+
+export type AutomationTriggerInput = {
+  name: string;
+  kind: string;
+  cron?: string;
+  interval?: string;
+  timeout?: string;
+  topic?: string;
+  prompt?: string;
+  sandboxPolicy?: string;
 };
 
 export type ValidateAutomationTaskResult = {
@@ -141,152 +156,118 @@ export type TopicEventSession = {
 };
 
 export async function listAutomationTasks(): Promise<AutomationTask[]> {
-  const response = await loaderClient.listLoaders({});
-  return response.loaders.map(taskFromSummary);
+  return (await listAllSchedulers()).map(taskFromV2);
 }
 
 export async function getAutomationTask(id: string): Promise<AutomationTaskDetail> {
-  const response = await loaderClient.getLoader({ loaderId: id });
-  if (!response.loader?.summary) {
-    throw new Error('自动化任务不存在');
-  }
-  return {
-    ...taskFromSummary(response.loader.summary),
-    script: response.loader.script,
-    triggers: response.loader.triggers.map(triggerFromResponse),
-    envItems: response.loader.envItems.map((item) => ({
-      name: item.name,
-      value: item.value,
-      secret: item.secret,
-    })),
-  };
+  const found = await findScheduler(id); if (!found) throw new Error('自动化任务不存在');
+  const response = await projectClient.getScheduler({ project: { projectId: found.projectId }, agentName: found.agentName });
+  return { ...taskFromV2(found), script: response.spec?.script ?? '', triggers: response.triggers.map(triggerFromResolved), envItems: [] };
 }
 
+export async function resolveAutomationSessionTarget(id:string):Promise<{projectId:string;agentName:string}|undefined>{const found=await findScheduler(id);return found?{projectId:found.projectId,agentName:found.agentName}:undefined}
+
 export async function saveAutomationTask(input: SaveAutomationTaskInput): Promise<AutomationTaskDetail> {
-  const payload = {
-    name: input.name.trim(),
-    description: input.description.trim(),
-    runtime: input.runtime,
-    script: input.script,
-    workspaceId: input.workspaceId.trim(),
-    driver: input.driver.trim(),
-    guestImage: input.guestImage.trim(),
-    agentId: input.agentId.trim(),
-    capsetIds: input.capsetIds,
-    defaultAgent: input.defaultAgent.trim(),
-    sessionPolicy: input.sessionPolicy,
-    concurrencyPolicy: input.concurrencyPolicy,
-    enabled: input.enabled,
-    envItems: (input.envItems || []).filter((item) => item.name.trim()).map((item) => ({
-      name: item.name.trim(),
-      value: item.value,
-      secret: item.secret,
-    })),
-  };
-  const response = input.id
-    ? await loaderClient.updateLoader({ loaderId: input.id, ...payload })
-    : await loaderClient.createLoader(payload);
-  if (!response.loader?.summary) {
-    throw new Error('自动化任务保存失败');
-  }
-  return {
-    ...taskFromSummary(response.loader.summary),
-    script: response.loader.script,
-    triggers: response.loader.triggers.map(triggerFromResponse),
-    envItems: response.loader.envItems.map((item) => ({
-      name: item.name,
-      value: item.value,
-      secret: item.secret,
-    })),
-  };
+  const target = input.id ? await findScheduler(input.id) : await findProjectAgent(input.agentId || input.defaultAgent); if (!target) throw new Error('自动化任务必须关联项目智能体');
+  const project = await loadProject(target.projectId); const agents = (project.spec?.agents ?? []).map((agent) => agent.name === target.agentName ? { ...agent, scheduler: { enabled: input.enabled, script: input.script, sandboxPolicy: input.sessionPolicy, triggers: (input.triggers ?? []).map(triggerSpecFromInput) } } : agent);
+  await projectClient.applyProject({ spec: { ...project.spec!, agents } });
+  const refreshed = await findSchedulerByAgent(target.projectId, target.agentName); if (!refreshed) throw new Error('自动化任务保存失败'); return getAutomationTask(refreshed.schedulerId);
 }
 
 export async function deleteAutomationTask(id: string): Promise<void> {
-  await loaderClient.deleteLoader({ loaderId: id });
+  const found=await findScheduler(id);if(!found)return;const project=await loadProject(found.projectId);const agents=(project.spec?.agents??[]).map((agent)=>agent.name===found.agentName?{...agent,scheduler:undefined}:agent);await projectClient.applyProject({spec:{...project.spec!,agents}});
 }
 
 export async function setAutomationTaskEnabled(id: string, enabled: boolean): Promise<AutomationTask> {
-  const response = await loaderClient.setLoaderEnabled({ loaderId: id, enabled });
-  if (!response.loader?.summary) {
-    throw new Error('自动化任务状态更新失败');
-  }
-  return taskFromSummary(response.loader.summary);
+  const found=await findScheduler(id);if(!found)throw new Error('自动化任务不存在');await projectClient.setSchedulerEnabled({project:{projectId:found.projectId},agentName:found.agentName,enabled});return{...taskFromV2(found),enabled};
 }
 
 export async function setAutomationTriggerEnabled(loaderId: string, triggerId: string, enabled: boolean): Promise<AutomationTaskDetail> {
-  const response = await loaderClient.setLoaderTriggerEnabled({ loaderId, triggerId, enabled });
-  if (!response.loader?.summary) {
-    throw new Error('触发规则状态更新失败');
-  }
-  return {
-    ...taskFromSummary(response.loader.summary),
-    script: response.loader.script,
-    triggers: response.loader.triggers.map(triggerFromResponse),
-    envItems: response.loader.envItems.map((item) => ({
-      name: item.name,
-      value: item.value,
-      secret: item.secret,
-    })),
-  };
+  const found=await findScheduler(loaderId);if(!found)throw new Error('自动化任务不存在');await projectClient.setSchedulerTriggerEnabled({project:{projectId:found.projectId},agentName:found.agentName,triggerId,enabled});return getAutomationTask(loaderId);
 }
 
 export async function validateAutomationTask(script: string, runtime: string): Promise<ValidateAutomationTaskResult> {
-  const response = await loaderClient.validateLoader({ script, runtime });
+  if (runtime !== 'scheduler') throw new Error(`不支持的自动化运行时：${runtime}`);
+  const response = await projectClient.validateProject({
+    spec: {
+      name: 'ui-automation-validation',
+      agents: [{
+        name: 'automation',
+        provider: 'codex',
+        scheduler: { enabled: true, script, sandboxPolicy: 'sticky', triggers: [] },
+      }],
+    },
+  });
+  const errors = response.issues.filter((issue) => issue.severity === ProjectValidationSeverity.ERROR);
+  if (!response.valid || errors.length > 0) {
+    const details = (errors.length > 0 ? errors : response.issues)
+      .map((issue) => issue.path ? `${issue.path}: ${issue.message}` : issue.message)
+      .filter(Boolean)
+      .join('\n');
+    throw new Error(details || '自动化脚本校验失败');
+  }
   return {
-    triggers: response.triggers.map(triggerFromResponse),
-    warnings: response.warnings,
+    triggers: [],
+    warnings: response.issues
+      .filter((issue) => issue.severity === ProjectValidationSeverity.WARNING)
+      .map((issue) => issue.path ? `${issue.path}: ${issue.message}` : issue.message),
   };
 }
 
 export async function runAutomationTaskNow(loaderId: string, payloadJson: string, triggerId = ''): Promise<AutomationRun> {
-  const response = await loaderClient.runLoaderNow({
-    loaderId,
-    triggerId,
-    payloadJson,
-    timeout: '',
-  });
-  if (!response.run?.summary) {
-    throw new Error('自动化任务运行失败');
-  }
-  return runFromSummary(response.run.summary);
+  const found=await findScheduler(loaderId);if(!found)throw new Error('自动化任务不存在');const response=await runClient.runAgent({projectId:found.projectId,agentName:found.agentName,source:RunSource.MANUAL,schedulerId:found.schedulerId,triggerId,payloadJson});if(!response.run?.summary)throw new Error('自动化任务运行失败');return runFromV2(response.run.summary,response.run.resultJson,response.run.artifactsDir);
 }
 
 export async function getAutomationRun(loaderId: string, runId: string): Promise<AutomationRun> {
-  const response = await loaderClient.getLoaderRun({ loaderId, runId });
-  if (!response.run?.summary) {
-    throw new Error('自动化运行不存在');
-  }
-  return runFromSummary(response.run.summary);
+  const response=await runClient.getRun({runId});if(!response.run?.summary)throw new Error('自动化运行不存在');return runFromV2(response.run.summary,response.run.resultJson,response.run.artifactsDir);
 }
 
 export async function listRecentAutomationRuns(loaderIds: string[], limit = 10): Promise<AutomationRun[]> {
-  const runs = await Promise.all(
-    loaderIds.map(async (loaderId) => {
-      const response = await loaderClient.listLoaderRuns({ loaderId, limit });
-      return response.runs.map(runFromSummary);
-    }),
-  );
-  return runs.flat().sort((left, right) => compareDateDesc(left.startedAt, right.startedAt));
+  if (loaderIds.length === 0) return [];
+  const responses = await Promise.all(loaderIds.flatMap((schedulerId) => [
+    runClient.listRuns({ schedulerId, source: RunSource.SCHEDULER, limit }),
+    runClient.listRuns({ schedulerId, source: RunSource.MANUAL, limit }),
+  ]));
+  const uniqueRuns = new Map<string, RunSummary>();
+  for (const response of responses) {
+    for (const run of response.runs) {
+      uniqueRuns.set(run.runId, run);
+    }
+  }
+  return [...uniqueRuns.values()]
+    .map((run) => runFromV2(run))
+    .sort((left, right) => compareDateDesc(left.startedAt, right.startedAt))
+    .slice(0, limit);
 }
 
 export async function listAutomationEvents(loaderId: string, limit = 50): Promise<AutomationEvent[]> {
-  const response = await loaderClient.listLoaderEvents({ loaderId, limit });
+  const found=await findScheduler(loaderId);if(!found)return[];const response = await projectClient.listSchedulerEvents({ project:{projectId:found.projectId},agentName:found.agentName,limit });
   return response.events.map((item) => ({
     id: item.id,
-    loaderId: item.loaderId,
+    loaderId,
     runId: item.runId,
     triggerId: item.triggerId,
     type: item.type,
     level: item.level,
     message: item.message,
     payloadJson: item.payloadJson,
-    linkedSessionId: item.linkedSessionId,
-    linkedCellId: item.linkedCellId,
-    linkedAgentSessionId: item.linkedAgentSessionId,
-    createdAt: item.createdAt,
+    linkedSessionId: '', linkedCellId: '', linkedAgentSessionId: '',
+    createdAt: timestampString(item.createdAt),
     topicEventId: topicEventIdFromPayload(item.payloadJson),
   }));
 }
+
+async function listAllSchedulers():Promise<SchedulerSummary[]>{const result:SchedulerSummary[]=[];let token='';do{const response=await projectClient.listSchedulers({limit:500,cursor:token});result.push(...response.schedulers);token=response.nextCursor}while(token);return result}
+async function findScheduler(id:string):Promise<SchedulerSummary|undefined>{return (await listAllSchedulers()).find((value)=>value.schedulerId===id)}
+async function findSchedulerByAgent(projectId:string,agentName:string){return (await listAllSchedulers()).find((value)=>value.projectId===projectId&&value.agentName===agentName)}
+async function loadProject(projectId:string):Promise<Project>{const response=await projectClient.getProject({project:{projectId},includeSpec:true});if(!response.project)throw new Error('项目不存在');return response.project}
+async function findProjectAgent(id:string):Promise<{projectId:string;agentName:string}|undefined>{let offset=0;for(;;){const listed=await projectClient.listProjects({limit:200,offset});for(const summary of listed.projects){const project=await loadProject(summary.projectId);const agent=project.agents.find((value)=>value.managedAgentId===id||value.agentName===id);if(agent)return{projectId:summary.projectId,agentName:agent.agentName}}if(!listed.hasMore)return undefined;offset=listed.nextOffset}}
+function taskFromV2(item:SchedulerSummary):AutomationTask{return{id:item.schedulerId,name:item.agentName,description:'',enabled:item.enabled,runtime:'scheduler',workspaceId:'',agentId:item.agentName,capsetIds:[],defaultAgent:'',triggerCount:item.triggerCount,runCount:item.runCount,eventCount:0,latestRunAt:timestampString(item.latestRunAt),lastError:item.lastError,createdAt:'',updatedAt:'',driver:'',guestImage:'',sessionPolicy:'sticky',concurrencyPolicy:'skip'}}
+function triggerSpecFromInput(input:AutomationTriggerInput):TriggerSpec{return new TriggerSpec({name:input.name.trim(),kind:input.kind.trim(),cron:input.cron?.trim()??'',interval:input.interval?.trim()??'',timeout:input.timeout?.trim()??'',event:input.kind.trim()==='event'?new EventTriggerSpec({topic:input.topic?.trim()??''}):undefined,prompt:input.prompt?.trim()??'',sandboxPolicy:input.sandboxPolicy?.trim()??''})}
+function triggerFromResolved(item:ResolvedTrigger):AutomationTrigger{const spec=item.spec;const duration=spec?.interval||spec?.timeout||'';return{loaderId:'',triggerId:item.triggerId,kind:spec?.kind??'',topic:spec?.event?.topic??'',intervalMs:duration?parseDuration(duration):0,enabled:item.enabled,autoId:false,specJson:spec?JSON.stringify(spec.toJson()):'',nextFireAt:timestampString(item.nextFireAt),lastFiredAt:timestampString(item.lastFiredAt),name:spec?.name??'',prompt:spec?.prompt??''}}
+function runFromV2(item:RunSummary,resultJson='',artifactsDir=''):AutomationRun{return{id:item.runId,loaderId:item.schedulerId,triggerId:item.triggerId,triggerKind:'',triggerSource:RunSource[item.source]??'',status:RunStatus[item.status]??'',startedAt:item.startedAt,completedAt:item.completedAt,durationMs:Number(item.durationMs),error:item.error,resultJson,payloadJson:'',artifactsDir}}
+function timestampString(value?:{seconds:bigint;nanos:number}){return value?new Date(Number(value.seconds)*1000+value.nanos/1e6).toISOString():''}
+function parseDuration(value:string){const match=value.match(/^(\d+(?:\.\d+)?)(ms|s|m|h)$/);if(!match)return 0;const multiplier={ms:1,s:1000,m:60000,h:3600000}[match[2] as 'ms'|'s'|'m'|'h'];return Number(match[1])*multiplier}
 
 export async function getTopicEvent(eventId: string): Promise<TopicEvent> {
   const response = await apiFetchJson<{ event: TopicEventResponse }>(`/api/events/${encodeURIComponent(eventId)}`);

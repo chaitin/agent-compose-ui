@@ -1,9 +1,9 @@
-import { ExecStreamEventType } from '@chaitin-ai/agent-compose-client/agentcompose/v2/agentcompose_pb.js';
+import { ExecStreamEventType } from '../gen/agentcompose/v2/agentcompose_pb.js';
 
 import { execClient } from './client';
 
 export type RuntimeExecInput = {
-  sessionId?: string;
+  sandboxId?: string;
   runId?: string;
   command: string;
   cwd?: string;
@@ -12,7 +12,7 @@ export type RuntimeExecInput = {
 
 export type RuntimeExecResult = {
   execId: string;
-  sessionId: string;
+  sandboxId: string;
   runId: string;
   command: string;
   cwd: string;
@@ -25,9 +25,9 @@ export type RuntimeExecResult = {
 };
 
 export type RuntimeExecEvent =
-  | { type: 'started'; execId: string; sessionId: string; runId: string }
-  | { type: 'chunk'; execId: string; sessionId: string; runId: string; chunk: string; isStderr: boolean }
-  | { type: 'completed'; execId: string; sessionId: string; runId: string; result: RuntimeExecResult | null };
+  | { type: 'started'; execId: string; sandboxId: string; runId: string }
+  | { type: 'chunk'; execId: string; sandboxId: string; runId: string; chunk: string; isStderr: boolean }
+  | { type: 'completed'; execId: string; sandboxId: string; runId: string; result: RuntimeExecResult | null };
 
 export async function executeRuntimeCommandStream(
   input: RuntimeExecInput,
@@ -38,16 +38,16 @@ export async function executeRuntimeCommandStream(
   if (!source) {
     throw new Error('命令不能为空');
   }
-  const sessionId = input.sessionId?.trim() || '';
+  const sandboxId = input.sandboxId?.trim() || '';
   const runId = input.runId?.trim() || '';
-  if (!sessionId && !runId) {
+  if (!sandboxId && !runId) {
     throw new Error('缺少可执行命令的运行会话');
   }
 
   let finalResult: RuntimeExecResult | null = null;
   const request = {
-    target: sessionId
-      ? { case: 'sessionId' as const, value: sessionId }
+    target: sandboxId
+      ? { case: 'sandboxId' as const, value: sandboxId }
       : { case: 'runId' as const, value: runId },
     command: {
       command: 'sh',
@@ -62,24 +62,24 @@ export async function executeRuntimeCommandStream(
       onEvent({
         type: 'started',
         execId: event.execId,
-        sessionId: event.sessionId,
+        sandboxId: event.sandboxId,
         runId: event.runId,
       });
     } else if (event.eventType === ExecStreamEventType.OUTPUT) {
       onEvent({
         type: 'chunk',
         execId: event.execId,
-        sessionId: event.sessionId,
+        sandboxId: event.sandboxId,
         runId: event.runId,
         chunk: event.chunk,
-        isStderr: event.isStderr,
+        isStderr: event.stream === 2,
       });
     } else if (event.eventType === ExecStreamEventType.COMPLETED) {
       finalResult = event.result ? resultFromProto(event.result) : null;
       onEvent({
         type: 'completed',
         execId: event.execId,
-        sessionId: event.sessionId,
+        sandboxId: event.sandboxId,
         runId: event.runId,
         result: finalResult,
       });
@@ -90,7 +90,7 @@ export async function executeRuntimeCommandStream(
 
 function resultFromProto(item: {
   execId: string;
-  sessionId: string;
+  sandboxId: string;
   runId: string;
   command?: { command: string; args: string[] };
   cwd: string;
@@ -103,7 +103,7 @@ function resultFromProto(item: {
 }): RuntimeExecResult {
   return {
     execId: item.execId,
-    sessionId: item.sessionId,
+    sandboxId: item.sandboxId,
     runId: item.runId,
     command: item.command ? [item.command.command, ...item.command.args].join(' ') : '',
     cwd: item.cwd,

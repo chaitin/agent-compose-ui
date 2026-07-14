@@ -1,5 +1,5 @@
 import type { AutomationRun } from '../api/loaders';
-import type { CellType } from '@chaitin-ai/agent-compose-client/agentcompose/v1/agentcompose_pb.js';
+import type { CellType } from '../api/sessions';
 import type { WorkSession } from '../api/sessions';
 
 export type ProductRun = {
@@ -27,6 +27,7 @@ export type ProductRun = {
   input: string;
   messages: Array<{
     id?: string;
+    runId?: string;
     renderKey?: string;
     role: 'user' | 'agent' | 'system';
     type?: CellType;
@@ -48,7 +49,7 @@ export type ProductRun = {
 
 export function sessionToRun(session: WorkSession): ProductRun {
   const agentID = tagValue(session.tags, 'agent_id');
-  const agentName = tagValue(session.tags, 'agent_name') || tagValue(session.tags, 'agent_definition') || tagValue(session.tags, 'agent_template');
+  const agentName = tagValue(session.tags, 'agent_name') || tagValue(session.tags, 'agent') || tagValue(session.tags, 'agent_definition') || tagValue(session.tags, 'agent_template');
   const loaderID = tagValue(session.tags, 'loader_id');
   const loaderName = tagValue(session.tags, 'loader_name');
   return {

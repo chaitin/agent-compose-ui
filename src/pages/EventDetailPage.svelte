@@ -8,6 +8,7 @@
     listAutomationEvents,
     listTopicEventRuns,
     listTopicEventSessions,
+    resolveAutomationSessionTarget,
     type AutomationEvent,
     type AutomationRun,
     type AutomationTaskDetail,
@@ -17,6 +18,7 @@
   } from '../api/loaders';
   import {
     getWorkSession,
+    getWorkSessionRunTarget,
     getWorkSessionProxy,
     listWorkSessionCells,
     listWorkSessionEvents,
@@ -26,9 +28,10 @@
     type WorkSessionCell,
     type WorkSessionDetail,
     type WorkSessionEvent,
+    type WorkSessionRunTarget,
   } from '../api/sessions';
   import { apiPath } from '../paths';
-  import { CellType } from '@chaitin-ai/agent-compose-client/agentcompose/v1/agentcompose_pb.js';
+  import { CellType } from '../api/sessions';
   import { mapLoaderRunStatus, mapSessionStatus, statusTone } from '../model/runs';
   import { appPath } from '../paths';
   import { formatBeijingTime } from '../time';
@@ -48,6 +51,7 @@
     session: WorkSessionDetail | null;
     cells: WorkSessionCell[];
     events: WorkSessionEvent[];
+    conversationTarget?: WorkSessionRunTarget;
   };
 
   let loading = true;
@@ -88,7 +92,7 @@
       const traces = await Promise.all(deliveries.map(loadRunTrace));
       runTraces = traces;
       const loadedSessionTraces = await Promise.all(mergeSessionLinks(links, inferSessionLinksFromRunEvents(nextEvent.eventId, traces)).map(loadSessionTrace));
-      sessionTraces = latestSessionTrace(loadedSessionTraces);
+      sessionTraces = sortedSessionTraces(loadedSessionTraces);
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
       event = null;
@@ -153,17 +157,18 @@
     if (!link.sessionId) {
       return { link, session: null, cells: [], events: [] };
     }
-    const [session, cells, events] = await Promise.all([
+    const [session, cells, events, runTarget, automationTarget] = await Promise.all([
       getWorkSession(link.sessionId, { includeProxy: false }).catch(() => null),
       listWorkSessionCells(link.sessionId).catch(() => []),
       listWorkSessionEvents(link.sessionId).catch(() => []),
+      getWorkSessionRunTarget(link.sessionId).catch(() => undefined),
+      link.loaderId ? resolveAutomationSessionTarget(link.loaderId).catch(() => undefined) : Promise.resolve(undefined),
     ]);
-    return { link, session, cells, events };
+    return { link, session, cells, events, conversationTarget: runTarget || automationTarget };
   }
 
-  function latestSessionTrace(traces: SessionTrace[]): SessionTrace[] {
-    const latest = [...traces].sort((left, right) => compareTraceTime(right, left))[0];
-    return latest ? [latest] : [];
+  function sortedSessionTraces(traces: SessionTrace[]): SessionTrace[] {
+    return [...traces].sort((left, right) => compareTraceTime(right, left));
   }
 
   function compareTraceTime(left: SessionTrace, right: SessionTrace): number {
@@ -286,7 +291,7 @@
   }
 
   function visibleSessionCells(cells: WorkSessionCell[]): WorkSessionCell[] {
-    const meaningful = cells.filter((cell) => cellOutput(cell) !== '-');
+    const meaningful = cells.filter((cell) => Boolean(messageSource(cell) || messageOutput(cell)));
     return meaningful;
   }
 
@@ -334,11 +339,12 @@
   }
 
   function canSendMessage(trace: SessionTrace): boolean {
-    return Boolean(trace.link.sessionId) && sessionStatus(trace) === '运行中' && sendingSessionId !== trace.link.sessionId && !hasActiveReply(trace);
+    return Boolean(trace.link.sessionId) && Boolean(trace.conversationTarget) && sessionStatus(trace) === '运行中' && sendingSessionId !== trace.link.sessionId && !hasActiveReply(trace);
   }
 
   function messageInputHint(trace: SessionTrace): string {
     if (sendingSessionId === trace.link.sessionId || hasActiveReply(trace)) return '正在回复';
+    if (!trace.conversationTarget) return '旧会话缺少可用项目/智能体，仅供查看';
     if (sessionStatus(trace) === '运行中') return 'Enter 发送，Shift + Enter 换行';
     return `会话${sessionStatus(trace) || '未运行'}`;
   }
@@ -589,7 +595,7 @@
             : item);
           sendingSessionId = '';
         }
-      }, controller.signal);
+      }, controller.signal, trace.conversationTarget);
       await refreshSessionTrace(trace.link);
     } catch (err) {
       if (!controller.signal.aborted) {
@@ -698,16 +704,31 @@
                       <h4>会话输出</h4>
                       <div class="cell-list message-stack" use:registerCellList={trace.link.sessionId}>
                         {#each visibleSessionCells(trace.cells) as cell}
+                          {#if messageSource(cell)}
+                            <article class="message-card role-user">
+                              <div class="message-cell-head">
+                                <div class="message-cell-summary">
+                                  <div class="message-title-row">
+                                    <b>用户</b>
+                                    <span class="message-cell-id">{cell.id}</span>
+                                  </div>
+                                </div>
+                                <div class="message-cell-meta">
+                                  <span>{formatTime(cell.createdAt)}</span>
+                                </div>
+                              </div>
+                              <pre class="message-source">{messageSource(cell)}</pre>
+                            </article>
+                          {/if}
+                          {#if messageOutput(cell)}
                           <article class="message-card" class:failed={!cell.running && !cell.success} class:running={cell.running}>
                             <div class="message-cell-head">
                               <div class="message-cell-summary">
                                 <div class="message-title-row">
+                                  <b>{cell.agent || '助手'}</b>
                                   <span class="message-cell-id">{cell.id}</span>
                                   <span class={`message-status ${messageStatusTone(cell)}`}>{cellStatus(cell)}</span>
                                 </div>
-                                {#if messageSource(cell)}
-                                  <pre class="message-source">{messageSource(cell)}</pre>
-                                {/if}
                               </div>
                               <div class="message-cell-meta">
                                 <span>{formatTime(cell.createdAt)}</span>
@@ -721,6 +742,7 @@
                               <pre class="run-terminal-static">{messageOutput(cell)}</pre>
                             {/if}
                           </article>
+                          {/if}
                         {/each}
                       </div>
                     </div>
