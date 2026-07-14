@@ -31,6 +31,9 @@
     locateCurrent: boolean;
   };
 
+  const SEARCH_DEBOUNCE_MS = 500;
+  const MIN_SEARCH_QUERY_LENGTH = 2;
+
   let search: SearchState = { query: '', appliedQuery: '', matches: [], currentIndex: -1, locateCurrent: false };
   let copyFeedback = '';
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -74,7 +77,7 @@
   }
 
   function updateSearchOrScroll(): void {
-    if (search.query.trim()) scheduleSearch(search.query, search.locateCurrent);
+    if (isSearchableQuery(search.query)) scheduleSearch(search.query, search.locateCurrent);
     if (!search.locateCurrent) void scrollToBottom();
   }
 
@@ -94,20 +97,22 @@
   }
 
   function scheduleSearch(query: string, locateCurrent = true): void {
-    const queryChanged = query.trim() !== search.appliedQuery;
-    search = query.trim()
+    const normalizedQuery = query.trim();
+    const searchable = isSearchableQuery(normalizedQuery);
+    const queryChanged = normalizedQuery !== search.appliedQuery;
+    search = searchable
       ? { ...search, query, currentIndex: queryChanged ? -1 : search.currentIndex, locateCurrent }
       : { query, appliedQuery: '', matches: [], currentIndex: -1, locateCurrent: false };
     cancelSearch();
-    if (!query.trim()) return;
+    if (!searchable) return;
     searchTimer = setTimeout(() => {
       searchTimer = null;
       applySearch();
-    }, 160);
+    }, SEARCH_DEBOUNCE_MS);
   }
 
   function applySearch(preferredMatch?: SessionOutputSearchMatch): void {
-    if (!search.query.trim()) return;
+    if (!isSearchableQuery(search.query)) return;
     const matches = findSessionOutputMatches(cells, search.query);
     const preferredIndex = preferredMatch
       ? matches.findIndex((match) => matchKey(match) === matchKey(preferredMatch))
@@ -119,6 +124,10 @@
         : Math.min(Math.max(search.currentIndex, 0), matches.length - 1);
     search = { ...search, appliedQuery: search.query.trim(), matches, currentIndex };
     if (currentIndex >= 0 && search.locateCurrent) void scrollToMatch();
+  }
+
+  function isSearchableQuery(query: string): boolean {
+    return Array.from(query.trim()).length >= MIN_SEARCH_QUERY_LENGTH;
   }
 
   function moveSearch(direction: -1 | 1): void {
@@ -174,7 +183,7 @@
       await refresh();
       await tick();
       cancelSearch();
-      if (search.query.trim()) applySearch(preferredMatch);
+      if (isSearchableQuery(search.query)) applySearch(preferredMatch);
       await scrollToBottom();
     } catch {
       // The page owns and displays the request error; keep the current output.
@@ -215,7 +224,7 @@
     <div class="session-output-toolbar" aria-label={`会话 ${sessionId} 输出操作`}>
       <label class="output-search-field">
         <span class="visually-hidden">搜索会话输出</span>
-        <input type="search" value={search.query} placeholder="搜索输出" disabled={visibleCells.length === 0} on:input={(event) => scheduleSearch(event.currentTarget.value)} on:keydown={handleSearchKeydown}>
+        <input type="search" value={search.query} placeholder="搜索输出（至少 2 个字符）" disabled={visibleCells.length === 0} on:input={(event) => scheduleSearch(event.currentTarget.value)} on:keydown={handleSearchKeydown}>
       </label>
       <span class="search-count" aria-live="polite">{search.matches.length > 0 ? `${search.currentIndex + 1}/${search.matches.length}` : '0/0'}</span>
       <button type="button" class="compact-button" disabled={search.matches.length === 0} on:click={() => moveSearch(-1)}>上一个</button>
