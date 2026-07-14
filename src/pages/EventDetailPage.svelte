@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { onDestroy, onMount, tick } from 'svelte';
+  import { onMount } from 'svelte';
+
+  import SessionOutputPanel from '../components/SessionOutputPanel.svelte';
 
   import {
     getAutomationRun,
@@ -33,6 +35,7 @@
   import { apiPath } from '../paths';
   import { CellType } from '../api/sessions';
   import { mapLoaderRunStatus, mapSessionStatus, statusTone } from '../model/runs';
+  import { isAgentSessionCell } from '../model/session-output';
   import { appPath } from '../paths';
   import { formatBeijingTime } from '../time';
 
@@ -54,22 +57,6 @@
     conversationTarget?: WorkSessionRunTarget;
   };
 
-  type OutputSearchMatch = {
-    cellId: string;
-    section: 'source' | 'output';
-    lineIndex: number;
-    startOffset: number;
-    endOffset: number;
-  };
-
-  type OutputSearchState = {
-    query: string;
-    appliedQuery: string;
-    matches: OutputSearchMatch[];
-    currentIndex: number;
-    locateCurrent: boolean;
-  };
-
   let loading = true;
   let error = '';
   let event: TopicEvent | null = null;
@@ -84,21 +71,11 @@
   let messageDrafts: Record<string, string> = {};
   let sendingSessionId = '';
   let refreshingSessionId = '';
+  let outputResetVersion = 0;
   let messageAbort: AbortController | null = null;
-  let outputSearches: Record<string, OutputSearchState> = {};
-  let copyFeedbacks: Record<string, string> = {};
-  const cellListElements = new Map<string, HTMLElement>();
-  const outputLineElements = new Map<string, HTMLElement>();
-  const outputSearchTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  const copyFeedbackTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   onMount(() => {
     void load();
-  });
-
-  onDestroy(() => {
-    outputSearchTimers.forEach((timer) => clearTimeout(timer));
-    copyFeedbackTimers.forEach((timer) => clearTimeout(timer));
   });
 
   async function load(): Promise<void> {
@@ -109,9 +86,7 @@
     }
     loading = true;
     error = '';
-    outputSearchTimers.forEach((timer) => clearTimeout(timer));
-    outputSearchTimers.clear();
-    outputSearches = {};
+    outputResetVersion += 1;
     try {
       const [nextEvent, deliveries, links] = await Promise.all([
         getTopicEvent(eventId),
@@ -131,7 +106,6 @@
     } finally {
       loading = false;
     }
-    await scrollAllSessionMessagesToBottom();
   }
 
   async function loadRunTrace(delivery: TopicEventRun): Promise<RunTrace> {
@@ -290,49 +264,6 @@
     return value || '-';
   }
 
-  function cellOutput(cell: WorkSessionCell): string {
-    if (cell.running && !cell.output && !cell.stopReason) return '等待回复...';
-    return stripAgentResultPayload(cell.output || cell.stopReason || '-');
-  }
-
-  function cellStatus(cell: WorkSessionCell): string {
-    if (cell.id.startsWith('pending-user-')) return '已发送';
-    if (cell.running) return '运行中';
-    return cell.success ? '完成' : `失败${cell.exitCode ? ` · ${cell.exitCode}` : ''}`;
-  }
-
-  function messageStatusTone(cell: WorkSessionCell): 'running' | 'succeeded' | 'failed' {
-    if (cell.running) return 'running';
-    return cell.success ? 'succeeded' : 'failed';
-  }
-
-  function isAgentCell(cell: WorkSessionCell): boolean {
-    return Boolean(cell.agent) || cell.type === CellType.AGENT || cell.id.startsWith('pending-agent-');
-  }
-
-  function messageSource(cell: WorkSessionCell): string {
-    if (cell.id.startsWith('pending-user-')) return cell.output;
-    if (cell.agent && cell.source) return cell.source;
-    return '';
-  }
-
-  function messageOutput(cell: WorkSessionCell): string {
-    if (cell.id.startsWith('pending-user-')) return '';
-    return cellOutput(cell);
-  }
-
-  function visibleSessionCells(cells: WorkSessionCell[]): WorkSessionCell[] {
-    const meaningful = cells.filter((cell) => Boolean(messageSource(cell) || messageOutput(cell)));
-    return meaningful;
-  }
-
-  const AGENT_RESULT_PREFIX = '__AGENT_RESULT__';
-
-  function stripAgentResultPayload(text: string): string {
-    const index = text.lastIndexOf(AGENT_RESULT_PREFIX);
-    return index >= 0 ? text.slice(0, index) : text;
-  }
-
   function latestCellAgent(trace: SessionTrace): string {
     for (let index = trace.cells.length - 1; index >= 0; index -= 1) {
       const agent = trace.cells[index].agent?.trim();
@@ -360,7 +291,7 @@
   function latestAgentCell(trace: SessionTrace): WorkSessionCell | null {
     for (let index = trace.cells.length - 1; index >= 0; index -= 1) {
       const cell = trace.cells[index];
-      if (isAgentCell(cell)) return cell;
+      if (isAgentSessionCell(cell)) return cell;
     }
     return null;
   }
@@ -403,272 +334,22 @@
   async function refreshSessionTrace(link: TopicEventSession): Promise<void> {
     const nextTrace = await loadSessionTrace(link);
     sessionTraces = sessionTraces.map((trace) => trace.link.sessionId === link.sessionId ? nextTrace : trace);
-    const searchState = outputSearchState(link.sessionId);
-    const currentMatch = searchState.matches[searchState.currentIndex];
-    if (searchState.query.trim()) {
-      applyOutputSearch(link.sessionId, currentMatch);
-    }
-    if (!searchState.locateCurrent) {
-      await scrollSessionMessagesToBottom(link.sessionId);
-    }
   }
 
   async function refreshSessionOutput(trace: SessionTrace): Promise<void> {
     const sessionId = trace.link.sessionId;
-    if (!sessionId || refreshingSessionId) return;
+    if (!sessionId || refreshingSessionId) throw new Error('会话正在刷新');
     refreshingSessionId = sessionId;
     error = '';
     try {
       const cells = await listWorkSessionCells(sessionId);
       sessionTraces = sessionTraces.map((item) => item.link.sessionId === sessionId ? { ...item, cells } : item);
-      const searchState = outputSearchState(sessionId);
-      const currentMatch = searchState.matches[searchState.currentIndex];
-      cancelScheduledOutputSearch(sessionId);
-      if (searchState.query.trim()) {
-        outputSearches = { ...outputSearches, [sessionId]: { ...searchState, locateCurrent: false } };
-        applyOutputSearch(sessionId, currentMatch);
-      }
-      await scrollSessionMessagesToBottom(sessionId);
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
+      throw err;
     } finally {
       refreshingSessionId = '';
     }
-  }
-
-  function registerCellList(node: HTMLElement, sessionId: string): { destroy: () => void } {
-    if (sessionId) {
-      cellListElements.set(sessionId, node);
-    }
-    return {
-      destroy: () => {
-        if (sessionId && cellListElements.get(sessionId) === node) {
-          cellListElements.delete(sessionId);
-        }
-      },
-    };
-  }
-
-  async function scrollSessionMessagesToBottom(sessionId: string): Promise<void> {
-    await tick();
-    const node = cellListElements.get(sessionId);
-    if (node) {
-      node.scrollTop = node.scrollHeight;
-    }
-  }
-
-  async function scrollAllSessionMessagesToBottom(): Promise<void> {
-    await tick();
-    for (const trace of sessionTraces) {
-      const node = cellListElements.get(trace.link.sessionId);
-      if (node) node.scrollTop = node.scrollHeight;
-    }
-  }
-
-  function updateSearchOrScrollToBottom(sessionId: string): void {
-    const searchState = outputSearchState(sessionId);
-    if (searchState.query.trim()) {
-      scheduleOutputSearch(sessionId, searchState.query, searchState.locateCurrent);
-    }
-    if (!searchState.locateCurrent) {
-      void scrollSessionMessagesToBottom(sessionId);
-    }
-  }
-
-  function defaultOutputSearchState(): OutputSearchState {
-    return { query: '', appliedQuery: '', matches: [], currentIndex: -1, locateCurrent: false };
-  }
-
-  function outputSearchState(sessionId: string): OutputSearchState {
-    return outputSearches[sessionId] || defaultOutputSearchState();
-  }
-
-  function outputLines(value: string): string[] {
-    return value.split(/\r?\n/);
-  }
-
-  function findOutputMatches(trace: SessionTrace, query: string): OutputSearchMatch[] {
-    const normalizedQuery = query.trim();
-    if (!normalizedQuery) return [];
-    const queryPattern = new RegExp(normalizedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'iu');
-    const matches: OutputSearchMatch[] = [];
-    for (const cell of visibleSessionCells(trace.cells)) {
-      const sections: Array<{ section: OutputSearchMatch['section']; value: string }> = [
-        { section: 'source', value: messageSource(cell) },
-        { section: 'output', value: messageOutput(cell) },
-      ];
-      for (const { section, value } of sections) {
-        if (!value) continue;
-        let lineStartOffset = 0;
-        outputLines(value).forEach((line, lineIndex) => {
-          const lineMatch = queryPattern.exec(line);
-          if (lineMatch) {
-            const startOffset = lineStartOffset + lineMatch.index;
-            matches.push({ cellId: cell.id, section, lineIndex, startOffset, endOffset: startOffset + lineMatch[0].length });
-          }
-          lineStartOffset += line.length;
-          if (value.startsWith('\r\n', lineStartOffset)) lineStartOffset += 2;
-          else if (value[lineStartOffset] === '\n') lineStartOffset += 1;
-        });
-      }
-    }
-    return matches;
-  }
-
-  function cancelScheduledOutputSearch(sessionId: string): void {
-    const timer = outputSearchTimers.get(sessionId);
-    if (timer) clearTimeout(timer);
-    outputSearchTimers.delete(sessionId);
-  }
-
-  function scheduleOutputSearch(sessionId: string, query: string, locateCurrent = true): void {
-    const previous = outputSearchState(sessionId);
-    const queryChanged = query.trim() !== previous.appliedQuery;
-    outputSearches = {
-      ...outputSearches,
-      [sessionId]: query.trim()
-        ? { ...previous, query, currentIndex: queryChanged ? -1 : previous.currentIndex, locateCurrent }
-        : { query, appliedQuery: '', matches: [], currentIndex: -1, locateCurrent: false },
-    };
-    cancelScheduledOutputSearch(sessionId);
-    if (!query.trim()) {
-      return;
-    }
-    const timer = setTimeout(() => {
-      outputSearchTimers.delete(sessionId);
-      applyOutputSearch(sessionId);
-    }, 160);
-    outputSearchTimers.set(sessionId, timer);
-  }
-
-  function applyOutputSearch(sessionId: string, preferredMatch?: OutputSearchMatch): void {
-    const trace = sessionTraces.find((item) => item.link.sessionId === sessionId);
-    const previous = outputSearchState(sessionId);
-    if (!trace || !previous.query.trim()) return;
-    const matches = findOutputMatches(trace, previous.query);
-    const preferredIndex = preferredMatch
-      ? matches.findIndex((match) => outputMatchKey(sessionId, match) === outputMatchKey(sessionId, preferredMatch))
-      : -1;
-    const currentIndex = matches.length === 0
-      ? -1
-      : preferredIndex >= 0
-        ? preferredIndex
-        : Math.min(Math.max(previous.currentIndex, 0), matches.length - 1);
-    outputSearches = {
-      ...outputSearches,
-      [sessionId]: { ...previous, appliedQuery: previous.query.trim(), matches, currentIndex },
-    };
-    if (currentIndex >= 0 && previous.locateCurrent) void scrollToOutputMatch(sessionId, matches[currentIndex]);
-  }
-
-  function moveOutputSearch(sessionId: string, direction: -1 | 1): void {
-    const pendingTimer = outputSearchTimers.get(sessionId);
-    if (pendingTimer) {
-      clearTimeout(pendingTimer);
-      outputSearchTimers.delete(sessionId);
-      applyOutputSearch(sessionId);
-      return;
-    }
-    const state = outputSearchState(sessionId);
-    if (state.matches.length === 0) return;
-    const currentIndex = (state.currentIndex + direction + state.matches.length) % state.matches.length;
-    outputSearches = { ...outputSearches, [sessionId]: { ...state, currentIndex, locateCurrent: true } };
-    void scrollToOutputMatch(sessionId, state.matches[currentIndex]);
-  }
-
-  function handleOutputSearchKeydown(keyboardEvent: KeyboardEvent, sessionId: string): void {
-    if (keyboardEvent.key === 'Enter') {
-      keyboardEvent.preventDefault();
-      moveOutputSearch(sessionId, keyboardEvent.shiftKey ? -1 : 1);
-    } else if (keyboardEvent.key === 'Escape') {
-      scheduleOutputSearch(sessionId, '');
-    }
-  }
-
-  function outputMatchKey(sessionId: string, match: OutputSearchMatch): string {
-    return `${sessionId}\u0000${match.cellId}\u0000${match.section}\u0000${match.lineIndex}`;
-  }
-
-  function registerOutputLine(node: HTMLElement, key: string): { update: (nextKey: string) => void; destroy: () => void } {
-    let currentKey = '';
-    function update(nextKey: string): void {
-      if (currentKey && outputLineElements.get(currentKey) === node) outputLineElements.delete(currentKey);
-      currentKey = nextKey;
-      if (currentKey) outputLineElements.set(currentKey, node);
-    }
-    update(key);
-    return {
-      update,
-      destroy: () => {
-        if (currentKey && outputLineElements.get(currentKey) === node) outputLineElements.delete(currentKey);
-      },
-    };
-  }
-
-  async function scrollToOutputMatch(sessionId: string, match: OutputSearchMatch): Promise<void> {
-    await tick();
-    outputLineElements.get(outputMatchKey(sessionId, match))?.scrollIntoView({ block: 'center' });
-  }
-
-  function currentOutputMatch(sessionId: string, cellId: string, section: OutputSearchMatch['section']): OutputSearchMatch | undefined {
-    const state = outputSearchState(sessionId);
-    const current = state.matches[state.currentIndex];
-    return current?.cellId === cellId && current.section === section ? current : undefined;
-  }
-
-  function currentMatchParts(value: string, match?: OutputSearchMatch): Array<{ text: string; matched: boolean; match?: OutputSearchMatch }> {
-    if (!match || match.startOffset < 0 || match.endOffset > value.length) {
-      return [{ text: value, matched: false }];
-    }
-    return [
-      { text: value.slice(0, match.startOffset), matched: false },
-      { text: value.slice(match.startOffset, match.endOffset), matched: true, match },
-      { text: value.slice(match.endOffset), matched: false },
-    ].filter((part) => part.text.length > 0);
-  }
-
-  function sessionOutputText(trace: SessionTrace): string {
-    const blocks: string[] = [];
-    for (const cell of visibleSessionCells(trace.cells)) {
-      const source = messageSource(cell);
-      const output = messageOutput(cell);
-      if (source) blocks.push(`用户:\n${source}`);
-      if (output) blocks.push(`${cell.agent || '助手'}:\n${output}`);
-    }
-    return blocks.join('\n\n');
-  }
-
-  async function copyAllSessionOutput(trace: SessionTrace): Promise<void> {
-    const sessionId = trace.link.sessionId;
-    try {
-      await writeClipboardText(sessionOutputText(trace));
-      copyFeedbacks = { ...copyFeedbacks, [sessionId]: '已复制' };
-    } catch {
-      copyFeedbacks = { ...copyFeedbacks, [sessionId]: '复制失败' };
-    }
-    const existingTimer = copyFeedbackTimers.get(sessionId);
-    if (existingTimer) clearTimeout(existingTimer);
-    const timer = setTimeout(() => {
-      copyFeedbacks = { ...copyFeedbacks, [sessionId]: '' };
-      copyFeedbackTimers.delete(sessionId);
-    }, 1600);
-    copyFeedbackTimers.set(sessionId, timer);
-  }
-
-  async function writeClipboardText(value: string): Promise<void> {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(value);
-      return;
-    }
-    const textarea = document.createElement('textarea');
-    textarea.value = value;
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
-    textarea.select();
-    const copied = document.execCommand('copy');
-    textarea.remove();
-    if (!copied) throw new Error('复制失败');
   }
 
   async function stopSession(trace: SessionTrace): Promise<void> {
@@ -766,7 +447,6 @@
       };
       return { ...trace, cells: [...trace.cells, pendingCell] };
     });
-    updateSearchOrScrollToBottom(sessionId);
   }
 
   function insertPendingMessagePair(sessionId: string, userCellId: string, agentCellId: string, message: string, agent: string): void {
@@ -801,7 +481,6 @@
       };
       return { ...trace, cells: [...trace.cells, userCell, agentCell] };
     });
-    updateSearchOrScrollToBottom(sessionId);
   }
 
   function replacePendingCellId(sessionId: string, previousId: string, nextId: string): void {
@@ -812,7 +491,6 @@
         cells: trace.cells.map((cell) => cell.id === previousId ? { ...cell, id: nextId } : cell),
       }
       : trace);
-    updateSearchOrScrollToBottom(sessionId);
   }
 
   function failPendingCell(sessionId: string, cellId: string, message: string): void {
@@ -824,7 +502,6 @@
           : cell),
       }
       : trace);
-    updateSearchOrScrollToBottom(sessionId);
   }
 
   async function sendMessage(trace: SessionTrace): Promise<void> {
@@ -968,8 +645,6 @@
             <div class="trace-list" class:single-session={sessionTraces.length === 1}>
               {#each sessionTraces as trace}
                 {@const sessionId = trace.link.sessionId}
-                {@const searchState = outputSearchState(sessionId)}
-                {@const visibleCells = visibleSessionCells(trace.cells)}
                 <article class="trace-card session-card">
                   <div class="trace-card-head">
                     <div>
@@ -977,95 +652,14 @@
                       <p>Session {trace.link.sessionId}</p>
                     </div>
                   </div>
-                  <div class="inline-block session-output">
-                    <div class="session-output-head">
-                      <h4>会话输出</h4>
-                      <div class="session-output-toolbar">
-                        <label class="output-search-field">
-                          <span class="visually-hidden">搜索会话输出</span>
-                          <input
-                            type="search"
-                            value={searchState.query}
-                            placeholder="搜索输出"
-                            disabled={visibleCells.length === 0}
-                            on:input={(inputEvent) => scheduleOutputSearch(sessionId, inputEvent.currentTarget.value)}
-                            on:keydown={(keyboardEvent) => handleOutputSearchKeydown(keyboardEvent, sessionId)}
-                          >
-                        </label>
-                        <span class="search-count" aria-live="polite">
-                          {searchState.matches.length > 0 ? `${searchState.currentIndex + 1}/${searchState.matches.length}` : '0/0'}
-                        </span>
-                        <button type="button" class="compact-button" disabled={searchState.matches.length === 0} on:click={() => moveOutputSearch(sessionId, -1)}>上一个</button>
-                        <button type="button" class="compact-button" disabled={searchState.matches.length === 0} on:click={() => moveOutputSearch(sessionId, 1)}>下一个</button>
-                        <button type="button" class="compact-button" disabled={Boolean(refreshingSessionId)} on:click={() => refreshSessionOutput(trace)}>
-                          {refreshingSessionId === sessionId ? '刷新中...' : '刷新'}
-                        </button>
-                        <button type="button" class="compact-button" disabled={visibleCells.length === 0} on:click={() => copyAllSessionOutput(trace)}>
-                          {copyFeedbacks[sessionId] || '拷贝全部'}
-                        </button>
-                      </div>
-                    </div>
-                    {#if visibleCells.length > 0}
-                      <div class="cell-list message-stack" use:registerCellList={sessionId}>
-                        {#each visibleCells as cell}
-                          {#if messageSource(cell)}
-                            {@const source = messageSource(cell)}
-                            {@const sourceMatch = currentOutputMatch(sessionId, cell.id, 'source')}
-                            <article class="message-card role-user">
-                              <div class="message-cell-head">
-                                <div class="message-cell-summary">
-                                  <div class="message-title-row">
-                                    <b>用户</b>
-                                    <span class="message-cell-id">{cell.id}</span>
-                                  </div>
-                                </div>
-                                <div class="message-cell-meta">
-                                  <span>{formatTime(cell.createdAt)}</span>
-                                </div>
-                              </div>
-                              <pre class="message-source">{#if sourceMatch}{#each currentMatchParts(source, sourceMatch) as part}{#if part.match}<mark
-                                  class="output-match current-search-match"
-                                  use:registerOutputLine={outputMatchKey(sessionId, part.match)}
-                                >{part.text}</mark>{:else}{part.text}{/if}{/each}{:else}{source}{/if}</pre>
-                            </article>
-                          {/if}
-                          {#if messageOutput(cell)}
-                          {@const output = messageOutput(cell)}
-                          {@const outputMatch = currentOutputMatch(sessionId, cell.id, 'output')}
-                          <article class="message-card" class:failed={!cell.running && !cell.success} class:running={cell.running}>
-                            <div class="message-cell-head">
-                              <div class="message-cell-summary">
-                                <div class="message-title-row">
-                                  <b>{cell.agent || '助手'}</b>
-                                  <span class="message-cell-id">{cell.id}</span>
-                                  <span class={`message-status ${messageStatusTone(cell)}`}>{cellStatus(cell)}</span>
-                                </div>
-                              </div>
-                              <div class="message-cell-meta">
-                                <span>{formatTime(cell.createdAt)}</span>
-                              </div>
-                            </div>
-                            {#if isAgentCell(cell)}
-                              <div class="run-terminal-block" class:running={cell.running}>
-                                <pre class="run-terminal-static">{#if outputMatch}{#each currentMatchParts(output, outputMatch) as part}{#if part.match}<mark
-                                    class="output-match current-search-match"
-                                    use:registerOutputLine={outputMatchKey(sessionId, part.match)}
-                                  >{part.text}</mark>{:else}{part.text}{/if}{/each}{:else}{output}{/if}</pre>
-                              </div>
-                            {:else if messageOutput(cell)}
-                              <pre class="run-terminal-static">{#if outputMatch}{#each currentMatchParts(output, outputMatch) as part}{#if part.match}<mark
-                                  class="output-match current-search-match"
-                                  use:registerOutputLine={outputMatchKey(sessionId, part.match)}
-                                >{part.text}</mark>{:else}{part.text}{/if}{/each}{:else}{output}{/if}</pre>
-                            {/if}
-                          </article>
-                          {/if}
-                        {/each}
-                      </div>
-                    {:else}
-                      <div class="empty compact-empty">暂无会话输出。</div>
-                    {/if}
-                  </div>
+                  <SessionOutputPanel
+                    {sessionId}
+                    cells={trace.cells}
+                    refreshing={refreshingSessionId === sessionId}
+                    refreshDisabled={Boolean(refreshingSessionId)}
+                    resetVersion={outputResetVersion}
+                    refresh={() => refreshSessionOutput(trace)}
+                  />
                   <div class="message-composer" class:disabled={!canSendMessage(trace)}>
                     <textarea
                       rows="3"
@@ -1220,8 +814,6 @@
   .facts,
   .section-head,
   .trace-card-head,
-  .inline-block,
-  .cell-list,
   .timeline-list {
     display: grid;
     gap: 12px;
@@ -1601,82 +1193,6 @@
     max-height: 150px;
   }
 
-  .inline-block {
-    min-height: 0;
-    padding-top: 0;
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .session-output {
-    gap: 8px;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .session-output-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    min-width: 0;
-  }
-
-  .session-output-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 6px;
-    min-width: 0;
-  }
-
-  .output-search-field {
-    min-width: 120px;
-  }
-
-  .output-search-field input {
-    box-sizing: border-box;
-    width: clamp(120px, 16vw, 220px);
-    min-height: 28px;
-    padding: 4px 8px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    color: var(--text);
-    background: #fff;
-    font: inherit;
-    font-size: 12px;
-  }
-
-  .output-search-field input:focus {
-    border-color: var(--primary);
-    outline: 2px solid rgba(47, 95, 208, 0.14);
-  }
-
-  .search-count {
-    min-width: 36px;
-    color: var(--muted);
-    font-family: var(--mono);
-    font-size: 11px;
-    text-align: center;
-  }
-
-  .visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  h4 {
-    margin: 0;
-    color: var(--text);
-    font-size: 13px;
-  }
-
   .session-actions {
     display: inline-flex;
     align-items: center;
@@ -1719,10 +1235,6 @@
     color: var(--danger);
     border-color: #ffccc7;
     background: #fff;
-  }
-
-  .cell-list {
-    gap: 8px;
   }
 
   .timeline-list {
@@ -1777,11 +1289,6 @@
     white-space: nowrap;
   }
 
-  .cell-list {
-    overflow: auto;
-    padding-right: 2px;
-  }
-
   pre {
     margin: 0;
     overflow: visible;
@@ -1795,70 +1302,6 @@
     line-height: 1.45;
     white-space: pre-wrap;
     word-break: break-word;
-  }
-
-  .message-card {
-    gap: 6px;
-    padding: 10px 12px;
-  }
-
-  .message-cell-head {
-    gap: 10px;
-  }
-
-  .message-cell-meta {
-    font-size: 11px;
-  }
-
-  .message-cell-id {
-    display: inline-block;
-    max-width: min(100%, 220px);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    vertical-align: bottom;
-  }
-
-  .message-source {
-    margin: 0;
-    overflow: visible;
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    color: #475569;
-    font-family: var(--mono);
-    font-size: 12px;
-    line-height: 17px;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-
-  .output-match {
-    border-radius: 2px;
-    background: #fadb14;
-    color: #172033;
-  }
-
-  .output-match.current-search-match {
-    background: #fa8c16;
-    box-shadow: 0 0 0 2px rgba(250, 140, 22, 0.35);
-  }
-
-  .run-terminal-block {
-    min-width: 0;
-    overflow: hidden;
-  }
-
-  .run-terminal-block .run-terminal-static {
-    overflow: visible;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-  }
-
-  .message-card > .run-terminal-static {
-    overflow: visible;
   }
 
   .run-result pre {
@@ -1941,11 +1384,6 @@
     min-height: 80px;
   }
 
-  .session-output > .compact-empty {
-    min-height: 0;
-    align-self: stretch;
-  }
-
   @media (max-width: 960px) {
     :global(body) {
       overflow: auto;
@@ -1991,23 +1429,5 @@
       justify-content: flex-start;
     }
 
-    .session-output-head,
-    .session-output-toolbar {
-      align-items: stretch;
-      flex-wrap: wrap;
-      justify-content: flex-start;
-    }
-
-    .session-output-head {
-      flex-direction: column;
-    }
-
-    .output-search-field {
-      flex: 1 1 180px;
-    }
-
-    .output-search-field input {
-      width: 100%;
-    }
   }
 </style>
