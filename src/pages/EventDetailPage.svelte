@@ -58,6 +58,8 @@
     cellId: string;
     section: 'source' | 'output';
     lineIndex: number;
+    startOffset: number;
+    endOffset: number;
   };
 
   type OutputSearchState = {
@@ -84,19 +86,18 @@
   let messageAbort: AbortController | null = null;
   let outputSearches: Record<string, OutputSearchState> = {};
   let copyFeedbacks: Record<string, string> = {};
-  let copyFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
   const cellListElements = new Map<string, HTMLElement>();
   const outputLineElements = new Map<string, HTMLElement>();
   const outputSearchTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const copyFeedbackTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   onMount(() => {
     void load();
   });
 
   onDestroy(() => {
-    messageAbort?.abort();
     outputSearchTimers.forEach((timer) => clearTimeout(timer));
-    if (copyFeedbackTimer) clearTimeout(copyFeedbackTimer);
+    copyFeedbackTimers.forEach((timer) => clearTimeout(timer));
   });
 
   async function load(): Promise<void> {
@@ -399,9 +400,15 @@
   }
 
   async function refreshSessionTrace(link: TopicEventSession): Promise<void> {
+    const searchState = outputSearchState(link.sessionId);
+    const currentMatch = searchState.matches[searchState.currentIndex];
     const nextTrace = await loadSessionTrace(link);
     sessionTraces = sessionTraces.map((trace) => trace.link.sessionId === link.sessionId ? nextTrace : trace);
-    await scrollSessionMessagesToBottom(link.sessionId);
+    if (searchState.query.trim()) {
+      applyOutputSearch(link.sessionId, currentMatch);
+    } else {
+      await scrollSessionMessagesToBottom(link.sessionId);
+    }
   }
 
   async function refreshSessionOutput(trace: SessionTrace): Promise<void> {
@@ -412,8 +419,13 @@
     try {
       const searchState = outputSearchState(sessionId);
       const currentMatch = searchState.matches[searchState.currentIndex];
-      await refreshSessionTrace(trace.link);
-      if (searchState.query.trim()) applyOutputSearch(sessionId, currentMatch);
+      const cells = await listWorkSessionCells(sessionId);
+      sessionTraces = sessionTraces.map((item) => item.link.sessionId === sessionId ? { ...item, cells } : item);
+      if (searchState.query.trim()) {
+        applyOutputSearch(sessionId, currentMatch);
+      } else {
+        await scrollSessionMessagesToBottom(sessionId);
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -450,6 +462,15 @@
     }
   }
 
+  function updateSearchOrScrollToBottom(sessionId: string): void {
+    const searchState = outputSearchState(sessionId);
+    if (searchState.query.trim()) {
+      scheduleOutputSearch(sessionId, searchState.query);
+    } else {
+      void scrollSessionMessagesToBottom(sessionId);
+    }
+  }
+
   function defaultOutputSearchState(): OutputSearchState {
     return { query: '', appliedQuery: '', matches: [], currentIndex: -1 };
   }
@@ -463,8 +484,9 @@
   }
 
   function findOutputMatches(trace: SessionTrace, query: string): OutputSearchMatch[] {
-    const normalizedQuery = query.trim().toLocaleLowerCase();
+    const normalizedQuery = query.trim();
     if (!normalizedQuery) return [];
+    const queryPattern = new RegExp(normalizedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'iu');
     const matches: OutputSearchMatch[] = [];
     for (const cell of visibleSessionCells(trace.cells)) {
       const sections: Array<{ section: OutputSearchMatch['section']; value: string }> = [
@@ -473,10 +495,16 @@
       ];
       for (const { section, value } of sections) {
         if (!value) continue;
+        let lineStartOffset = 0;
         outputLines(value).forEach((line, lineIndex) => {
-          if (line.toLocaleLowerCase().includes(normalizedQuery)) {
-            matches.push({ cellId: cell.id, section, lineIndex });
+          const lineMatch = queryPattern.exec(line);
+          if (lineMatch) {
+            const startOffset = lineStartOffset + lineMatch.index;
+            matches.push({ cellId: cell.id, section, lineIndex, startOffset, endOffset: startOffset + lineMatch[0].length });
           }
+          lineStartOffset += line.length;
+          if (value.startsWith('\r\n', lineStartOffset)) lineStartOffset += 2;
+          else if (value[lineStartOffset] === '\n') lineStartOffset += 1;
         });
       }
     }
@@ -574,32 +602,21 @@
     outputLineElements.get(outputMatchKey(sessionId, match))?.scrollIntoView({ block: 'center' });
   }
 
-  function isCurrentOutputMatch(sessionId: string, cellId: string, section: OutputSearchMatch['section'], lineIndex: number): boolean {
+  function currentOutputMatch(sessionId: string, cellId: string, section: OutputSearchMatch['section']): OutputSearchMatch | undefined {
     const state = outputSearchState(sessionId);
     const current = state.matches[state.currentIndex];
-    return Boolean(current && current.cellId === cellId && current.section === section && current.lineIndex === lineIndex);
+    return current?.cellId === cellId && current.section === section ? current : undefined;
   }
 
-  function highlightedOutputParts(value: string, query: string): Array<{ text: string; matched: boolean; lineIndex: number }> {
-    if (!query) return [{ text: value, matched: false, lineIndex: 0 }];
-    const parts: Array<{ text: string; matched: boolean; lineIndex: number }> = [];
-    const normalizedValue = value.toLocaleLowerCase();
-    const normalizedQuery = query.toLocaleLowerCase();
-    let offset = 0;
-    let lineIndex = 0;
-    while (offset < value.length) {
-      const matchIndex = normalizedValue.indexOf(normalizedQuery, offset);
-      if (matchIndex < 0) break;
-      if (matchIndex > offset) {
-        const text = value.slice(offset, matchIndex);
-        parts.push({ text, matched: false, lineIndex });
-        lineIndex += (text.match(/\n/g) || []).length;
-      }
-      parts.push({ text: value.slice(matchIndex, matchIndex + query.length), matched: true, lineIndex });
-      offset = matchIndex + query.length;
+  function currentMatchParts(value: string, match?: OutputSearchMatch): Array<{ text: string; matched: boolean; match?: OutputSearchMatch }> {
+    if (!match || match.startOffset < 0 || match.endOffset > value.length) {
+      return [{ text: value, matched: false }];
     }
-    if (offset < value.length) parts.push({ text: value.slice(offset), matched: false, lineIndex });
-    return parts.length > 0 ? parts : [{ text: value, matched: false, lineIndex: 0 }];
+    return [
+      { text: value.slice(0, match.startOffset), matched: false },
+      { text: value.slice(match.startOffset, match.endOffset), matched: true, match },
+      { text: value.slice(match.endOffset), matched: false },
+    ].filter((part) => part.text.length > 0);
   }
 
   function sessionOutputText(trace: SessionTrace): string {
@@ -621,10 +638,13 @@
     } catch {
       copyFeedbacks = { ...copyFeedbacks, [sessionId]: '复制失败' };
     }
-    if (copyFeedbackTimer) clearTimeout(copyFeedbackTimer);
-    copyFeedbackTimer = setTimeout(() => {
+    const existingTimer = copyFeedbackTimers.get(sessionId);
+    if (existingTimer) clearTimeout(existingTimer);
+    const timer = setTimeout(() => {
       copyFeedbacks = { ...copyFeedbacks, [sessionId]: '' };
+      copyFeedbackTimers.delete(sessionId);
     }, 1600);
+    copyFeedbackTimers.set(sessionId, timer);
   }
 
   async function writeClipboardText(value: string): Promise<void> {
@@ -738,7 +758,7 @@
       };
       return { ...trace, cells: [...trace.cells, pendingCell] };
     });
-    void scrollSessionMessagesToBottom(sessionId);
+    updateSearchOrScrollToBottom(sessionId);
   }
 
   function insertPendingMessagePair(sessionId: string, userCellId: string, agentCellId: string, message: string, agent: string): void {
@@ -773,7 +793,7 @@
       };
       return { ...trace, cells: [...trace.cells, userCell, agentCell] };
     });
-    void scrollSessionMessagesToBottom(sessionId);
+    updateSearchOrScrollToBottom(sessionId);
   }
 
   function replacePendingCellId(sessionId: string, previousId: string, nextId: string): void {
@@ -784,7 +804,7 @@
         cells: trace.cells.map((cell) => cell.id === previousId ? { ...cell, id: nextId } : cell),
       }
       : trace);
-    void scrollSessionMessagesToBottom(sessionId);
+    updateSearchOrScrollToBottom(sessionId);
   }
 
   function failPendingCell(sessionId: string, cellId: string, message: string): void {
@@ -796,7 +816,7 @@
           : cell),
       }
       : trace);
-    void scrollSessionMessagesToBottom(sessionId);
+    updateSearchOrScrollToBottom(sessionId);
   }
 
   async function sendMessage(trace: SessionTrace): Promise<void> {
@@ -981,6 +1001,8 @@
                       <div class="cell-list message-stack" use:registerCellList={sessionId}>
                         {#each visibleCells as cell}
                           {#if messageSource(cell)}
+                            {@const source = messageSource(cell)}
+                            {@const sourceMatch = currentOutputMatch(sessionId, cell.id, 'source')}
                             <article class="message-card role-user">
                               <div class="message-cell-head">
                                 <div class="message-cell-summary">
@@ -993,14 +1015,15 @@
                                   <span>{formatTime(cell.createdAt)}</span>
                                 </div>
                               </div>
-                              <pre class="message-source">{#if searchState.appliedQuery}{#each highlightedOutputParts(messageSource(cell), searchState.appliedQuery) as part}{#if part.matched}<mark
-                                  class="output-match"
-                                  class:current-search-match={isCurrentOutputMatch(sessionId, cell.id, 'source', part.lineIndex)}
-                                  use:registerOutputLine={outputMatchKey(sessionId, { cellId: cell.id, section: 'source', lineIndex: part.lineIndex })}
-                                >{part.text}</mark>{:else}{part.text}{/if}{/each}{:else}{messageSource(cell)}{/if}</pre>
+                              <pre class="message-source">{#if sourceMatch}{#each currentMatchParts(source, sourceMatch) as part}{#if part.match}<mark
+                                  class="output-match current-search-match"
+                                  use:registerOutputLine={outputMatchKey(sessionId, part.match)}
+                                >{part.text}</mark>{:else}{part.text}{/if}{/each}{:else}{source}{/if}</pre>
                             </article>
                           {/if}
                           {#if messageOutput(cell)}
+                          {@const output = messageOutput(cell)}
+                          {@const outputMatch = currentOutputMatch(sessionId, cell.id, 'output')}
                           <article class="message-card" class:failed={!cell.running && !cell.success} class:running={cell.running}>
                             <div class="message-cell-head">
                               <div class="message-cell-summary">
@@ -1016,18 +1039,16 @@
                             </div>
                             {#if isAgentCell(cell)}
                               <div class="run-terminal-block" class:running={cell.running}>
-                                <pre class="run-terminal-static">{#if searchState.appliedQuery}{#each highlightedOutputParts(messageOutput(cell), searchState.appliedQuery) as part}{#if part.matched}<mark
-                                    class="output-match"
-                                    class:current-search-match={isCurrentOutputMatch(sessionId, cell.id, 'output', part.lineIndex)}
-                                    use:registerOutputLine={outputMatchKey(sessionId, { cellId: cell.id, section: 'output', lineIndex: part.lineIndex })}
-                                  >{part.text}</mark>{:else}{part.text}{/if}{/each}{:else}{messageOutput(cell)}{/if}</pre>
+                                <pre class="run-terminal-static">{#if outputMatch}{#each currentMatchParts(output, outputMatch) as part}{#if part.match}<mark
+                                    class="output-match current-search-match"
+                                    use:registerOutputLine={outputMatchKey(sessionId, part.match)}
+                                  >{part.text}</mark>{:else}{part.text}{/if}{/each}{:else}{output}{/if}</pre>
                               </div>
                             {:else if messageOutput(cell)}
-                              <pre class="run-terminal-static">{#if searchState.appliedQuery}{#each highlightedOutputParts(messageOutput(cell), searchState.appliedQuery) as part}{#if part.matched}<mark
-                                  class="output-match"
-                                  class:current-search-match={isCurrentOutputMatch(sessionId, cell.id, 'output', part.lineIndex)}
-                                  use:registerOutputLine={outputMatchKey(sessionId, { cellId: cell.id, section: 'output', lineIndex: part.lineIndex })}
-                                >{part.text}</mark>{:else}{part.text}{/if}{/each}{:else}{messageOutput(cell)}{/if}</pre>
+                              <pre class="run-terminal-static">{#if outputMatch}{#each currentMatchParts(output, outputMatch) as part}{#if part.match}<mark
+                                  class="output-match current-search-match"
+                                  use:registerOutputLine={outputMatchKey(sessionId, part.match)}
+                                >{part.text}</mark>{:else}{part.text}{/if}{/each}{:else}{output}{/if}</pre>
                             {/if}
                           </article>
                           {/if}
