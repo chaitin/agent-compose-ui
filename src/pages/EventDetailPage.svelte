@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount } from 'svelte';
+
+  import SessionOutputPanel from '../components/SessionOutputPanel.svelte';
 
   import {
     getAutomationRun,
@@ -33,6 +35,7 @@
   import { apiPath } from '../paths';
   import { CellType } from '../api/sessions';
   import { mapLoaderRunStatus, mapSessionStatus, statusTone } from '../model/runs';
+  import { isAgentSessionCell } from '../model/session-output';
   import { appPath } from '../paths';
   import { formatBeijingTime } from '../time';
 
@@ -67,8 +70,9 @@
   let jupyterOpeningSessionId = '';
   let messageDrafts: Record<string, string> = {};
   let sendingSessionId = '';
+  let refreshingSessionId = '';
+  let outputResetVersion = 0;
   let messageAbort: AbortController | null = null;
-  const cellListElements = new Map<string, HTMLElement>();
 
   onMount(() => {
     void load();
@@ -82,6 +86,7 @@
     }
     loading = true;
     error = '';
+    outputResetVersion += 1;
     try {
       const [nextEvent, deliveries, links] = await Promise.all([
         getTopicEvent(eventId),
@@ -259,49 +264,6 @@
     return value || '-';
   }
 
-  function cellOutput(cell: WorkSessionCell): string {
-    if (cell.running && !cell.output && !cell.stopReason) return '等待回复...';
-    return stripAgentResultPayload(cell.output || cell.stopReason || '-');
-  }
-
-  function cellStatus(cell: WorkSessionCell): string {
-    if (cell.id.startsWith('pending-user-')) return '已发送';
-    if (cell.running) return '运行中';
-    return cell.success ? '完成' : `失败${cell.exitCode ? ` · ${cell.exitCode}` : ''}`;
-  }
-
-  function messageStatusTone(cell: WorkSessionCell): 'running' | 'succeeded' | 'failed' {
-    if (cell.running) return 'running';
-    return cell.success ? 'succeeded' : 'failed';
-  }
-
-  function isAgentCell(cell: WorkSessionCell): boolean {
-    return Boolean(cell.agent) || cell.type === CellType.AGENT || cell.id.startsWith('pending-agent-');
-  }
-
-  function messageSource(cell: WorkSessionCell): string {
-    if (cell.id.startsWith('pending-user-')) return cell.output;
-    if (cell.agent && cell.source) return cell.source;
-    return '';
-  }
-
-  function messageOutput(cell: WorkSessionCell): string {
-    if (cell.id.startsWith('pending-user-')) return '';
-    return cellOutput(cell);
-  }
-
-  function visibleSessionCells(cells: WorkSessionCell[]): WorkSessionCell[] {
-    const meaningful = cells.filter((cell) => Boolean(messageSource(cell) || messageOutput(cell)));
-    return meaningful;
-  }
-
-  const AGENT_RESULT_PREFIX = '__AGENT_RESULT__';
-
-  function stripAgentResultPayload(text: string): string {
-    const index = text.lastIndexOf(AGENT_RESULT_PREFIX);
-    return index >= 0 ? text.slice(0, index) : text;
-  }
-
   function latestCellAgent(trace: SessionTrace): string {
     for (let index = trace.cells.length - 1; index >= 0; index -= 1) {
       const agent = trace.cells[index].agent?.trim();
@@ -329,7 +291,7 @@
   function latestAgentCell(trace: SessionTrace): WorkSessionCell | null {
     for (let index = trace.cells.length - 1; index >= 0; index -= 1) {
       const cell = trace.cells[index];
-      if (isAgentCell(cell)) return cell;
+      if (isAgentSessionCell(cell)) return cell;
     }
     return null;
   }
@@ -372,27 +334,21 @@
   async function refreshSessionTrace(link: TopicEventSession): Promise<void> {
     const nextTrace = await loadSessionTrace(link);
     sessionTraces = sessionTraces.map((trace) => trace.link.sessionId === link.sessionId ? nextTrace : trace);
-    await scrollSessionMessagesToBottom(link.sessionId);
   }
 
-  function registerCellList(node: HTMLElement, sessionId: string): { destroy: () => void } {
-    if (sessionId) {
-      cellListElements.set(sessionId, node);
-    }
-    return {
-      destroy: () => {
-        if (sessionId && cellListElements.get(sessionId) === node) {
-          cellListElements.delete(sessionId);
-        }
-      },
-    };
-  }
-
-  async function scrollSessionMessagesToBottom(sessionId: string): Promise<void> {
-    await tick();
-    const node = cellListElements.get(sessionId);
-    if (node) {
-      node.scrollTop = node.scrollHeight;
+  async function refreshSessionOutput(trace: SessionTrace): Promise<void> {
+    const sessionId = trace.link.sessionId;
+    if (!sessionId || refreshingSessionId) throw new Error('会话正在刷新');
+    refreshingSessionId = sessionId;
+    error = '';
+    try {
+      const cells = await listWorkSessionCells(sessionId);
+      sessionTraces = sessionTraces.map((item) => item.link.sessionId === sessionId ? { ...item, cells } : item);
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+      throw err;
+    } finally {
+      refreshingSessionId = '';
     }
   }
 
@@ -491,7 +447,6 @@
       };
       return { ...trace, cells: [...trace.cells, pendingCell] };
     });
-    void scrollSessionMessagesToBottom(sessionId);
   }
 
   function insertPendingMessagePair(sessionId: string, userCellId: string, agentCellId: string, message: string, agent: string): void {
@@ -526,7 +481,6 @@
       };
       return { ...trace, cells: [...trace.cells, userCell, agentCell] };
     });
-    void scrollSessionMessagesToBottom(sessionId);
   }
 
   function replacePendingCellId(sessionId: string, previousId: string, nextId: string): void {
@@ -537,7 +491,6 @@
         cells: trace.cells.map((cell) => cell.id === previousId ? { ...cell, id: nextId } : cell),
       }
       : trace);
-    void scrollSessionMessagesToBottom(sessionId);
   }
 
   function failPendingCell(sessionId: string, cellId: string, message: string): void {
@@ -549,7 +502,6 @@
           : cell),
       }
       : trace);
-    void scrollSessionMessagesToBottom(sessionId);
   }
 
   async function sendMessage(trace: SessionTrace): Promise<void> {
@@ -692,6 +644,7 @@
           {:else}
             <div class="trace-list" class:single-session={sessionTraces.length === 1}>
               {#each sessionTraces as trace}
+                {@const sessionId = trace.link.sessionId}
                 <article class="trace-card session-card">
                   <div class="trace-card-head">
                     <div>
@@ -699,56 +652,14 @@
                       <p>Session {trace.link.sessionId}</p>
                     </div>
                   </div>
-                  {#if visibleSessionCells(trace.cells).length > 0}
-                    <div class="inline-block session-output">
-                      <h4>会话输出</h4>
-                      <div class="cell-list message-stack" use:registerCellList={trace.link.sessionId}>
-                        {#each visibleSessionCells(trace.cells) as cell}
-                          {#if messageSource(cell)}
-                            <article class="message-card role-user">
-                              <div class="message-cell-head">
-                                <div class="message-cell-summary">
-                                  <div class="message-title-row">
-                                    <b>用户</b>
-                                    <span class="message-cell-id">{cell.id}</span>
-                                  </div>
-                                </div>
-                                <div class="message-cell-meta">
-                                  <span>{formatTime(cell.createdAt)}</span>
-                                </div>
-                              </div>
-                              <pre class="message-source">{messageSource(cell)}</pre>
-                            </article>
-                          {/if}
-                          {#if messageOutput(cell)}
-                          <article class="message-card" class:failed={!cell.running && !cell.success} class:running={cell.running}>
-                            <div class="message-cell-head">
-                              <div class="message-cell-summary">
-                                <div class="message-title-row">
-                                  <b>{cell.agent || '助手'}</b>
-                                  <span class="message-cell-id">{cell.id}</span>
-                                  <span class={`message-status ${messageStatusTone(cell)}`}>{cellStatus(cell)}</span>
-                                </div>
-                              </div>
-                              <div class="message-cell-meta">
-                                <span>{formatTime(cell.createdAt)}</span>
-                              </div>
-                            </div>
-                            {#if isAgentCell(cell)}
-                              <div class="run-terminal-block" class:running={cell.running}>
-                                <pre class="run-terminal-static">{messageOutput(cell)}</pre>
-                              </div>
-                            {:else if messageOutput(cell)}
-                              <pre class="run-terminal-static">{messageOutput(cell)}</pre>
-                            {/if}
-                          </article>
-                          {/if}
-                        {/each}
-                      </div>
-                    </div>
-                  {:else}
-                    <div class="empty compact-empty">暂无会话输出。</div>
-                  {/if}
+                  <SessionOutputPanel
+                    {sessionId}
+                    cells={trace.cells}
+                    refreshing={refreshingSessionId === sessionId}
+                    refreshDisabled={Boolean(refreshingSessionId)}
+                    resetVersion={outputResetVersion}
+                    refresh={() => refreshSessionOutput(trace)}
+                  />
                   <div class="message-composer" class:disabled={!canSendMessage(trace)}>
                     <textarea
                       rows="3"
@@ -903,8 +814,6 @@
   .facts,
   .section-head,
   .trace-card-head,
-  .inline-block,
-  .cell-list,
   .timeline-list {
     display: grid;
     gap: 12px;
@@ -1284,24 +1193,6 @@
     max-height: 150px;
   }
 
-  .inline-block {
-    min-height: 0;
-    padding-top: 0;
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .session-output {
-    gap: 8px;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  h4 {
-    margin: 0;
-    color: var(--text);
-    font-size: 13px;
-  }
-
   .session-actions {
     display: inline-flex;
     align-items: center;
@@ -1344,10 +1235,6 @@
     color: var(--danger);
     border-color: #ffccc7;
     background: #fff;
-  }
-
-  .cell-list {
-    gap: 8px;
   }
 
   .timeline-list {
@@ -1402,11 +1289,6 @@
     white-space: nowrap;
   }
 
-  .cell-list {
-    overflow: auto;
-    padding-right: 2px;
-  }
-
   pre {
     margin: 0;
     overflow: visible;
@@ -1420,59 +1302,6 @@
     line-height: 1.45;
     white-space: pre-wrap;
     word-break: break-word;
-  }
-
-  .message-card {
-    gap: 6px;
-    padding: 10px 12px;
-  }
-
-  .message-cell-head {
-    gap: 10px;
-  }
-
-  .message-cell-meta {
-    font-size: 11px;
-  }
-
-  .message-cell-id {
-    display: inline-block;
-    max-width: min(100%, 220px);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    vertical-align: bottom;
-  }
-
-  .message-source {
-    margin: 0;
-    overflow: visible;
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    color: #475569;
-    font-family: var(--mono);
-    font-size: 12px;
-    line-height: 17px;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-
-  .run-terminal-block {
-    min-width: 0;
-    overflow: hidden;
-  }
-
-  .run-terminal-block .run-terminal-static {
-    overflow: visible;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-  }
-
-  .message-card > .run-terminal-static {
-    overflow: visible;
   }
 
   .run-result pre {
@@ -1555,11 +1384,6 @@
     min-height: 80px;
   }
 
-  .session-card > .compact-empty {
-    min-height: 0;
-    align-self: stretch;
-  }
-
   @media (max-width: 960px) {
     :global(body) {
       overflow: auto;
@@ -1604,5 +1428,6 @@
     .session-actions {
       justify-content: flex-start;
     }
+
   }
 </style>
