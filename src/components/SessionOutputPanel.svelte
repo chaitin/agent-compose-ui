@@ -157,8 +157,11 @@
     currentMatchElement?.scrollIntoView({ block: 'center' });
   }
 
-  function currentMatch(cellId: string, section: SessionOutputSearchMatch['section']): SessionOutputSearchMatch | undefined {
-    const match = search.matches[search.currentIndex];
+  function sectionMatch(
+    match: SessionOutputSearchMatch | undefined,
+    cellId: string,
+    section: SessionOutputSearchMatch['section'],
+  ): SessionOutputSearchMatch | undefined {
     return match?.cellId === cellId && match.section === section ? match : undefined;
   }
 
@@ -227,8 +230,8 @@
       {#each visibleCells as cell}
         {@const source = sessionMessageSource(cell)}
         {@const output = sessionMessageOutput(cell)}
-        {@const sourceMatch = currentMatch(cell.id, 'source')}
-        {@const outputMatch = currentMatch(cell.id, 'output')}
+        {@const sourceMatch = sectionMatch(search.matches[search.currentIndex], cell.id, 'source')}
+        {@const outputMatch = sectionMatch(search.matches[search.currentIndex], cell.id, 'output')}
         {#if source}
           <article class="message-card role-user">
             <div class="message-cell-head">
