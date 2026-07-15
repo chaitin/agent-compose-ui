@@ -601,9 +601,9 @@ export enum CacheDomain {
   RUNTIME_DERIVED_CACHE = 3,
 
   /**
-   * @generated from enum value: CACHE_DOMAIN_SANDBOX_EPHEMERAL_STATE = 4;
+   * @generated from enum value: CACHE_DOMAIN_SKILL_ARTIFACT_CACHE = 5;
    */
-  SANDBOX_EPHEMERAL_STATE = 4,
+  SKILL_ARTIFACT_CACHE = 5,
 }
 // Retrieve enum metadata with: proto3.getEnumType(CacheDomain)
 proto3.util.setEnumType(CacheDomain, "agentcompose.v2.CacheDomain", [
@@ -611,7 +611,59 @@ proto3.util.setEnumType(CacheDomain, "agentcompose.v2.CacheDomain", [
   { no: 1, name: "CACHE_DOMAIN_OCI_IMAGE_STORE" },
   { no: 2, name: "CACHE_DOMAIN_MATERIALIZED_IMAGE_CACHE" },
   { no: 3, name: "CACHE_DOMAIN_RUNTIME_DERIVED_CACHE" },
-  { no: 4, name: "CACHE_DOMAIN_SANDBOX_EPHEMERAL_STATE" },
+  { no: 5, name: "CACHE_DOMAIN_SKILL_ARTIFACT_CACHE" },
+]);
+
+/**
+ * @generated from enum agentcompose.v2.CacheReferencePolicy
+ */
+export enum CacheReferencePolicy {
+  /**
+   * @generated from enum value: CACHE_REFERENCE_POLICY_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: CACHE_REFERENCE_POLICY_REQUIRED = 1;
+   */
+  REQUIRED = 1,
+
+  /**
+   * @generated from enum value: CACHE_REFERENCE_POLICY_ADVISORY = 2;
+   */
+  ADVISORY = 2,
+}
+// Retrieve enum metadata with: proto3.getEnumType(CacheReferencePolicy)
+proto3.util.setEnumType(CacheReferencePolicy, "agentcompose.v2.CacheReferencePolicy", [
+  { no: 0, name: "CACHE_REFERENCE_POLICY_UNSPECIFIED" },
+  { no: 1, name: "CACHE_REFERENCE_POLICY_REQUIRED" },
+  { no: 2, name: "CACHE_REFERENCE_POLICY_ADVISORY" },
+]);
+
+/**
+ * @generated from enum agentcompose.v2.SandboxPruneCandidateKind
+ */
+export enum SandboxPruneCandidateKind {
+  /**
+   * @generated from enum value: SANDBOX_PRUNE_CANDIDATE_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: SANDBOX_PRUNE_CANDIDATE_KIND_SANDBOX_RECORD = 1;
+   */
+  SANDBOX_RECORD = 1,
+
+  /**
+   * @generated from enum value: SANDBOX_PRUNE_CANDIDATE_KIND_RUNTIME_RESIDUE = 2;
+   */
+  RUNTIME_RESIDUE = 2,
+}
+// Retrieve enum metadata with: proto3.getEnumType(SandboxPruneCandidateKind)
+proto3.util.setEnumType(SandboxPruneCandidateKind, "agentcompose.v2.SandboxPruneCandidateKind", [
+  { no: 0, name: "SANDBOX_PRUNE_CANDIDATE_KIND_UNSPECIFIED" },
+  { no: 1, name: "SANDBOX_PRUNE_CANDIDATE_KIND_SANDBOX_RECORD" },
+  { no: 2, name: "SANDBOX_PRUNE_CANDIDATE_KIND_RUNTIME_RESIDUE" },
 ]);
 
 /**
@@ -662,6 +714,56 @@ proto3.util.setEnumType(CacheStatus, "agentcompose.v2.CacheStatus", [
   { no: 4, name: "CACHE_STATUS_EXPIRED" },
   { no: 5, name: "CACHE_STATUS_ORPHANED" },
   { no: 6, name: "CACHE_STATUS_UNKNOWN" },
+]);
+
+/**
+ * @generated from enum agentcompose.v2.ResourceKind
+ */
+export enum ResourceKind {
+  /**
+   * @generated from enum value: RESOURCE_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: RESOURCE_KIND_PROJECT = 1;
+   */
+  PROJECT = 1,
+
+  /**
+   * @generated from enum value: RESOURCE_KIND_AGENT = 2;
+   */
+  AGENT = 2,
+
+  /**
+   * @generated from enum value: RESOURCE_KIND_RUN = 3;
+   */
+  RUN = 3,
+
+  /**
+   * @generated from enum value: RESOURCE_KIND_SANDBOX = 4;
+   */
+  SANDBOX = 4,
+
+  /**
+   * @generated from enum value: RESOURCE_KIND_IMAGE = 5;
+   */
+  IMAGE = 5,
+
+  /**
+   * @generated from enum value: RESOURCE_KIND_CACHE = 6;
+   */
+  CACHE = 6,
+}
+// Retrieve enum metadata with: proto3.getEnumType(ResourceKind)
+proto3.util.setEnumType(ResourceKind, "agentcompose.v2.ResourceKind", [
+  { no: 0, name: "RESOURCE_KIND_UNSPECIFIED" },
+  { no: 1, name: "RESOURCE_KIND_PROJECT" },
+  { no: 2, name: "RESOURCE_KIND_AGENT" },
+  { no: 3, name: "RESOURCE_KIND_RUN" },
+  { no: 4, name: "RESOURCE_KIND_SANDBOX" },
+  { no: 5, name: "RESOURCE_KIND_IMAGE" },
+  { no: 6, name: "RESOURCE_KIND_CACHE" },
 ]);
 
 /**
@@ -1682,6 +1784,16 @@ export class ProjectAgent extends Message<ProjectAgent> {
    */
   latestRun?: ProjectAgentLatestRun;
 
+  /**
+   * @generated from field: string display_name = 14;
+   */
+  displayName = "";
+
+  /**
+   * @generated from field: string description = 15;
+   */
+  description = "";
+
   constructor(data?: PartialMessage<ProjectAgent>) {
     super();
     proto3.util.initPartial(data, this);
@@ -1703,6 +1815,8 @@ export class ProjectAgent extends Message<ProjectAgent> {
     { no: 11, name: "health", kind: "enum", T: proto3.getEnumType(ProjectAgentHealth) },
     { no: 12, name: "current_run", kind: "message", T: ProjectAgentCurrentRun },
     { no: 13, name: "latest_run", kind: "message", T: ProjectAgentLatestRun },
+    { no: 14, name: "display_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 15, name: "description", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ProjectAgent {
@@ -1855,6 +1969,16 @@ export class ProjectScheduler extends Message<ProjectScheduler> {
    */
   triggerCount = 0;
 
+  /**
+   * @generated from field: string display_name = 7;
+   */
+  displayName = "";
+
+  /**
+   * @generated from field: string description = 8;
+   */
+  description = "";
+
   constructor(data?: PartialMessage<ProjectScheduler>) {
     super();
     proto3.util.initPartial(data, this);
@@ -1868,6 +1992,8 @@ export class ProjectScheduler extends Message<ProjectScheduler> {
     { no: 3, name: "scheduler_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 5, name: "enabled", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 6, name: "trigger_count", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
+    { no: 7, name: "display_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 8, name: "description", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ProjectScheduler {
@@ -2145,6 +2271,16 @@ export class SchedulerSummary extends Message<SchedulerSummary> {
    */
   lastError = "";
 
+  /**
+   * @generated from field: string display_name = 9;
+   */
+  displayName = "";
+
+  /**
+   * @generated from field: string description = 10;
+   */
+  description = "";
+
   constructor(data?: PartialMessage<SchedulerSummary>) {
     super();
     proto3.util.initPartial(data, this);
@@ -2161,6 +2297,8 @@ export class SchedulerSummary extends Message<SchedulerSummary> {
     { no: 6, name: "run_count", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
     { no: 7, name: "latest_run_at", kind: "message", T: Timestamp },
     { no: 8, name: "last_error", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 9, name: "display_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 10, name: "description", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SchedulerSummary {
@@ -2729,9 +2867,9 @@ export class ProjectSpec extends Message<ProjectSpec> {
   workspaces: NamedWorkspaceSpec[] = [];
 
   /**
-   * @generated from field: repeated agentcompose.v2.MCPServerSpec mcps = 8;
+   * @generated from field: repeated agentcompose.v2.MCPServerSpec mcp_servers = 8;
    */
-  mcps: MCPServerSpec[] = [];
+  mcpServers: MCPServerSpec[] = [];
 
   constructor(data?: PartialMessage<ProjectSpec>) {
     super();
@@ -2747,7 +2885,7 @@ export class ProjectSpec extends Message<ProjectSpec> {
     { no: 5, name: "network", kind: "message", T: NetworkSpec },
     { no: 6, name: "volumes", kind: "message", T: ProjectVolumeSpec, repeated: true },
     { no: 7, name: "workspaces", kind: "message", T: NamedWorkspaceSpec, repeated: true },
-    { no: 8, name: "mcps", kind: "message", T: MCPServerSpec, repeated: true },
+    { no: 8, name: "mcp_servers", kind: "message", T: MCPServerSpec, repeated: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ProjectSpec {
@@ -2880,9 +3018,9 @@ export class AgentSpec extends Message<AgentSpec> {
   volumes: VolumeMountSpec[] = [];
 
   /**
-   * @generated from field: repeated agentcompose.v2.MCPServerSpec mcps = 14;
+   * @generated from field: repeated agentcompose.v2.MCPServerSpec mcp_servers = 14;
    */
-  mcps: MCPServerSpec[] = [];
+  mcpServers: MCPServerSpec[] = [];
 
   /**
    * @generated from field: repeated agentcompose.v2.SkillSpec skills = 15;
@@ -2893,6 +3031,16 @@ export class AgentSpec extends Message<AgentSpec> {
    * @generated from field: agentcompose.v2.AgentStatus status = 16;
    */
   status = AgentStatus.UNSPECIFIED;
+
+  /**
+   * @generated from field: string display_name = 17;
+   */
+  displayName = "";
+
+  /**
+   * @generated from field: string description = 18;
+   */
+  description = "";
 
   constructor(data?: PartialMessage<AgentSpec>) {
     super();
@@ -2915,9 +3063,11 @@ export class AgentSpec extends Message<AgentSpec> {
     { no: 11, name: "jupyter", kind: "message", T: JupyterSpec },
     { no: 12, name: "build", kind: "message", T: BuildSpec },
     { no: 13, name: "volumes", kind: "message", T: VolumeMountSpec, repeated: true },
-    { no: 14, name: "mcps", kind: "message", T: MCPServerSpec, repeated: true },
+    { no: 14, name: "mcp_servers", kind: "message", T: MCPServerSpec, repeated: true },
     { no: 15, name: "skills", kind: "message", T: SkillSpec, repeated: true },
     { no: 16, name: "status", kind: "enum", T: proto3.getEnumType(AgentStatus) },
+    { no: 17, name: "display_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 18, name: "description", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): AgentSpec {
@@ -3437,6 +3587,16 @@ export class SchedulerSpec extends Message<SchedulerSpec> {
    */
   sandboxPolicy = "";
 
+  /**
+   * @generated from field: string display_name = 5;
+   */
+  displayName = "";
+
+  /**
+   * @generated from field: string description = 6;
+   */
+  description = "";
+
   constructor(data?: PartialMessage<SchedulerSpec>) {
     super();
     proto3.util.initPartial(data, this);
@@ -3449,6 +3609,8 @@ export class SchedulerSpec extends Message<SchedulerSpec> {
     { no: 2, name: "triggers", kind: "message", T: TriggerSpec, repeated: true },
     { no: 3, name: "script", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 4, name: "sandbox_policy", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "display_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 6, name: "description", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SchedulerSpec {
@@ -5112,6 +5274,231 @@ export class RemoveSandboxResponse extends Message<RemoveSandboxResponse> {
 
   static equals(a: RemoveSandboxResponse | PlainMessage<RemoveSandboxResponse> | undefined, b: RemoveSandboxResponse | PlainMessage<RemoveSandboxResponse> | undefined): boolean {
     return proto3.util.equals(RemoveSandboxResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.PruneSandboxesRequest
+ */
+export class PruneSandboxesRequest extends Message<PruneSandboxesRequest> {
+  /**
+   * @generated from field: string project_id = 1;
+   */
+  projectId = "";
+
+  /**
+   * @generated from field: repeated string status = 2;
+   */
+  status: string[] = [];
+
+  /**
+   * @generated from field: string agent_name = 3;
+   */
+  agentName = "";
+
+  /**
+   * @generated from field: string driver = 4;
+   */
+  driver = "";
+
+  /**
+   * @generated from field: uint64 older_than_seconds = 5;
+   */
+  olderThanSeconds = protoInt64.zero;
+
+  /**
+   * @generated from field: bool include_orphans = 6;
+   */
+  includeOrphans = false;
+
+  /**
+   * @generated from field: bool force = 7;
+   */
+  force = false;
+
+  constructor(data?: PartialMessage<PruneSandboxesRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.PruneSandboxesRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "status", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 3, name: "agent_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "driver", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "older_than_seconds", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
+    { no: 6, name: "include_orphans", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 7, name: "force", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): PruneSandboxesRequest {
+    return new PruneSandboxesRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): PruneSandboxesRequest {
+    return new PruneSandboxesRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): PruneSandboxesRequest {
+    return new PruneSandboxesRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: PruneSandboxesRequest | PlainMessage<PruneSandboxesRequest> | undefined, b: PruneSandboxesRequest | PlainMessage<PruneSandboxesRequest> | undefined): boolean {
+    return proto3.util.equals(PruneSandboxesRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.SandboxPruneCandidate
+ */
+export class SandboxPruneCandidate extends Message<SandboxPruneCandidate> {
+  /**
+   * @generated from field: agentcompose.v2.SandboxPruneCandidateKind kind = 1;
+   */
+  kind = SandboxPruneCandidateKind.UNSPECIFIED;
+
+  /**
+   * @generated from field: string sandbox_id = 2;
+   */
+  sandboxId = "";
+
+  /**
+   * @generated from field: string project_id = 3;
+   */
+  projectId = "";
+
+  /**
+   * @generated from field: string agent_name = 4;
+   */
+  agentName = "";
+
+  /**
+   * @generated from field: string driver = 5;
+   */
+  driver = "";
+
+  /**
+   * @generated from field: string status = 6;
+   */
+  status = "";
+
+  /**
+   * @generated from field: string runtime_id = 7;
+   */
+  runtimeId = "";
+
+  /**
+   * @generated from field: google.protobuf.Timestamp updated_at = 8;
+   */
+  updatedAt?: Timestamp;
+
+  /**
+   * @generated from field: bool removable = 9;
+   */
+  removable = false;
+
+  /**
+   * @generated from field: repeated string blocked_reasons = 10;
+   */
+  blockedReasons: string[] = [];
+
+  constructor(data?: PartialMessage<SandboxPruneCandidate>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.SandboxPruneCandidate";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "kind", kind: "enum", T: proto3.getEnumType(SandboxPruneCandidateKind) },
+    { no: 2, name: "sandbox_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "project_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "agent_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "driver", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 6, name: "status", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 7, name: "runtime_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 8, name: "updated_at", kind: "message", T: Timestamp },
+    { no: 9, name: "removable", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 10, name: "blocked_reasons", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SandboxPruneCandidate {
+    return new SandboxPruneCandidate().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): SandboxPruneCandidate {
+    return new SandboxPruneCandidate().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): SandboxPruneCandidate {
+    return new SandboxPruneCandidate().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: SandboxPruneCandidate | PlainMessage<SandboxPruneCandidate> | undefined, b: SandboxPruneCandidate | PlainMessage<SandboxPruneCandidate> | undefined): boolean {
+    return proto3.util.equals(SandboxPruneCandidate, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.PruneSandboxesResponse
+ */
+export class PruneSandboxesResponse extends Message<PruneSandboxesResponse> {
+  /**
+   * @generated from field: bool dry_run = 1;
+   */
+  dryRun = false;
+
+  /**
+   * @generated from field: repeated agentcompose.v2.SandboxPruneCandidate matched = 2;
+   */
+  matched: SandboxPruneCandidate[] = [];
+
+  /**
+   * @generated from field: repeated string removed = 3;
+   */
+  removed: string[] = [];
+
+  /**
+   * @generated from field: repeated agentcompose.v2.SandboxPruneCandidate skipped = 4;
+   */
+  skipped: SandboxPruneCandidate[] = [];
+
+  /**
+   * @generated from field: repeated string warnings = 5;
+   */
+  warnings: string[] = [];
+
+  constructor(data?: PartialMessage<PruneSandboxesResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.PruneSandboxesResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "dry_run", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 2, name: "matched", kind: "message", T: SandboxPruneCandidate, repeated: true },
+    { no: 3, name: "removed", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 4, name: "skipped", kind: "message", T: SandboxPruneCandidate, repeated: true },
+    { no: 5, name: "warnings", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): PruneSandboxesResponse {
+    return new PruneSandboxesResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): PruneSandboxesResponse {
+    return new PruneSandboxesResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): PruneSandboxesResponse {
+    return new PruneSandboxesResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: PruneSandboxesResponse | PlainMessage<PruneSandboxesResponse> | undefined, b: PruneSandboxesResponse | PlainMessage<PruneSandboxesResponse> | undefined): boolean {
+    return proto3.util.equals(PruneSandboxesResponse, a, b);
   }
 }
 
@@ -8185,11 +8572,6 @@ export class PruneCachesRequest extends Message<PruneCachesRequest> {
   filter?: CacheFilter;
 
   /**
-   * @generated from field: bool include_referenced = 2;
-   */
-  includeReferenced = false;
-
-  /**
    * @generated from field: bool force = 3;
    */
   force = false;
@@ -8203,7 +8585,6 @@ export class PruneCachesRequest extends Message<PruneCachesRequest> {
   static readonly typeName = "agentcompose.v2.PruneCachesRequest";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "filter", kind: "message", T: CacheFilter },
-    { no: 2, name: "include_referenced", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 3, name: "force", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
   ]);
 
@@ -8439,11 +8820,6 @@ export class CacheItem extends Message<CacheItem> {
   resolvedRef = "";
 
   /**
-   * @generated from field: string sandbox_id = 11;
-   */
-  sandboxId = "";
-
-  /**
    * @generated from field: agentcompose.v2.CacheStatus status = 12;
    */
   status = CacheStatus.UNSPECIFIED;
@@ -8495,7 +8871,6 @@ export class CacheItem extends Message<CacheItem> {
     { no: 7, name: "image_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 8, name: "image_ref", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 9, name: "resolved_ref", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 11, name: "sandbox_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 12, name: "status", kind: "enum", T: proto3.getEnumType(CacheStatus) },
     { no: 13, name: "removable", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 14, name: "blocked_reasons", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
@@ -8556,6 +8931,11 @@ export class CacheReference extends Message<CacheReference> {
    */
   description = "";
 
+  /**
+   * @generated from field: agentcompose.v2.CacheReferencePolicy policy = 7;
+   */
+  policy = CacheReferencePolicy.UNSPECIFIED;
+
   constructor(data?: PartialMessage<CacheReference>) {
     super();
     proto3.util.initPartial(data, this);
@@ -8570,6 +8950,7 @@ export class CacheReference extends Message<CacheReference> {
     { no: 4, name: "path", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 5, name: "status", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 6, name: "description", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 7, name: "policy", kind: "enum", T: proto3.getEnumType(CacheReferencePolicy) },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): CacheReference {
@@ -9796,6 +10177,159 @@ export class SkillSpec extends Message<SkillSpec> {
 
   static equals(a: SkillSpec | PlainMessage<SkillSpec> | undefined, b: SkillSpec | PlainMessage<SkillSpec> | undefined): boolean {
     return proto3.util.equals(SkillSpec, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.ResolveResourceIDRequest
+ */
+export class ResolveResourceIDRequest extends Message<ResolveResourceIDRequest> {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id = "";
+
+  /**
+   * @generated from field: repeated agentcompose.v2.ResourceKind kinds = 2;
+   */
+  kinds: ResourceKind[] = [];
+
+  constructor(data?: PartialMessage<ResolveResourceIDRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.ResolveResourceIDRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "kinds", kind: "enum", T: proto3.getEnumType(ResourceKind), repeated: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ResolveResourceIDRequest {
+    return new ResolveResourceIDRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ResolveResourceIDRequest {
+    return new ResolveResourceIDRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ResolveResourceIDRequest {
+    return new ResolveResourceIDRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ResolveResourceIDRequest | PlainMessage<ResolveResourceIDRequest> | undefined, b: ResolveResourceIDRequest | PlainMessage<ResolveResourceIDRequest> | undefined): boolean {
+    return proto3.util.equals(ResolveResourceIDRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.ResolveResourceIDResponse
+ */
+export class ResolveResourceIDResponse extends Message<ResolveResourceIDResponse> {
+  /**
+   * @generated from field: repeated agentcompose.v2.ResourceTarget targets = 1;
+   */
+  targets: ResourceTarget[] = [];
+
+  /**
+   * @generated from field: repeated string warnings = 2;
+   */
+  warnings: string[] = [];
+
+  constructor(data?: PartialMessage<ResolveResourceIDResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.ResolveResourceIDResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "targets", kind: "message", T: ResourceTarget, repeated: true },
+    { no: 2, name: "warnings", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ResolveResourceIDResponse {
+    return new ResolveResourceIDResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ResolveResourceIDResponse {
+    return new ResolveResourceIDResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ResolveResourceIDResponse {
+    return new ResolveResourceIDResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ResolveResourceIDResponse | PlainMessage<ResolveResourceIDResponse> | undefined, b: ResolveResourceIDResponse | PlainMessage<ResolveResourceIDResponse> | undefined): boolean {
+    return proto3.util.equals(ResolveResourceIDResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.ResourceTarget
+ */
+export class ResourceTarget extends Message<ResourceTarget> {
+  /**
+   * @generated from field: agentcompose.v2.ResourceKind kind = 1;
+   */
+  kind = ResourceKind.UNSPECIFIED;
+
+  /**
+   * @generated from field: string id = 2;
+   */
+  id = "";
+
+  /**
+   * @generated from field: string short_id = 3;
+   */
+  shortId = "";
+
+  /**
+   * @generated from field: string project_id = 4;
+   */
+  projectId = "";
+
+  /**
+   * @generated from field: string project_name = 5;
+   */
+  projectName = "";
+
+  /**
+   * @generated from field: string agent_name = 6;
+   */
+  agentName = "";
+
+  constructor(data?: PartialMessage<ResourceTarget>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.ResourceTarget";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "kind", kind: "enum", T: proto3.getEnumType(ResourceKind) },
+    { no: 2, name: "id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "short_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "project_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "project_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 6, name: "agent_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ResourceTarget {
+    return new ResourceTarget().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ResourceTarget {
+    return new ResourceTarget().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ResourceTarget {
+    return new ResourceTarget().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ResourceTarget | PlainMessage<ResourceTarget> | undefined, b: ResourceTarget | PlainMessage<ResourceTarget> | undefined): boolean {
+    return proto3.util.equals(ResourceTarget, a, b);
   }
 }
 
