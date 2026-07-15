@@ -50,7 +50,7 @@
   });
   $: visibleAgents = orderedAgents.filter((agent) => showDeletedAgents || !isDeletedAgent(agent));
   $: filteredAgents = visibleAgents.filter((agent) =>
-    [agent.name, agent.description, agent.provider, agent.runtimeImageId, agent.guestImage].join(' ').toLowerCase().includes(keyword.toLowerCase()),
+    [agent.name, agent.agentName, agent.description, agent.provider, agent.runtimeImageId, agent.guestImage].join(' ').toLowerCase().includes(keyword.toLowerCase()),
   );
   $: activeAgent = selectedAgent && filteredAgents.some((agent) => agent.id === selectedAgent?.id)
     ? selectedAgent
@@ -125,7 +125,7 @@
     return orderedAgents
       .filter((agent) => showDeletedAgents || !isDeletedAgent(agent))
       .filter((agent) =>
-        [agent.name, agent.description, agent.provider, agent.runtimeImageId, agent.guestImage].join(' ').toLowerCase().includes(keyword.toLowerCase()),
+        [agent.name, agent.agentName, agent.description, agent.provider, agent.runtimeImageId, agent.guestImage].join(' ').toLowerCase().includes(keyword.toLowerCase()),
       );
   }
 
@@ -165,6 +165,7 @@
   function createEmptyAgent(): AgentDraft {
     return {
       id: '',
+      agentName: newAgentName(),
       name: '',
       description: '',
       enabled: true,
@@ -190,6 +191,11 @@
       deletedAt: '',
       workSource: 'empty',
     };
+  }
+
+  function newAgentName(): string {
+    const seed = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+    return `agent-${seed}`;
   }
 
   function isDeletedAgent(agent: AgentDefinition | AgentDraft | null): boolean {
@@ -332,6 +338,7 @@
   function draftToInput(draft: AgentDraft): AgentDefinitionInput {
     const workspaceId = draft.workSource === 'empty' ? '' : draft.workspaceId;
     return {
+      agentName: draft.agentName,
       name: draft.name,
       description: draft.description,
       enabled: draft.enabled,
@@ -501,6 +508,7 @@
               <h3>基础配置</h3>
               <div class="side-facts">
                 <div><span>ID</span><b>{activeAgent.id || '-'}</b></div>
+                <div><span>调用标识</span><b>{activeAgent.agentName || '-'}</b></div>
                 <div><span>Provider</span><b>{activeAgent.provider || 'codex'}</b></div>
                 <div><span>运行驱动</span><b>{activeAgent.driver || 'docker'}</b></div>
                 <div><span>运行镜像</span><b>{activeAgent.guestImage || defaultGuestImage}</b></div>
@@ -569,7 +577,11 @@
       {/if}
       <form class="drawer-form agent-form" on:submit|preventDefault={() => saveAgent(false)}>
         <label class="form-item checkbox-row form-span-2"><input type="checkbox" bind:checked={editDraft.enabled}><span>启用智能体</span></label>
-        <label class="form-item form-span-2"><span>智能体名称</span><input bind:value={editDraft.name} required></label>
+        <label class="form-item form-span-2"><span>展示名称</span><input bind:value={editDraft.name} required></label>
+        <label class="form-item form-span-2">
+          <span>调用标识（创建后不可修改）</span>
+          <input bind:value={editDraft.agentName} pattern="[a-z][a-z0-9_-]*" disabled={Boolean(editAgent)} required>
+        </label>
         <label class="form-item form-span-2 compact-textarea"><span>描述</span><textarea rows="2" bind:value={editDraft.description}></textarea></label>
         <label class="form-item">
           <span>Provider</span>

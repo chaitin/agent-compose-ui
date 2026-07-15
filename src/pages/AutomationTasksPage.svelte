@@ -81,7 +81,7 @@
   $: agentsById = agentLookup(agents);
   $: selectedDraftAgent = agentsById.get(draft.agentId) ?? null;
   $: filteredTasks = tasks.filter((task) =>
-    [task.name, task.description, task.defaultAgent, agentLabel(task.agentId), task.id].join(' ').toLowerCase().includes(keyword.toLowerCase()) &&
+    [task.name, task.description, task.defaultAgent, task.agentName, agentLabel(task.agentId), task.id].join(' ').toLowerCase().includes(keyword.toLowerCase()) &&
     (!triggerFilter || task.runtime === triggerFilter),
   );
   // Resolve the active task without coupling back into selectedTaskId — the
@@ -596,7 +596,7 @@ scheduler.cron(${triggerName}, "0 8 * * *", function ${handlerName}(payload) {
     const result = new Map<string, AgentDefinition>();
     for (const agent of items) {
       result.set(agent.id, agent);
-      result.set(agent.name, agent);
+      result.set(agent.agentName, agent);
     }
     return result;
   }
@@ -809,6 +809,7 @@ scheduler.cron(${triggerName}, "0 8 * * *", function ${handlerName}(payload) {
               <h3>关联智能体</h3>
               <div class="side-facts">
                 <div><span>智能体</span><b>{agentLabel(activeTask.agentId)}</b></div>
+                <div><span>调用标识</span><b>{activeTask.agentName || '-'}</b></div>
                 <div><span>Provider</span><b>{linkedAgent?.provider || activeTask.defaultAgent || '-'}</b></div>
                 <div><span>运行驱动</span><b>{linkedAgent?.driver || activeTask.driver || '默认'}</b></div>
                 <div><span>Guest 镜像</span><b>{activeTask.guestImage || linkedAgent?.guestImage || '默认'}</b></div>
