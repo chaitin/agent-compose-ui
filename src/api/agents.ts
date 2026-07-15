@@ -46,7 +46,8 @@ export async function updateAgentDefinition(id: string, input: AgentDefinitionIn
   if (!found) throw new Error('智能体不存在');
   const normalized = requestFromInput(input);
   const presets = await listWorkspacePresets();
-  const nextSpec = specFromInput(normalized, found.agent.agentName, found.project, presets);
+  const currentSpec = found.project.spec?.agents.find((value) => value.name === found.agent.agentName);
+  const nextSpec = specFromInput(normalized, found.agent.agentName, found.project, presets, currentSpec);
   const agents = (found.project.spec?.agents ?? []).map((value) => value.name === found.agent.agentName ? nextSpec : value);
   const response = await projectClient.applyProject({ spec: { ...found.project.spec!, agents } });
   const agent = response.project?.agents.find((value) => value.agentName === found.agent.agentName);
@@ -60,7 +61,7 @@ async function listProjects(){const result=[];let offset=0;for(;;){const respons
 async function findUIProject():Promise<Project|undefined>{for(const summary of await listProjects()){if(summary.name==='ui-agents'){return (await projectClient.getProject({project:{projectId:summary.projectId},includeSpec:true})).project}}return undefined}
 async function findAgent(id:string):Promise<{project:Project;agent:ProjectAgent}|undefined>{const target=parseAgentFallbackId(id);for(const summary of await listProjects()){const project=(await projectClient.getProject({project:{projectId:summary.projectId},includeSpec:true})).project;if(!project)continue;if(target&&project.summary?.projectId!==target.projectId)continue;const agent=target?project.agents.find((value)=>value.agentName===target.agentName):project.agents.find((value)=>(Boolean(id)&&value.managedAgentId===id)||value.agentName===id);if(agent)return{project,agent}}return undefined}
 function requestFromInput(input:AgentDefinitionInput):AgentDefinitionInput{return{...input,agentName:input.agentName.trim(),name:input.name.trim(),description:input.description.trim(),provider:normalizeAgentProvider(input.provider),model:input.model.trim(),systemPrompt:input.systemPrompt.trim(),driver:input.driver.trim(),guestImage:input.guestImage.trim(),workspaceId:input.workspaceId.trim(),envItems:input.envItems.map((v)=>({...v,name:v.name.trim()})).filter((v)=>v.name),capsetIds:input.capsetIds.map((v)=>v.trim()).filter(Boolean)}}
-function specFromInput(input: AgentDefinitionInput, agentName: string, project: Project | undefined, presets: WorkspacePreset[]): AgentSpec {
+function specFromInput(input: AgentDefinitionInput, agentName: string, project: Project | undefined, presets: WorkspacePreset[], existingSpec?: AgentSpec): AgentSpec {
   return new AgentSpec({
     name: agentName,
     displayName: input.name,
@@ -71,16 +72,20 @@ function specFromInput(input: AgentDefinitionInput, agentName: string, project: 
     image: input.guestImage,
     driver: input.driver ? new DriverSpec({ name: input.driver }) : undefined,
     env: input.envItems.map((value) => new EnvVarSpec(value)),
-    workspace: workspaceSpecFromInput(input, project, presets),
+    workspace: workspaceSpecFromInput(input, project, presets, existingSpec),
     capsetIds: input.capsetIds,
     status: input.enabled ? AgentStatus.ENABLED : AgentStatus.DISABLED,
   });
 }
 
-function workspaceSpecFromInput(input: AgentDefinitionInput, project: Project | undefined, presets: WorkspacePreset[]): WorkspaceSpec | undefined {
+function workspaceSpecFromInput(input: AgentDefinitionInput, project: Project | undefined, presets: WorkspacePreset[], existingSpec?: AgentSpec): WorkspaceSpec | undefined {
   if (!input.workspaceId) return undefined;
   const preset = presets.find((value) => value.id === input.workspaceId);
   if (!preset) throw new Error('Workspace 配置不存在');
+  if (project && existingSpec?.workspace) {
+    const current = resolveAgentWorkspace(project, existingSpec, presets);
+    if (current.preset?.id === preset.id) return new WorkspaceSpec(existingSpec.workspace);
+  }
   const projectWorkspace = projectWorkspaceForPreset(project, preset);
   if (projectWorkspace) return new WorkspaceSpec({ name: projectWorkspace.name });
   return workspaceSpecFromPreset(preset);
