@@ -607,9 +607,12 @@
   }
 
   function buildAgentObservations(sourceRuns: ProductRun[]): AgentObservation[] {
-    const agentById = new Map(agentDefinitions.map((agent) => [agent.id, agent]));
+    const agentById = new Map<string, AgentDefinition>();
     const agentIdByName = new Map<string, string>();
     for (const agent of agentDefinitions) {
+      agentById.set(agent.id, agent);
+      agentById.set(agent.agentName, agent);
+      if (agent.agentName) agentIdByName.set(agent.agentName, agent.id);
       if (agent.name) agentIdByName.set(agent.name, agent.id);
     }
     const observations = new Map<string, AgentObservation>();
@@ -628,7 +631,7 @@
         latestStatus: '无运行',
         latestAt: '',
         failedCount: 0,
-        taskCount: automationTasks.filter((task) => task.agentId === agent.id).length,
+        taskCount: automationTasks.filter((task) => task.agentName === agent.agentName).length,
       });
     }
     for (const run of sourceRuns) {
@@ -762,7 +765,8 @@
   }
 
   function tasksForAgent(agent: AgentObservation): AutomationTask[] {
-    return automationTasks.filter((task) => task.agentId === agent.agentId);
+    const definition = agentDefinitions.find((item) => item.id === agent.agentId);
+    return automationTasks.filter((task) => task.agentName === definition?.agentName || task.agentId === agent.agentId);
   }
 
   function buildConversationTaskItems(agent: AgentObservation, sourceRuns: ProductRun[], tasks: AutomationTask[]): ConversationTaskItem[] {
@@ -2943,11 +2947,15 @@
       const [tasks, agents] = await Promise.all([listAutomationTasks(), listAgentDefinitions()]);
       const automationRuns = await listRecentAutomationRuns(tasks.map((item) => item.id), 20);
       const taskById = new Map(tasks.map((task) => [task.id, task]));
-      const agentById = new Map(agents.map((agent) => [agent.id, agent]));
+      const agentById = new Map<string, AgentDefinition>();
+      for (const agent of agents) {
+        agentById.set(agent.id, agent);
+        agentById.set(agent.agentName, agent);
+      }
       const agentByProjectAndName = new Map(
         agents
-          .filter((agent) => agent.projectId && agent.name)
-          .map((agent) => [`${agent.projectId}\u0000${agent.name}`, agent]),
+          .filter((agent) => agent.projectId && agent.agentName)
+          .map((agent) => [`${agent.projectId}\u0000${agent.agentName}`, agent]),
       );
       agentDefinitions = agents;
       automationTasks = tasks;
@@ -3010,11 +3018,15 @@
     if (manualConversationVisible >= manualRuns.length && sessionHasMore) {
       try {
         const result = await listWorkSessions(50, sessionOffset);
-        const agentById = new Map(agentDefinitions.map((agent) => [agent.id, agent]));
+        const agentById = new Map<string, AgentDefinition>();
+        for (const agent of agentDefinitions) {
+          agentById.set(agent.id, agent);
+          agentById.set(agent.agentName, agent);
+        }
         const agentByProjectAndName = new Map(
           agentDefinitions
-            .filter((agent) => agent.projectId && agent.name)
-            .map((agent) => [`${agent.projectId}\u0000${agent.name}`, agent]),
+            .filter((agent) => agent.projectId && agent.agentName)
+            .map((agent) => [`${agent.projectId}\u0000${agent.agentName}`, agent]),
         );
         const taskById = new Map(automationTasks.map((task) => [task.id, task]));
         const newRuns = result.sessions
@@ -3229,7 +3241,7 @@
       }
       if (target) {
         const activeAgent = agentDefinitions.find((agent) =>
-          agent.projectId === target?.projectId && agent.name === target.agentName,
+          agent.projectId === target?.projectId && agent.agentName === target.agentName,
         );
         if (activeAgent?.enabled) {
           unavailableConversationReasons = new Map([...unavailableConversationReasons].filter(([id]) => id !== run.id));
