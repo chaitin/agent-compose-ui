@@ -3494,6 +3494,11 @@ export class WorkspaceSpec extends Message<WorkspaceSpec> {
    */
   name = "";
 
+  /**
+   * @generated from field: string commit = 6;
+   */
+  commit = "";
+
   constructor(data?: PartialMessage<WorkspaceSpec>) {
     super();
     proto3.util.initPartial(data, this);
@@ -3507,6 +3512,7 @@ export class WorkspaceSpec extends Message<WorkspaceSpec> {
     { no: 3, name: "branch", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 4, name: "path", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 5, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 6, name: "commit", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): WorkspaceSpec {
