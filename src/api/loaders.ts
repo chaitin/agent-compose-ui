@@ -1,6 +1,6 @@
 import { apiFetchJson } from './http';
-import { projectClient, runClient } from './client';
-import { EventTriggerSpec, ProjectValidationSeverity, RunSource, RunStatus, TriggerSpec, type Project, type ResolvedTrigger, type RunSummary, type SchedulerSummary } from '../gen/agentcompose/v2/agentcompose_pb.js';
+import { projectClient } from './client';
+import { EventTriggerSpec, ProjectValidationSeverity, SchedulerRunStatus, TriggerSpec, type Project, type ResolvedTrigger, type SchedulerRun, type SchedulerSummary } from '../gen/agentcompose/v2/agentcompose_pb.js';
 import { toLegacySessionPolicy, toProjectSandboxPolicy, type LegacySessionPolicy } from '../model/sandbox-policy';
 
 export type AutomationTask = {
@@ -226,29 +226,54 @@ export async function validateAutomationTask(script: string, runtime: string): P
 }
 
 export async function runAutomationTaskNow(loaderId: string, payloadJson: string, triggerId = ''): Promise<AutomationRun> {
-  const found=await findScheduler(loaderId);if(!found)throw new Error('自动化任务不存在');const response=await runClient.runAgent({projectId:found.projectId,agentName:found.agentName,source:RunSource.MANUAL,schedulerId:found.schedulerId,triggerId,payloadJson});if(!response.run?.summary)throw new Error('自动化任务运行失败');return runFromV2(response.run.summary,response.run.resultJson,response.run.artifactsDir);
+  const scheduler = await requireScheduler(loaderId);
+  const response = await projectClient.runScheduler({
+    project: { projectId: scheduler.projectId },
+    agentName: scheduler.agentName,
+    triggerId,
+    payloadJson,
+  });
+  if (!response.run) throw new Error('自动化任务运行失败');
+  return runFromScheduler(response.run);
 }
 
 export async function getAutomationRun(loaderId: string, runId: string): Promise<AutomationRun> {
-  const response=await runClient.getRun({runId});if(!response.run?.summary)throw new Error('自动化运行不存在');return runFromV2(response.run.summary,response.run.resultJson,response.run.artifactsDir);
+  const scheduler = await requireScheduler(loaderId);
+  const response = await projectClient.getSchedulerRun({ project: { projectId: scheduler.projectId }, runId });
+  if (!response.run) throw new Error('自动化运行不存在');
+  return runFromScheduler(response.run);
 }
 
 export async function listRecentAutomationRuns(loaderIds: string[], limit = 10): Promise<AutomationRun[]> {
-  if (loaderIds.length === 0) return [];
-  const responses = await Promise.all(loaderIds.flatMap((schedulerId) => [
-    runClient.listRuns({ schedulerId, source: RunSource.SCHEDULER, limit }),
-    runClient.listRuns({ schedulerId, source: RunSource.MANUAL, limit }),
-  ]));
-  const uniqueRuns = new Map<string, RunSummary>();
+  if (loaderIds.length === 0 || limit <= 0) return [];
+  const requestedIds = new Set(loaderIds);
+  const schedulers = (await listAllSchedulers()).filter((item) => requestedIds.has(item.schedulerId));
+  const responses = await Promise.all(schedulers.map((scheduler) => projectClient.listSchedulerRuns({
+    project: { projectId: scheduler.projectId },
+    agentName: scheduler.agentName,
+    limit: Math.min(Math.ceil(limit), 500),
+  })));
+  const uniqueRuns = new Map<string, SchedulerRun>();
   for (const response of responses) {
     for (const run of response.runs) {
       uniqueRuns.set(run.runId, run);
     }
   }
   return [...uniqueRuns.values()]
-    .map((run) => runFromV2(run))
+    .map(runFromScheduler)
     .sort((left, right) => compareDateDesc(left.startedAt, right.startedAt))
     .slice(0, limit);
+}
+
+export async function stopAutomationRun(loaderId: string, runId: string, reason = ''): Promise<{ run: AutomationRun; stopRequested: boolean }> {
+  const scheduler = await requireScheduler(loaderId);
+  const response = await projectClient.stopSchedulerRun({
+    project: { projectId: scheduler.projectId },
+    runId,
+    reason,
+  });
+  if (!response.run) throw new Error('自动化运行不存在');
+  return { run: runFromScheduler(response.run), stopRequested: response.stopRequested };
 }
 
 export async function listAutomationEvents(loaderId: string, limit = 50): Promise<AutomationEvent[]> {
@@ -270,13 +295,45 @@ export async function listAutomationEvents(loaderId: string, limit = 50): Promis
 
 async function listAllSchedulers():Promise<SchedulerSummary[]>{const result:SchedulerSummary[]=[];let token='';do{const response=await projectClient.listSchedulers({limit:500,cursor:token});result.push(...response.schedulers);token=response.nextCursor}while(token);return result}
 async function findScheduler(id:string):Promise<SchedulerSummary|undefined>{return (await listAllSchedulers()).find((value)=>value.schedulerId===id)}
+async function requireScheduler(id: string): Promise<SchedulerSummary> {
+  const scheduler = await findScheduler(id);
+  if (!scheduler) throw new Error('自动化任务不存在');
+  return scheduler;
+}
 async function findSchedulerByAgent(projectId:string,agentName:string){return (await listAllSchedulers()).find((value)=>value.projectId===projectId&&value.agentName===agentName)}
 async function loadProject(projectId:string):Promise<Project>{const response=await projectClient.getProject({project:{projectId},includeSpec:true});if(!response.project)throw new Error('项目不存在');return response.project}
 async function findProjectAgent(id:string):Promise<{projectId:string;agentName:string}|undefined>{let offset=0;for(;;){const listed=await projectClient.listProjects({limit:200,offset});for(const summary of listed.projects){const project=await loadProject(summary.projectId);const agent=project.agents.find((value)=>value.managedAgentId===id||value.agentName===id);if(agent)return{projectId:summary.projectId,agentName:agent.agentName}}if(!listed.hasMore)return undefined;offset=listed.nextOffset}}
 function taskFromV2(item:SchedulerSummary):AutomationTask{return{id:item.schedulerId,name:item.displayName.trim()||item.agentName,description:item.description.trim(),enabled:item.enabled,runtime:'scheduler',workspaceId:'',agentId:item.agentName,agentName:item.agentName,capsetIds:[],defaultAgent:'',triggerCount:item.triggerCount,runCount:item.runCount,eventCount:0,latestRunAt:timestampString(item.latestRunAt),lastError:item.lastError,createdAt:'',updatedAt:'',driver:'',guestImage:'',sessionPolicy:'new_session',concurrencyPolicy:'skip'}}
 function triggerSpecFromInput(input:AutomationTriggerInput):TriggerSpec{const sandboxPolicy=input.sandboxPolicy?.trim()??'';return new TriggerSpec({name:input.name.trim(),kind:input.kind.trim(),cron:input.cron?.trim()??'',interval:input.interval?.trim()??'',timeout:input.timeout?.trim()??'',event:input.kind.trim()==='event'?new EventTriggerSpec({topic:input.topic?.trim()??''}):undefined,prompt:input.prompt?.trim()??'',sandboxPolicy:sandboxPolicy?toProjectSandboxPolicy(sandboxPolicy):''})}
 function triggerFromResolved(item:ResolvedTrigger):AutomationTrigger{const spec=item.spec;const duration=spec?.interval||spec?.timeout||'';return{loaderId:'',triggerId:item.triggerId,kind:spec?.kind??'',topic:spec?.event?.topic??'',intervalMs:duration?parseDuration(duration):0,enabled:item.enabled,autoId:false,specJson:spec?JSON.stringify(spec.toJson()):'',nextFireAt:timestampString(item.nextFireAt),lastFiredAt:timestampString(item.lastFiredAt),name:spec?.name??'',prompt:spec?.prompt??''}}
-function runFromV2(item:RunSummary,resultJson='',artifactsDir=''):AutomationRun{return{id:item.runId,loaderId:item.schedulerId,triggerId:item.triggerId,triggerKind:'',triggerSource:RunSource[item.source]??'',status:RunStatus[item.status]??'',startedAt:item.startedAt,completedAt:item.completedAt,durationMs:Number(item.durationMs),error:item.error,resultJson,payloadJson:'',artifactsDir}}
+function runFromScheduler(item: SchedulerRun): AutomationRun {
+  return {
+    id: item.runId,
+    loaderId: item.schedulerId,
+    triggerId: item.triggerId,
+    triggerKind: item.triggerKind,
+    triggerSource: item.triggerSource,
+    status: schedulerRunStatus(item.status),
+    startedAt: timestampString(item.startedAt),
+    completedAt: timestampString(item.completedAt),
+    durationMs: Number(item.durationMs),
+    error: item.error,
+    resultJson: item.resultJson,
+    payloadJson: item.payloadJson,
+    artifactsDir: item.artifactsDir,
+  };
+}
+
+function schedulerRunStatus(status: SchedulerRunStatus): string {
+  switch (status) {
+    case SchedulerRunStatus.RUNNING: return 'RUNNING';
+    case SchedulerRunStatus.SUCCEEDED: return 'SUCCEEDED';
+    case SchedulerRunStatus.FAILED: return 'FAILED';
+    case SchedulerRunStatus.CANCELED: return 'CANCELED';
+    case SchedulerRunStatus.SKIPPED: return 'SKIPPED';
+    default: return 'UNSPECIFIED';
+  }
+}
 function timestampString(value?:{seconds:bigint;nanos:number}){return value?new Date(Number(value.seconds)*1000+value.nanos/1e6).toISOString():''}
 function parseDuration(value:string){const match=value.match(/^(\d+(?:\.\d+)?)(ms|s|m|h)$/);if(!match)return 0;const multiplier={ms:1,s:1000,m:60000,h:3600000}[match[2] as 'ms'|'s'|'m'|'h'];return Number(match[1])*multiplier}
 

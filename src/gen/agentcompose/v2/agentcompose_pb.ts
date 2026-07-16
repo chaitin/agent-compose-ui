@@ -179,6 +179,50 @@ proto3.util.setEnumType(RunSource, "agentcompose.v2.RunSource", [
 ]);
 
 /**
+ * @generated from enum agentcompose.v2.SchedulerRunStatus
+ */
+export enum SchedulerRunStatus {
+  /**
+   * @generated from enum value: SCHEDULER_RUN_STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: SCHEDULER_RUN_STATUS_RUNNING = 1;
+   */
+  RUNNING = 1,
+
+  /**
+   * @generated from enum value: SCHEDULER_RUN_STATUS_SUCCEEDED = 2;
+   */
+  SUCCEEDED = 2,
+
+  /**
+   * @generated from enum value: SCHEDULER_RUN_STATUS_FAILED = 3;
+   */
+  FAILED = 3,
+
+  /**
+   * @generated from enum value: SCHEDULER_RUN_STATUS_CANCELED = 4;
+   */
+  CANCELED = 4,
+
+  /**
+   * @generated from enum value: SCHEDULER_RUN_STATUS_SKIPPED = 5;
+   */
+  SKIPPED = 5,
+}
+// Retrieve enum metadata with: proto3.getEnumType(SchedulerRunStatus)
+proto3.util.setEnumType(SchedulerRunStatus, "agentcompose.v2.SchedulerRunStatus", [
+  { no: 0, name: "SCHEDULER_RUN_STATUS_UNSPECIFIED" },
+  { no: 1, name: "SCHEDULER_RUN_STATUS_RUNNING" },
+  { no: 2, name: "SCHEDULER_RUN_STATUS_SUCCEEDED" },
+  { no: 3, name: "SCHEDULER_RUN_STATUS_FAILED" },
+  { no: 4, name: "SCHEDULER_RUN_STATUS_CANCELED" },
+  { no: 5, name: "SCHEDULER_RUN_STATUS_SKIPPED" },
+]);
+
+/**
  * @generated from enum agentcompose.v2.AgentStatus
  */
 export enum AgentStatus {
@@ -2535,6 +2579,587 @@ export class ListSchedulerEventsResponse extends Message<ListSchedulerEventsResp
 
   static equals(a: ListSchedulerEventsResponse | PlainMessage<ListSchedulerEventsResponse> | undefined, b: ListSchedulerEventsResponse | PlainMessage<ListSchedulerEventsResponse> | undefined): boolean {
     return proto3.util.equals(ListSchedulerEventsResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.RunSchedulerRequest
+ */
+export class RunSchedulerRequest extends Message<RunSchedulerRequest> {
+  /**
+   * @generated from field: agentcompose.v2.ProjectRef project = 1;
+   */
+  project?: ProjectRef;
+
+  /**
+   * @generated from field: string agent_name = 2;
+   */
+  agentName = "";
+
+  /**
+   * @generated from field: string trigger_id = 3;
+   */
+  triggerId = "";
+
+  /**
+   * @generated from field: string payload_json = 4;
+   */
+  payloadJson = "";
+
+  constructor(data?: PartialMessage<RunSchedulerRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.RunSchedulerRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "message", T: ProjectRef },
+    { no: 2, name: "agent_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "trigger_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "payload_json", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): RunSchedulerRequest {
+    return new RunSchedulerRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): RunSchedulerRequest {
+    return new RunSchedulerRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): RunSchedulerRequest {
+    return new RunSchedulerRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: RunSchedulerRequest | PlainMessage<RunSchedulerRequest> | undefined, b: RunSchedulerRequest | PlainMessage<RunSchedulerRequest> | undefined): boolean {
+    return proto3.util.equals(RunSchedulerRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.RunSchedulerResponse
+ */
+export class RunSchedulerResponse extends Message<RunSchedulerResponse> {
+  /**
+   * @generated from field: agentcompose.v2.SchedulerRun run = 1;
+   */
+  run?: SchedulerRun;
+
+  constructor(data?: PartialMessage<RunSchedulerResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.RunSchedulerResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "run", kind: "message", T: SchedulerRun },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): RunSchedulerResponse {
+    return new RunSchedulerResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): RunSchedulerResponse {
+    return new RunSchedulerResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): RunSchedulerResponse {
+    return new RunSchedulerResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: RunSchedulerResponse | PlainMessage<RunSchedulerResponse> | undefined, b: RunSchedulerResponse | PlainMessage<RunSchedulerResponse> | undefined): boolean {
+    return proto3.util.equals(RunSchedulerResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.StartSchedulerRunRequest
+ */
+export class StartSchedulerRunRequest extends Message<StartSchedulerRunRequest> {
+  /**
+   * @generated from field: agentcompose.v2.ProjectRef project = 1;
+   */
+  project?: ProjectRef;
+
+  /**
+   * @generated from field: string agent_name = 2;
+   */
+  agentName = "";
+
+  /**
+   * @generated from field: string trigger_id = 3;
+   */
+  triggerId = "";
+
+  /**
+   * @generated from field: string payload_json = 4;
+   */
+  payloadJson = "";
+
+  constructor(data?: PartialMessage<StartSchedulerRunRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.StartSchedulerRunRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "message", T: ProjectRef },
+    { no: 2, name: "agent_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "trigger_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "payload_json", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): StartSchedulerRunRequest {
+    return new StartSchedulerRunRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): StartSchedulerRunRequest {
+    return new StartSchedulerRunRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): StartSchedulerRunRequest {
+    return new StartSchedulerRunRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: StartSchedulerRunRequest | PlainMessage<StartSchedulerRunRequest> | undefined, b: StartSchedulerRunRequest | PlainMessage<StartSchedulerRunRequest> | undefined): boolean {
+    return proto3.util.equals(StartSchedulerRunRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.StartSchedulerRunResponse
+ */
+export class StartSchedulerRunResponse extends Message<StartSchedulerRunResponse> {
+  /**
+   * @generated from field: agentcompose.v2.SchedulerRun run = 1;
+   */
+  run?: SchedulerRun;
+
+  constructor(data?: PartialMessage<StartSchedulerRunResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.StartSchedulerRunResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "run", kind: "message", T: SchedulerRun },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): StartSchedulerRunResponse {
+    return new StartSchedulerRunResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): StartSchedulerRunResponse {
+    return new StartSchedulerRunResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): StartSchedulerRunResponse {
+    return new StartSchedulerRunResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: StartSchedulerRunResponse | PlainMessage<StartSchedulerRunResponse> | undefined, b: StartSchedulerRunResponse | PlainMessage<StartSchedulerRunResponse> | undefined): boolean {
+    return proto3.util.equals(StartSchedulerRunResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.GetSchedulerRunRequest
+ */
+export class GetSchedulerRunRequest extends Message<GetSchedulerRunRequest> {
+  /**
+   * @generated from field: agentcompose.v2.ProjectRef project = 1;
+   */
+  project?: ProjectRef;
+
+  /**
+   * @generated from field: string run_id = 2;
+   */
+  runId = "";
+
+  constructor(data?: PartialMessage<GetSchedulerRunRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.GetSchedulerRunRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "message", T: ProjectRef },
+    { no: 2, name: "run_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GetSchedulerRunRequest {
+    return new GetSchedulerRunRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GetSchedulerRunRequest {
+    return new GetSchedulerRunRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GetSchedulerRunRequest {
+    return new GetSchedulerRunRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GetSchedulerRunRequest | PlainMessage<GetSchedulerRunRequest> | undefined, b: GetSchedulerRunRequest | PlainMessage<GetSchedulerRunRequest> | undefined): boolean {
+    return proto3.util.equals(GetSchedulerRunRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.GetSchedulerRunResponse
+ */
+export class GetSchedulerRunResponse extends Message<GetSchedulerRunResponse> {
+  /**
+   * @generated from field: agentcompose.v2.SchedulerRun run = 1;
+   */
+  run?: SchedulerRun;
+
+  constructor(data?: PartialMessage<GetSchedulerRunResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.GetSchedulerRunResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "run", kind: "message", T: SchedulerRun },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GetSchedulerRunResponse {
+    return new GetSchedulerRunResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GetSchedulerRunResponse {
+    return new GetSchedulerRunResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GetSchedulerRunResponse {
+    return new GetSchedulerRunResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GetSchedulerRunResponse | PlainMessage<GetSchedulerRunResponse> | undefined, b: GetSchedulerRunResponse | PlainMessage<GetSchedulerRunResponse> | undefined): boolean {
+    return proto3.util.equals(GetSchedulerRunResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.ListSchedulerRunsRequest
+ */
+export class ListSchedulerRunsRequest extends Message<ListSchedulerRunsRequest> {
+  /**
+   * @generated from field: agentcompose.v2.ProjectRef project = 1;
+   */
+  project?: ProjectRef;
+
+  /**
+   * @generated from field: string agent_name = 2;
+   */
+  agentName = "";
+
+  /**
+   * @generated from field: uint32 limit = 3;
+   */
+  limit = 0;
+
+  /**
+   * @generated from field: string cursor = 4;
+   */
+  cursor = "";
+
+  constructor(data?: PartialMessage<ListSchedulerRunsRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.ListSchedulerRunsRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "message", T: ProjectRef },
+    { no: 2, name: "agent_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "limit", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
+    { no: 4, name: "cursor", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListSchedulerRunsRequest {
+    return new ListSchedulerRunsRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ListSchedulerRunsRequest {
+    return new ListSchedulerRunsRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ListSchedulerRunsRequest {
+    return new ListSchedulerRunsRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ListSchedulerRunsRequest | PlainMessage<ListSchedulerRunsRequest> | undefined, b: ListSchedulerRunsRequest | PlainMessage<ListSchedulerRunsRequest> | undefined): boolean {
+    return proto3.util.equals(ListSchedulerRunsRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.ListSchedulerRunsResponse
+ */
+export class ListSchedulerRunsResponse extends Message<ListSchedulerRunsResponse> {
+  /**
+   * @generated from field: repeated agentcompose.v2.SchedulerRun runs = 1;
+   */
+  runs: SchedulerRun[] = [];
+
+  /**
+   * @generated from field: string next_cursor = 2;
+   */
+  nextCursor = "";
+
+  constructor(data?: PartialMessage<ListSchedulerRunsResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.ListSchedulerRunsResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "runs", kind: "message", T: SchedulerRun, repeated: true },
+    { no: 2, name: "next_cursor", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListSchedulerRunsResponse {
+    return new ListSchedulerRunsResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ListSchedulerRunsResponse {
+    return new ListSchedulerRunsResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ListSchedulerRunsResponse {
+    return new ListSchedulerRunsResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ListSchedulerRunsResponse | PlainMessage<ListSchedulerRunsResponse> | undefined, b: ListSchedulerRunsResponse | PlainMessage<ListSchedulerRunsResponse> | undefined): boolean {
+    return proto3.util.equals(ListSchedulerRunsResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.StopSchedulerRunRequest
+ */
+export class StopSchedulerRunRequest extends Message<StopSchedulerRunRequest> {
+  /**
+   * @generated from field: agentcompose.v2.ProjectRef project = 1;
+   */
+  project?: ProjectRef;
+
+  /**
+   * @generated from field: string run_id = 2;
+   */
+  runId = "";
+
+  /**
+   * @generated from field: string reason = 3;
+   */
+  reason = "";
+
+  constructor(data?: PartialMessage<StopSchedulerRunRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.StopSchedulerRunRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "message", T: ProjectRef },
+    { no: 2, name: "run_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "reason", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): StopSchedulerRunRequest {
+    return new StopSchedulerRunRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): StopSchedulerRunRequest {
+    return new StopSchedulerRunRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): StopSchedulerRunRequest {
+    return new StopSchedulerRunRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: StopSchedulerRunRequest | PlainMessage<StopSchedulerRunRequest> | undefined, b: StopSchedulerRunRequest | PlainMessage<StopSchedulerRunRequest> | undefined): boolean {
+    return proto3.util.equals(StopSchedulerRunRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.StopSchedulerRunResponse
+ */
+export class StopSchedulerRunResponse extends Message<StopSchedulerRunResponse> {
+  /**
+   * @generated from field: agentcompose.v2.SchedulerRun run = 1;
+   */
+  run?: SchedulerRun;
+
+  /**
+   * @generated from field: bool stop_requested = 2;
+   */
+  stopRequested = false;
+
+  constructor(data?: PartialMessage<StopSchedulerRunResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.StopSchedulerRunResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "run", kind: "message", T: SchedulerRun },
+    { no: 2, name: "stop_requested", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): StopSchedulerRunResponse {
+    return new StopSchedulerRunResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): StopSchedulerRunResponse {
+    return new StopSchedulerRunResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): StopSchedulerRunResponse {
+    return new StopSchedulerRunResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: StopSchedulerRunResponse | PlainMessage<StopSchedulerRunResponse> | undefined, b: StopSchedulerRunResponse | PlainMessage<StopSchedulerRunResponse> | undefined): boolean {
+    return proto3.util.equals(StopSchedulerRunResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.SchedulerRun
+ */
+export class SchedulerRun extends Message<SchedulerRun> {
+  /**
+   * @generated from field: string run_id = 1;
+   */
+  runId = "";
+
+  /**
+   * @generated from field: string project_id = 2;
+   */
+  projectId = "";
+
+  /**
+   * @generated from field: string agent_name = 3;
+   */
+  agentName = "";
+
+  /**
+   * @generated from field: string scheduler_id = 4;
+   */
+  schedulerId = "";
+
+  /**
+   * @generated from field: string trigger_id = 5;
+   */
+  triggerId = "";
+
+  /**
+   * @generated from field: string trigger_kind = 6;
+   */
+  triggerKind = "";
+
+  /**
+   * @generated from field: string trigger_source = 7;
+   */
+  triggerSource = "";
+
+  /**
+   * @generated from field: agentcompose.v2.SchedulerRunStatus status = 8;
+   */
+  status = SchedulerRunStatus.UNSPECIFIED;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp started_at = 9;
+   */
+  startedAt?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp completed_at = 10;
+   */
+  completedAt?: Timestamp;
+
+  /**
+   * @generated from field: int64 duration_ms = 11;
+   */
+  durationMs = protoInt64.zero;
+
+  /**
+   * @generated from field: string error = 12;
+   */
+  error = "";
+
+  /**
+   * @generated from field: string result_json = 13;
+   */
+  resultJson = "";
+
+  /**
+   * @generated from field: string payload_json = 14;
+   */
+  payloadJson = "";
+
+  /**
+   * @generated from field: string source_script_sha256 = 15;
+   */
+  sourceScriptSha256 = "";
+
+  /**
+   * @generated from field: string artifacts_dir = 16;
+   */
+  artifactsDir = "";
+
+  constructor(data?: PartialMessage<SchedulerRun>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.SchedulerRun";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "run_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "project_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "agent_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "scheduler_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "trigger_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 6, name: "trigger_kind", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 7, name: "trigger_source", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 8, name: "status", kind: "enum", T: proto3.getEnumType(SchedulerRunStatus) },
+    { no: 9, name: "started_at", kind: "message", T: Timestamp },
+    { no: 10, name: "completed_at", kind: "message", T: Timestamp },
+    { no: 11, name: "duration_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 12, name: "error", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 13, name: "result_json", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 14, name: "payload_json", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 15, name: "source_script_sha256", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 16, name: "artifacts_dir", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SchedulerRun {
+    return new SchedulerRun().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): SchedulerRun {
+    return new SchedulerRun().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): SchedulerRun {
+    return new SchedulerRun().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: SchedulerRun | PlainMessage<SchedulerRun> | undefined, b: SchedulerRun | PlainMessage<SchedulerRun> | undefined): boolean {
+    return proto3.util.equals(SchedulerRun, a, b);
   }
 }
 
