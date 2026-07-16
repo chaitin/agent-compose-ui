@@ -1,6 +1,7 @@
 import { apiFetchJson } from './http';
 import { projectClient, runClient } from './client';
 import { EventTriggerSpec, ProjectValidationSeverity, RunSource, RunStatus, TriggerSpec, type Project, type ResolvedTrigger, type RunSummary, type SchedulerSummary } from '../gen/agentcompose/v2/agentcompose_pb.js';
+import { toLegacySessionPolicy, toProjectSandboxPolicy, type LegacySessionPolicy } from '../model/sandbox-policy';
 
 export type AutomationTask = {
   id: string;
@@ -22,7 +23,7 @@ export type AutomationTask = {
   updatedAt: string;
   driver: string;
   guestImage: string;
-  sessionPolicy: string;
+  sessionPolicy: LegacySessionPolicy;
   concurrencyPolicy: string;
 };
 
@@ -59,7 +60,7 @@ export type SaveAutomationTaskInput = {
   agentId: string;
   capsetIds: string[];
   defaultAgent: string;
-  sessionPolicy: string;
+  sessionPolicy: LegacySessionPolicy;
   concurrencyPolicy: string;
   enabled: boolean;
   envItems?: Array<{ name: string; value: string; secret: boolean }>;
@@ -168,6 +169,7 @@ export async function getAutomationTask(id: string): Promise<AutomationTaskDetai
     ...summary,
     name: response.spec?.displayName.trim() || response.scheduler?.displayName.trim() || summary.name,
     description: response.spec?.description.trim() || response.scheduler?.description.trim() || summary.description,
+    sessionPolicy: toLegacySessionPolicy(response.spec?.sandboxPolicy || summary.sessionPolicy),
     script: response.spec?.script ?? '',
     triggers: response.triggers.map(triggerFromResolved),
     envItems: [],
@@ -178,7 +180,7 @@ export async function resolveAutomationSessionTarget(id:string):Promise<{project
 
 export async function saveAutomationTask(input: SaveAutomationTaskInput): Promise<AutomationTaskDetail> {
   const target = input.id ? await findScheduler(input.id) : await findProjectAgent(input.agentId || input.defaultAgent); if (!target) throw new Error('自动化任务必须关联项目智能体');
-  const project = await loadProject(target.projectId); const agents = (project.spec?.agents ?? []).map((agent) => agent.name === target.agentName ? { ...agent, scheduler: { enabled: input.enabled, displayName: input.name.trim(), description: input.description.trim(), script: input.script, sandboxPolicy: input.sessionPolicy, triggers: (input.triggers ?? []).map(triggerSpecFromInput) } } : agent);
+  const project = await loadProject(target.projectId); const agents = (project.spec?.agents ?? []).map((agent) => agent.name === target.agentName ? { ...agent, scheduler: { enabled: input.enabled, displayName: input.name.trim(), description: input.description.trim(), script: input.script, sandboxPolicy: toProjectSandboxPolicy(input.sessionPolicy), triggers: (input.triggers ?? []).map(triggerSpecFromInput) } } : agent);
   await projectClient.applyProject({ spec: { ...project.spec!, agents } });
   const refreshed = await findSchedulerByAgent(target.projectId, target.agentName); if (!refreshed) throw new Error('自动化任务保存失败'); return getAutomationTask(refreshed.schedulerId);
 }
@@ -271,8 +273,8 @@ async function findScheduler(id:string):Promise<SchedulerSummary|undefined>{retu
 async function findSchedulerByAgent(projectId:string,agentName:string){return (await listAllSchedulers()).find((value)=>value.projectId===projectId&&value.agentName===agentName)}
 async function loadProject(projectId:string):Promise<Project>{const response=await projectClient.getProject({project:{projectId},includeSpec:true});if(!response.project)throw new Error('项目不存在');return response.project}
 async function findProjectAgent(id:string):Promise<{projectId:string;agentName:string}|undefined>{let offset=0;for(;;){const listed=await projectClient.listProjects({limit:200,offset});for(const summary of listed.projects){const project=await loadProject(summary.projectId);const agent=project.agents.find((value)=>value.managedAgentId===id||value.agentName===id);if(agent)return{projectId:summary.projectId,agentName:agent.agentName}}if(!listed.hasMore)return undefined;offset=listed.nextOffset}}
-function taskFromV2(item:SchedulerSummary):AutomationTask{return{id:item.schedulerId,name:item.displayName.trim()||item.agentName,description:item.description.trim(),enabled:item.enabled,runtime:'scheduler',workspaceId:'',agentId:item.agentName,agentName:item.agentName,capsetIds:[],defaultAgent:'',triggerCount:item.triggerCount,runCount:item.runCount,eventCount:0,latestRunAt:timestampString(item.latestRunAt),lastError:item.lastError,createdAt:'',updatedAt:'',driver:'',guestImage:'',sessionPolicy:'sticky',concurrencyPolicy:'skip'}}
-function triggerSpecFromInput(input:AutomationTriggerInput):TriggerSpec{return new TriggerSpec({name:input.name.trim(),kind:input.kind.trim(),cron:input.cron?.trim()??'',interval:input.interval?.trim()??'',timeout:input.timeout?.trim()??'',event:input.kind.trim()==='event'?new EventTriggerSpec({topic:input.topic?.trim()??''}):undefined,prompt:input.prompt?.trim()??'',sandboxPolicy:input.sandboxPolicy?.trim()??''})}
+function taskFromV2(item:SchedulerSummary):AutomationTask{return{id:item.schedulerId,name:item.displayName.trim()||item.agentName,description:item.description.trim(),enabled:item.enabled,runtime:'scheduler',workspaceId:'',agentId:item.agentName,agentName:item.agentName,capsetIds:[],defaultAgent:'',triggerCount:item.triggerCount,runCount:item.runCount,eventCount:0,latestRunAt:timestampString(item.latestRunAt),lastError:item.lastError,createdAt:'',updatedAt:'',driver:'',guestImage:'',sessionPolicy:'new_session',concurrencyPolicy:'skip'}}
+function triggerSpecFromInput(input:AutomationTriggerInput):TriggerSpec{const sandboxPolicy=input.sandboxPolicy?.trim()??'';return new TriggerSpec({name:input.name.trim(),kind:input.kind.trim(),cron:input.cron?.trim()??'',interval:input.interval?.trim()??'',timeout:input.timeout?.trim()??'',event:input.kind.trim()==='event'?new EventTriggerSpec({topic:input.topic?.trim()??''}):undefined,prompt:input.prompt?.trim()??'',sandboxPolicy:sandboxPolicy?toProjectSandboxPolicy(sandboxPolicy):''})}
 function triggerFromResolved(item:ResolvedTrigger):AutomationTrigger{const spec=item.spec;const duration=spec?.interval||spec?.timeout||'';return{loaderId:'',triggerId:item.triggerId,kind:spec?.kind??'',topic:spec?.event?.topic??'',intervalMs:duration?parseDuration(duration):0,enabled:item.enabled,autoId:false,specJson:spec?JSON.stringify(spec.toJson()):'',nextFireAt:timestampString(item.nextFireAt),lastFiredAt:timestampString(item.lastFiredAt),name:spec?.name??'',prompt:spec?.prompt??''}}
 function runFromV2(item:RunSummary,resultJson='',artifactsDir=''):AutomationRun{return{id:item.runId,loaderId:item.schedulerId,triggerId:item.triggerId,triggerKind:'',triggerSource:RunSource[item.source]??'',status:RunStatus[item.status]??'',startedAt:item.startedAt,completedAt:item.completedAt,durationMs:Number(item.durationMs),error:item.error,resultJson,payloadJson:'',artifactsDir}}
 function timestampString(value?:{seconds:bigint;nanos:number}){return value?new Date(Number(value.seconds)*1000+value.nanos/1e6).toISOString():''}
@@ -360,7 +362,7 @@ function taskFromSummary(item: {
     updatedAt: item.updatedAt,
     driver: item.driver,
     guestImage: item.guestImage,
-    sessionPolicy: item.sessionPolicy,
+    sessionPolicy: toLegacySessionPolicy(item.sessionPolicy),
     concurrencyPolicy: item.concurrencyPolicy,
   };
 }
