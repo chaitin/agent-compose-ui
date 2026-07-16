@@ -22,6 +22,7 @@
   import { formatBeijingTime } from '../time';
   import { appPath } from '../paths';
   import { currentQueryParams, updateQueryParams } from '../url';
+  import type { LegacySessionPolicy } from '../model/sandbox-policy';
 
   type EnvItem = { name: string; value: string; secret: boolean };
 
@@ -39,7 +40,7 @@
     taskInput: string;
     guestImage: string;
     concurrencyPolicy: 'skip_if_running' | 'parallel';
-    sessionPolicy: 'reuse_session' | 'new_session';
+    sessionPolicy: LegacySessionPolicy;
     loaderScript: string;
     envItems: EnvItem[];
     codeValidationStatus: 'unvalidated' | 'passed' | 'failed';
