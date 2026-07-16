@@ -100,6 +100,7 @@ function workspaceSpecFromPreset(preset: WorkspacePreset): WorkspaceSpec {
       provider: 'git',
       url: applyGitCredentials(rawURL, config),
       branch: stringValue(config.branch),
+      commit: stringValue(config.commit),
       path: stringValue(config.path) || '.',
     });
   }
@@ -138,7 +139,7 @@ function resolveAgentWorkspace(project: Project, spec: AgentSpec | undefined, pr
 }
 
 function isNamedWorkspaceReference(workspace: WorkspaceSpec): boolean {
-  return Boolean(workspace.name.trim()) && !workspace.provider.trim() && !workspace.url.trim() && !workspace.branch.trim() && !workspace.path.trim();
+  return Boolean(workspace.name.trim()) && !workspace.provider.trim() && !workspace.url.trim() && !workspace.branch.trim() && !workspace.commit.trim() && !workspace.path.trim();
 }
 
 function findWorkspacePreset(referenceName: string, workspace: WorkspaceSpec, presets: WorkspacePreset[]): WorkspacePreset | undefined {
@@ -158,6 +159,7 @@ function workspaceMatchesPreset(workspace: WorkspaceSpec | undefined, preset: Wo
     const candidate = workspaceSpecFromPreset(preset);
     return normalizedGitURL(candidate.url) === normalizedGitURL(workspace.url)
       && candidate.branch.trim() === workspace.branch.trim()
+      && candidate.commit.trim() === workspace.commit.trim()
       && normalizedWorkspacePath(candidate.path) === normalizedWorkspacePath(workspace.path);
   }
   const segments = workspace.path.split(/[\\/]+/).filter(Boolean);
