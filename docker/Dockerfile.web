@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1
+
+# ---- Stage 1: build the SPA with Node + npm + Vite ----
+# Uses npm (not bun) for the install because bun's bundled BoringSSL CA store
+# cannot verify the registry cert in networks with TLS interception, whereas
+# npm uses the system/Node OpenSSL trust store and works in those environments.
+FROM node:22-alpine AS build
+WORKDIR /build
+
+# Install dependencies first (cached layer). `package*.json` copies package.json
+# and package-lock.json when present. `npm install` is lenient: it uses the
+# lockfile if present and in sync, otherwise resolves from package.json. For
+# reproducible builds, commit a synced package-lock.json and switch to `npm ci`.
+COPY package*.json ./
+RUN npm install
+
+# Build the static bundle (outputs /build/dist).
+COPY . ./
+RUN npm run build
+
+# ---- Stage 2: nginx serves the static bundle and reverse-proxies the API ----
+FROM nginx:1.27-alpine
+LABEL org.opencontainers.image.title="agent-compose-web"
+LABEL org.opencontainers.image.description="Agent Compose Web (SPA + reverse proxy)"
+
+COPY --from=build /build/dist /usr/share/nginx/html
+# The nginx image auto-runs envsubst on /etc/nginx/templates/*.template at start,
+# substituting ${AGENT_COMPOSE_URL}, ${SCRIPT_SERVICE_URL}, ${SCRIPT_SERVICE_TOKEN}.
+COPY docker/nginx/default.conf.template /etc/nginx/templates/default.conf.template
+
+EXPOSE 80

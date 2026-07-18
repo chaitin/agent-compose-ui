@@ -1,28 +1,11 @@
-# Dependencies
+.superpowers/
 node_modules/
-
-# Build output
 dist/
-dist.bak.*/
-frontend.tar.gz
-frontend.pid
-frontend.node.pid
-
-# Vite / Svelte caches
-.vite/
-.svelte-kit/
-
-# Local env
+/data/scripts/
+/e2e/reports/
 .env
-.env.*
-!.env.example
-
-# Logs
-*.log
-npm-debug.log*
-
-# OS / editor
-.DS_Store
-Thumbs.db
-*.swp
-.idea/
+test-results/
+docker/.env
+# Full-stack compose runtime data/config (self-contained under docker/)
+docker/data/
+docker/agent-compose.env

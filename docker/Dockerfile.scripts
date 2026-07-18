@@ -1,0 +1,14 @@
+# syntax=docker/dockerfile:1
+# Script file service - a tiny Bun app with zero npm dependencies (Node builtins
+# only), so no install step is needed.
+FROM oven/bun:1-alpine
+WORKDIR /app
+COPY script-service/*.mjs ./
+
+# In a container the service must bind 0.0.0.0 so the web (nginx) container can
+# reach it. dev usage overrides this back to 127.0.0.1 via SCRIPT_SERVICE_HOST.
+ENV SCRIPT_SERVICE_HOST=0.0.0.0 \
+    SCRIPT_SERVICE_PORT=7420
+
+EXPOSE 7420
+CMD ["bun", "/app/server.mjs"]

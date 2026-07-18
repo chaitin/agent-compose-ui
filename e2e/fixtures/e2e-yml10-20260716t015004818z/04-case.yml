@@ -1,0 +1,12 @@
+name: e2e-yml10-20260716t015004818z-04
+variables:
+  CASE_KIND: { value: failure-record }
+agents:
+  worker-4:
+    provider: codex
+    image: ghcr.io/chaitin/agent-compose-guest:latest
+    driver:
+      docker: {}
+    env:
+      YML_CASE: { value: "4" }
+      YML_MARKER: { value: e2e-yml10-20260716t015004818z-04-bash-ok }

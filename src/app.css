@@ -1,0 +1,58 @@
+:root {
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #21262d;
+  --border-color: #30363d;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --accent-blue: #58a6ff;
+  --accent-green: #3fb950;
+  --accent-red: #f85149;
+  --accent-yellow: #d2991d;
+  --accent-orange: #db6d28;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --font-sans: system-ui, -apple-system, sans-serif;
+  /* Typographic scale — every text size in the app uses one of these tokens. */
+  --font-size-xs: 12px;   /* micro: badges, table heads, status pills, timestamps, mono meta */
+  --font-size-sm: 13px;   /* secondary: captions, descriptions, notices */
+  --font-size-md: 14px;   /* body: nav, inputs, buttons, list rows — root size */
+  --font-size-lg: 15px;   /* emphasized: list titles, agent names */
+  --font-size-xl: 16px;   /* section/panel headings, view h2 */
+  --font-size-2xl: 18px;  /* modal titles, page subheadings */
+  --font-size-3xl: 20px;  /* page h1 */
+  --font-size-hero: 24px; /* hero stat numbers */
+  --sidebar-width: 220px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #app {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 4px 8px;
+}

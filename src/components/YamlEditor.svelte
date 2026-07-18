@@ -1,0 +1,517 @@
+<script lang="ts">
+  import { mount, unmount } from 'svelte';
+  import { untrack } from 'svelte';
+  import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
+  import * as monaco from 'monaco-editor';
+  import { store } from '../lib/stores.svelte';
+  import { countAgents, countSchedulers, yamlToSpec } from '../lib/yaml';
+  import Toolbar from './Toolbar.svelte';
+  import ScriptPanel from './scripts/ScriptPanel.svelte';
+  import ScriptLineActions from './scripts/ScriptLineActions.svelte';
+  import ScriptReferenceModal from './scripts/ScriptReferenceModal.svelte';
+  import { scriptWorkspace } from '../lib/scripts/workspace.svelte';
+  import { scriptApi, scriptErrorMessage } from '../lib/scripts/api';
+  import { collectScriptFiles } from '../lib/scripts/tree';
+  import {
+    defaultScriptPath,
+    extractInlineScript,
+    findScriptAtLine,
+    initializeInlineScript,
+    inlineScriptReference,
+    listScriptRanges,
+    referenceExistingScript,
+    type ScriptLocation,
+    type ScriptRange,
+  } from '../lib/scripts/editor-actions';
+
+  self.MonacoEnvironment = {
+    getWorker: () => new EditorWorker(),
+  };
+
+  type ModalRequest =
+    | { mode: 'extract'; pointer: string; defaultPath: string; exists: boolean }
+    | { mode: 'reference'; pointer: string };
+
+  interface MountedActionWidget {
+    widget: monaco.editor.IContentWidget;
+    component: ReturnType<typeof mount>;
+  }
+
+  const ACTION_RIGHT_GAP = 12;
+
+  let container = $state<HTMLDivElement>();
+  let editor = $state<monaco.editor.IStandaloneCodeEditor | null>(null);
+  let modalRequest = $state<ModalRequest | null>(null);
+  let modalBusy = $state(false);
+  let ignoreChanges = false;
+  let decorationIds: string[] = [];
+  let actionWidgets: MountedActionWidget[] = [];
+  let updateScriptActionContext = () => {};
+
+  let agentCount = $derived(countAgents(store.editorContent));
+  let schedulerCount = $derived(countSchedulers(store.editorContent));
+
+  function locationAtCursor(): ScriptLocation | null {
+    if (!editor) return null;
+    const position = editor.getPosition();
+    if (!position) return null;
+    return findScriptAtLine(store.editorContent, position.lineNumber);
+  }
+
+  function scriptMessage(error: unknown): string {
+    return scriptErrorMessage(error);
+  }
+
+  async function openScript(path: string): Promise<void> {
+    try {
+      scriptWorkspace.panelOpen = true;
+      await scriptWorkspace.openFile(path);
+    } catch (error) {
+      store.addToast('打开失败：' + scriptMessage(error), 'error');
+    }
+  }
+
+  function isEmptyInlineScript(range: ScriptRange | undefined): boolean {
+    return range?.kind === 'inline' && range.content.trim() === '';
+  }
+
+  function rangeAtPointer(pointer: string): ScriptRange | undefined {
+    return listScriptRanges(store.editorContent).find((range) => range.pointer === pointer);
+  }
+
+  function projectName(): string {
+    return scriptWorkspace.projectName || (yamlToSpec(store.editorContent).spec.name?.trim() ?? '');
+  }
+
+  function targetScriptPath(pointer: string): string {
+    return defaultScriptPath(pointer, projectName());
+  }
+
+  function scriptFileExists(pointer: string): boolean {
+    const target = targetScriptPath(pointer);
+    const files = collectScriptFiles(scriptWorkspace.tree);
+    return files.some((f) => f.path === target);
+  }
+
+  function requestExtract(range: Extract<ScriptRange, { kind: 'inline' }>): void {
+    if (isEmptyInlineScript(range)) return;
+    const exists = scriptFileExists(range.pointer);
+    modalRequest = {
+      mode: 'extract',
+      pointer: range.pointer,
+      defaultPath: targetScriptPath(range.pointer),
+      exists,
+    };
+  }
+
+  function chooseInline(range: Extract<ScriptRange, { kind: 'inline' }>): void {
+    if (!isEmptyInlineScript(range)) return;
+    store.commitEditorContent(initializeInlineScript(store.editorContent, range.pointer));
+  }
+
+  async function requestReference(pointer: string): Promise<void> {
+    const range = rangeAtPointer(pointer);
+    if (!range || range.kind !== 'inline' || !isEmptyInlineScript(range)) {
+      store.addToast('只有空的 script 才能引用已有文件', 'error');
+      return;
+    }
+    modalRequest = { mode: 'reference', pointer };
+    try {
+      await scriptWorkspace.refreshTree();
+    } catch (error) {
+      store.addToast('加载脚本文件失败：' + scriptMessage(error), 'error');
+    }
+  }
+
+  async function confirmScriptAction(path: string): Promise<void> {
+    if (!modalRequest || modalBusy) return;
+    const request = modalRequest;
+    modalBusy = true;
+    try {
+      if (request.mode === 'extract') {
+        const extracted = extractInlineScript(store.editorContent, request.pointer, path);
+        await scriptWorkspace.writeFileForce(path, extracted.content);
+        store.commitEditorContent(extracted.yamlText);
+        scriptWorkspace.panelOpen = true;
+        store.addToast(request.exists ? `已更新 ${path}` : `已提取到 ${path}`, 'success');
+      } else {
+        const range = rangeAtPointer(request.pointer);
+        if (!range || range.kind !== 'inline' || !isEmptyInlineScript(range)) {
+          throw new Error('只有空的 script 才能引用已有文件');
+        }
+        const nextYaml = referenceExistingScript(store.editorContent, request.pointer, path);
+        await scriptWorkspace.openFile(path);
+        store.commitEditorContent(nextYaml);
+        scriptWorkspace.panelOpen = true;
+        store.addToast(`已引用 ${path}`, 'success');
+      }
+      modalRequest = null;
+    } catch (error) {
+      store.addToast(`${request.mode === 'extract' ? '提取' : '引用'}失败：${scriptMessage(error)}`, 'error');
+    } finally {
+      modalBusy = false;
+    }
+  }
+
+  async function inlineRef(pointer: string, path: string): Promise<void> {
+    try {
+      const file = await scriptApi.readFile(path);
+      store.commitEditorContent(inlineScriptReference(store.editorContent, pointer, file.content));
+      store.addToast(`已内联 ${path}`, 'success');
+    } catch (error) {
+      store.addToast('内联失败：' + scriptMessage(error), 'error');
+    }
+  }
+
+  function clearActionWidgets(target: monaco.editor.IStandaloneCodeEditor): void {
+    for (const entry of actionWidgets) {
+      target.removeContentWidget(entry.widget);
+      void unmount(entry.component);
+    }
+    actionWidgets = [];
+  }
+
+  function addActionWidget(
+    target: monaco.editor.IStandaloneCodeEditor,
+    range: ScriptRange,
+  ): MountedActionWidget {
+    const node = document.createElement('div');
+    const component = mount(ScriptLineActions, {
+      target: node,
+      props: {
+        kind: range.kind,
+        empty: isEmptyInlineScript(range),
+        fileExists: range.kind === 'inline' && scriptFileExists(range.pointer),
+        onMode: () => range.kind === 'inline' && chooseInline(range),
+        onExtract: () => range.kind === 'inline' && requestExtract(range),
+        onReference: () => void requestReference(range.pointer),
+        onInline: () => range.kind === 'reference' && void inlineRef(range.pointer, range.path),
+      },
+    });
+    const widget: monaco.editor.IContentWidget = {
+      allowEditorOverflow: false,
+      suppressMouseDown: true,
+      getId: () => `script-line-actions:${range.pointer}`,
+      getDomNode: () => node,
+      getPosition: () => {
+        const model = target.getModel();
+        if (!model || range.startLine > model.getLineCount()) return null;
+        return {
+          position: {
+            lineNumber: range.startLine,
+            column: 1,
+          },
+          preference: [monaco.editor.ContentWidgetPositionPreference.EXACT],
+        };
+      },
+      afterRender: (position) => {
+        if (position === null) return;
+        const layout = target.getLayoutInfo();
+        const viewportRight = layout.width - layout.verticalScrollbarWidth - ACTION_RIGHT_GAP;
+        const availableWidth = Math.max(0, viewportRight - layout.contentLeft);
+        node.style.maxWidth = `${availableWidth}px`;
+        const widgetWidth = Math.min(node.offsetWidth, availableWidth);
+        const targetLeft = Math.max(0, availableWidth - widgetWidth);
+        node.style.transform = `translateX(${targetLeft}px)`;
+      },
+    };
+    target.addContentWidget(widget);
+    return { widget, component };
+  }
+
+  function refreshScriptPresentation(target: monaco.editor.IStandaloneCodeEditor): void {
+    const ranges = listScriptRanges(store.editorContent);
+    const model = target.getModel();
+    if (!model) return;
+
+    const decorations: monaco.editor.IModelDeltaDecoration[] = ranges
+      .filter((range): range is Extract<ScriptRange, { kind: 'reference' }> => range.kind === 'reference')
+      .map((range) => {
+        const line = model.getLineContent(range.startLine);
+        const refStart = Math.max(0, line.indexOf('$ref:'));
+        return {
+          range: new monaco.Range(range.startLine, refStart + 1, range.startLine, line.length + 1),
+          options: {
+            inlineClassName: 'script-ref-link',
+            hoverMessage: { value: `脚本文件：\`${range.path}\`\n\n点击打开脚本面板` },
+            stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+          },
+        };
+      });
+    decorationIds = target.deltaDecorations(decorationIds, decorations);
+
+    clearActionWidgets(target);
+    actionWidgets = ranges.map((range) => addActionWidget(target, range));
+  }
+
+  $effect(() => {
+    if (!container) return;
+
+    const initial = untrack(() => store.editorContent);
+    const e: monaco.editor.IStandaloneCodeEditor = monaco.editor.create(container, {
+      value: initial,
+      language: 'yaml',
+      theme: 'vs-dark',
+      fontSize: 13,
+      fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+      lineNumbers: 'on',
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      wordWrap: 'on',
+      tabSize: 2,
+      automaticLayout: true,
+    });
+
+    const scriptInlineEmptyContext = e.createContextKey('scriptInlineEmpty', false as boolean);
+    const scriptInlinePopulatedContext = e.createContextKey('scriptInlinePopulated', false as boolean);
+    const scriptReferenceContext = e.createContextKey('scriptReference', false as boolean);
+    updateScriptActionContext = () => {
+      const position = e.getPosition();
+      const location = position
+        ? findScriptAtLine(store.editorContent, position.lineNumber)
+        : null;
+      const inlineContent = location?.kind === 'inline' ? location.content : null;
+      scriptInlineEmptyContext.set(inlineContent !== null && inlineContent.trim() === '');
+      scriptInlinePopulatedContext.set(inlineContent !== null && inlineContent.trim() !== '');
+      scriptReferenceContext.set(location?.kind === 'reference');
+    };
+
+    const contentDisposable = e.onDidChangeModelContent(() => {
+      if (ignoreChanges) return;
+      store.commitEditorContent(e.getValue());
+      updateScriptActionContext();
+    });
+    const cursorDisposable = e.onDidChangeCursorPosition(updateScriptActionContext);
+
+    e.onMouseDown((event) => {
+      const position = event.target?.position;
+      if (!position) return;
+      const location = findScriptAtLine(store.editorContent, position.lineNumber);
+      if (location?.kind === 'reference') void openScript(location.path);
+    });
+
+    e.addAction({
+      id: 'script-open-file',
+      label: '打开脚本文件',
+      contextMenuGroupId: 'script',
+      contextMenuOrder: 1,
+      precondition: 'scriptReference',
+      run: () => {
+        const location = locationAtCursor();
+        if (location?.kind === 'reference') void openScript(location.path);
+      },
+    });
+
+    e.addAction({
+      id: 'script-extract-to-file',
+      label: '提取到文件',
+      contextMenuGroupId: 'script',
+      contextMenuOrder: 2,
+      precondition: 'scriptInlinePopulated',
+      run: () => {
+        const position = e.getPosition();
+        const range = position
+          ? listScriptRanges(store.editorContent).find(
+              (candidate) => candidate.kind === 'inline'
+                && position.lineNumber >= candidate.startLine
+                && position.lineNumber <= candidate.endLine,
+            )
+          : undefined;
+        if (range?.kind === 'inline') requestExtract(range);
+      },
+    });
+
+    e.addAction({
+      id: 'script-reference-existing',
+      label: '引用已有文件',
+      contextMenuGroupId: 'script',
+      contextMenuOrder: 3,
+      precondition: 'scriptInlineEmpty',
+      run: () => {
+        const location = locationAtCursor();
+        if (location) void requestReference(location.pointer);
+      },
+    });
+
+    e.addAction({
+      id: 'script-inline-ref',
+      label: '转为内联',
+      contextMenuGroupId: 'script',
+      contextMenuOrder: 4,
+      precondition: 'scriptReference',
+      run: () => {
+        const location = locationAtCursor();
+        if (location?.kind === 'reference') void inlineRef(location.pointer, location.path);
+      },
+    });
+
+    e.addAction({
+      id: 'apply-project',
+      label: 'Apply 智能体应用',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
+      run: () => document.querySelector<HTMLButtonElement>('.btn-primary')?.click(),
+    });
+
+    const relayoutActionWidgets = () => {
+      for (const entry of actionWidgets) e.layoutContentWidget(entry.widget);
+    };
+    const scrollDisposable = e.onDidScrollChange(relayoutActionWidgets);
+    const layoutDisposable = e.onDidLayoutChange(relayoutActionWidgets);
+
+    editor = e;
+    untrack(() => {
+      updateScriptActionContext();
+      refreshScriptPresentation(e);
+    });
+
+    return () => {
+      contentDisposable.dispose();
+      cursorDisposable.dispose();
+      scriptInlineEmptyContext.reset();
+      scriptInlinePopulatedContext.reset();
+      scriptReferenceContext.reset();
+      updateScriptActionContext = () => {};
+      scrollDisposable.dispose();
+      layoutDisposable.dispose();
+      clearActionWidgets(e);
+      decorationIds = e.deltaDecorations(decorationIds, []);
+      e.dispose();
+      editor = null;
+    };
+  });
+
+  $effect(() => {
+    const current = store.editorContent;
+    if (!editor) return;
+    if (editor.getValue() !== current) {
+      const scrollTop = editor.getScrollTop();
+      const scrollLeft = editor.getScrollLeft();
+      const selections = editor.getSelections();
+      ignoreChanges = true;
+      try {
+        editor.setValue(current);
+      } finally {
+        ignoreChanges = false;
+      }
+      if (selections?.length) editor.setSelections(selections);
+      editor.setScrollPosition({ scrollTop, scrollLeft });
+    }
+    updateScriptActionContext();
+    refreshScriptPresentation(editor);
+  });
+</script>
+
+<div class="yaml-editor" class:collapsed={store.editorCollapsed}>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="collapse-strip" onclick={() => store.editorCollapsed = false} onkeydown={(e: KeyboardEvent) => e.key === 'Enter' && (store.editorCollapsed = false)} title="点击展开编辑器" role="button" tabindex="0">
+    <span class="strip-filename">agent-compose.yml</span>
+    <span class="strip-arrow">▶</span>
+  </div>
+
+  <div class="yaml-editor-header">
+    <span class="filename">agent-compose.yml</span>
+    <Toolbar />
+  </div>
+  <div class="editor-stack">
+    <div class="yaml-editor-body" bind:this={container}></div>
+    <ScriptPanel workspace={scriptWorkspace} />
+    {#if modalRequest}
+      <ScriptReferenceModal
+        mode={modalRequest.mode}
+        tree={scriptWorkspace.tree}
+        defaultPath={modalRequest.mode === 'extract' ? modalRequest.defaultPath : ''}
+        fileExists={modalRequest.mode === 'extract' ? modalRequest.exists : false}
+        busy={modalBusy}
+        onConfirm={confirmScriptAction}
+        onCancel={() => !modalBusy && (modalRequest = null)}
+      />
+    {/if}
+  </div>
+  <div class="yaml-editor-footer">
+    <span>智能体: {agentCount}</span>
+    <span>调度器: {schedulerCount}</span>
+    <span class="lang-badge">YAML</span>
+  </div>
+</div>
+
+<style>
+  .yaml-editor {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    background: #1e1e1e;
+    overflow: hidden;
+  }
+  .collapse-strip {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 100%;
+    cursor: pointer;
+    background: #1a1a1f;
+    border-left: 2px solid var(--accent-blue);
+    transition: background 0.2s;
+    user-select: none;
+    padding: 0 4px;
+  }
+  .collapse-strip:hover { background: #22222a; }
+  .collapse-strip:hover .strip-arrow { color: #fff; transform: scale(1.3); }
+  .strip-filename {
+    writing-mode: vertical-rl;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+  }
+  .strip-arrow { color: var(--accent-blue); font-size: 12px; transition: color 0.15s, transform 0.15s; }
+  .yaml-editor.collapsed { min-width: 28px; }
+  .yaml-editor.collapsed .collapse-strip { display: flex; }
+  .yaml-editor.collapsed .yaml-editor-header,
+  .yaml-editor.collapsed .editor-stack,
+  .yaml-editor.collapsed .yaml-editor-footer { display: none; }
+  .yaml-editor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 12px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    font-size: var(--font-size-md);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    gap: 0;
+  }
+  .filename { font-family: var(--font-mono); flex-shrink: 0; }
+  :global(.yaml-editor-header .toolbar) {
+    flex: 1;
+    padding: 0;
+    background: transparent;
+    border-bottom: none;
+    min-height: 28px;
+  }
+  .editor-stack { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  .yaml-editor-body { flex: 1; min-height: 0; }
+  .yaml-editor-footer {
+    display: flex;
+    gap: 16px;
+    padding: 2px 12px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    font-size: var(--font-size-sm);
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  :global(.script-ref-link) {
+    color: #c9a7ff !important;
+    background: rgba(163, 113, 247, 0.09);
+    text-decoration: underline;
+    text-decoration-color: rgba(201, 167, 255, 0.75);
+    cursor: pointer;
+  }
+  :global(.monaco-scrollable-element > .scrollbar > .slider) { width: 4px !important; }
+  :global(.monaco-editor .decorationsOverviewRuler) { width: 4px !important; }
+  .lang-badge { margin-left: auto; color: var(--text-secondary); }
+</style>

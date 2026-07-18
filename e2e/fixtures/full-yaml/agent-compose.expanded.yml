@@ -1,0 +1,79 @@
+name: e2e-yaml-full-20260715t232500z
+variables:
+  TEST_SUITE:
+    value: full-yaml-e2e
+network:
+  mode: default
+workspaces:
+  fixture-workspace:
+    provider: local
+    path: workspace
+agents:
+  build-workspace-agent:
+    provider: codex
+    image: agent-compose-e2e-full:20260715
+    driver:
+      docker: {}
+    env:
+      E2E_VISIBLE:
+        value: visible-value
+      E2E_EMPTY: ""
+    workspace:
+      name: fixture-workspace
+    build:
+      context: /root/agent/agent-compose-web/web/e2e/fixtures/full-yaml/build-context
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        BUILD_MARKER: yaml-build-config-ok
+      platforms: [linux/amd64]
+      tags: [agent-compose-e2e-full:20260715]
+      no_cache: true
+      pull: false
+  prompt-agent:
+    provider: codex
+    model: svip/claude-opus-4-7
+    system_prompt: Reply with exactly the marker requested by the user and no other text.
+    image: ghcr.io/chaitin/agent-compose-guest:latest
+    driver:
+      docker: {}
+  trigger-agent:
+    provider: codex
+    image: ghcr.io/chaitin/agent-compose-guest:latest
+    driver:
+      docker: {}
+    scheduler:
+      enabled: true
+      sandbox_policy: sticky
+      triggers:
+        - name: interval-check
+          interval: 24h
+          prompt: e2e interval prompt
+        - name: cron-check
+          cron: "17 4 1 1 *"
+          prompt: e2e cron prompt
+          sandbox_policy: new
+        - name: timeout-check
+          timeout: 24h
+          prompt: e2e timeout prompt
+        - name: event-check
+          event: { topic: e2e.yaml.full.event }
+          prompt: e2e event prompt
+  script-agent:
+    provider: codex
+    image: ghcr.io/chaitin/agent-compose-guest:latest
+    driver:
+      docker: {}
+    scheduler:
+      enabled: true
+      sandbox_policy: sticky
+      script: |
+        scheduler.interval("script-interval-check", function scriptIntervalCheck() {
+          scheduler.log("yaml scheduler script interval executed", { source: "full-yaml-e2e" });
+          return scheduler.agent("Reply with exactly yaml-script-trigger-ok");
+        }, 86400000);
+
+        function main(payload) {
+          scheduler.log("yaml scheduler script main executed", payload);
+          return scheduler.agent("Reply with exactly yaml-script-main-ok");
+        }

@@ -1,0 +1,73 @@
+# Full stack: web (nginx SPA + reverse proxy) + script-service + agent-compose backend.
+# The web container talks to agent-compose over the internal network.
+#
+# Usage:
+#   cp .env.example .env                            # set SCRIPT_SERVICE_TOKEN, etc.
+#   cp agent-compose.env.example agent-compose.env  # backend daemon config (optional edits)
+#   docker compose -f docker-compose.full.yml up --build
+#
+# The agent-compose service mounts the host docker.sock (to manage sandboxes),
+# the backend data dir, and the backend .env. Defaults are self-contained under
+# this docker/ dir (./data and ./agent-compose.env), so the stack runs without a
+# sibling agent-compose checkout. Override AGENT_COMPOSE_DATA_DIR /
+# AGENT_COMPOSE_ENV_FILE in .env to relocate either.
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    environment:
+      AGENT_COMPOSE_URL: ${AGENT_COMPOSE_URL:-http://agent-compose:7410}
+      SCRIPT_SERVICE_URL: http://scripts:7420
+      SCRIPT_SERVICE_TOKEN: ${SCRIPT_SERVICE_TOKEN:?set SCRIPT_SERVICE_TOKEN in .env}
+    depends_on:
+      - scripts
+      - agent-compose
+    restart: unless-stopped
+    networks:
+      - agent-web-net
+
+  scripts:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.scripts
+    environment:
+      SCRIPT_SERVICE_TOKEN: ${SCRIPT_SERVICE_TOKEN:?set SCRIPT_SERVICE_TOKEN in .env}
+      SCRIPT_SERVICE_PORT: "7420"
+      SCRIPT_DATA_DIR: /data/scripts
+    volumes:
+      - script-data:/data/scripts
+    restart: unless-stopped
+    networks:
+      - agent-web-net
+
+  agent-compose:
+    image: ${AGENT_COMPOSE_IMAGE:-ghcr.io/chaitin/agent-compose:latest}
+    restart: always
+    environment:
+      AGENT_COMPOSE_RUNTIME_BASE_URL: ${AGENT_COMPOSE_RUNTIME_BASE_URL:-http://agent-compose:7410}
+    volumes:
+      # Required: agent-compose manages sandboxes/containers via the host Docker daemon.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Backend data (projects, runs, sandboxes). Self-contained default: ./data
+      # (relative to this docker/ dir). Override with AGENT_COMPOSE_DATA_DIR.
+      - ${AGENT_COMPOSE_DATA_DIR:-./data}:/data
+      # Backend config (AUTH_*, DATA_ROOT, RUNTIME_DRIVER, ...). Mounted read-only.
+      # Self-contained default: ./agent-compose.env (copy from agent-compose.env.example).
+      # Override with AGENT_COMPOSE_ENV_FILE.
+      - ${AGENT_COMPOSE_ENV_FILE:-./agent-compose.env}:/data/work/.env:ro
+    working_dir: /data/work
+    ports:
+      - "${AGENT_COMPOSE_PORT:-7410}:7410"
+    networks:
+      - agent-web-net
+
+networks:
+  agent-web-net:
+    name: agent-web-net
+
+volumes:
+  script-data:

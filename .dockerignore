@@ -1,11 +1,32 @@
-node_modules/
-dist/
-dist.bak.*/
-frontend.pid
-frontend.node.pid
-frontend.log
-frontend.tar.gz
-.git/
-.github/
-.env
-.env.*
+# Build context is the repo root (the project itself). Exclude everything the
+# image builds don't need, to speed up builds and avoid baking in secrets.
+# NOTE: do NOT exclude docker/ or script-service/ - the Dockerfiles reference them.
+
+# VCS
+.git
+.gitignore
+
+# Deps & build artifacts (regenerated inside the image)
+**/node_modules
+**/dist
+**/.svelte-kit
+
+# Tests, e2e, local runtime data - not needed in the runtime image
+test
+e2e
+test-results
+data
+# Full-stack compose runtime data/config (self-contained under docker/)
+docker/data
+docker/agent-compose.env
+
+# Test files anywhere
+**/*.test.*
+**/*.spec.*
+
+# Secrets - never bake into images (mounted as volumes at runtime instead)
+**/.env
+**/.env.*
+
+# Misc
+**/.DS_Store

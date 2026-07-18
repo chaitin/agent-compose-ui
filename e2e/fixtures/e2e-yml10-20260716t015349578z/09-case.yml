@@ -1,0 +1,12 @@
+name: e2e-yml10-20260716t015349578z-09
+variables:
+  CASE_KIND: { value: shell-expansion }
+agents:
+  worker-9:
+    provider: codex
+    image: ghcr.io/chaitin/agent-compose-guest:latest
+    driver:
+      docker: {}
+    env:
+      YML_CASE: { value: "9" }
+      YML_MARKER: { value: e2e-yml10-20260716t015349578z-09-bash-ok }

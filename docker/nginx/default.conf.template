@@ -1,0 +1,54 @@
+# nginx server config template. The official nginx image runs envsubst on this
+# file at container start, substituting only the env vars present in the
+# container (AGENT_COMPOSE_URL, SCRIPT_SERVICE_URL, SCRIPT_SERVICE_TOKEN).
+# nginx builtin variables ($host, $uri, $remote_addr, $upstream_*) are NOT in
+# the container env and are therefore left untouched.
+
+server {
+  listen 80;
+  server_name _;
+  client_max_body_size 10m;
+
+  root /usr/share/nginx/html;
+  index index.html;
+
+  # Docker embedded DNS - lets nginx resolve upstream service names (agent-compose,
+  # scripts) at request time so it tolerates backends starting after the web.
+  resolver 127.0.0.11 valid=10s ipv6=off;
+
+  gzip on;
+  gzip_comp_level 5;
+  gzip_min_length 1024;
+  gzip_types text/plain text/css application/javascript application/json application/wasm image/svg+xml;
+
+  # SPA fallback: serve static assets, fall back to index.html for client routes
+  # (hash routing plus the /events/<id> standalone real paths).
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+
+  # Agent Compose daemon: Connect RPC (agentcompose.v1./v2.), health, REST API.
+  # rpc.ts uses window.location.origin as the RPC base URL, so these paths must
+  # be reverse-proxied to the daemon.
+  location ~ ^/(agentcompose\.v[12]\.|health\.v1\.|api/) {
+    set $upstream_ac ${AGENT_COMPOSE_URL};
+    proxy_pass $upstream_ac;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_http_version 1.1;
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+  }
+
+  # Script file service. The browser calls /script-api/* without a token; nginx
+  # injects the shared internal token header consumed by the script service.
+  location /script-api/ {
+    set $upstream_ss ${SCRIPT_SERVICE_URL};
+    proxy_pass $upstream_ss;
+    proxy_set_header Host $host;
+    proxy_set_header X-Script-Service-Token ${SCRIPT_SERVICE_TOKEN};
+    proxy_http_version 1.1;
+    proxy_read_timeout 60s;
+  }
+}

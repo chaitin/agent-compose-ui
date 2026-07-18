@@ -1,0 +1,12 @@
+name: e2e-yml10-20260716t015004818z-03
+variables:
+  CASE_KIND: { value: unicode }
+agents:
+  worker-3:
+    provider: codex
+    image: ghcr.io/chaitin/agent-compose-guest:latest
+    driver:
+      docker: {}
+    env:
+      YML_CASE: { value: "3" }
+      YML_MARKER: { value: e2e-yml10-20260716t015004818z-03-bash-ok }

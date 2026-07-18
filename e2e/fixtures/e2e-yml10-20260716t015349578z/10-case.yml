@@ -1,0 +1,12 @@
+name: e2e-yml10-20260716t015349578z-10
+variables:
+  CASE_KIND: { value: audit-trace }
+agents:
+  worker-10:
+    provider: codex
+    image: ghcr.io/chaitin/agent-compose-guest:latest
+    driver:
+      docker: {}
+    env:
+      YML_CASE: { value: "10" }
+      YML_MARKER: { value: e2e-yml10-20260716t015349578z-10-bash-ok }

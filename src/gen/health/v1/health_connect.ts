@@ -32,3 +32,4 @@ export const HealthService = {
     },
   }
 } as const;
+

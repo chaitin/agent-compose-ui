@@ -1,0 +1,53 @@
+# Frontend-only stack: web (nginx SPA + reverse proxy) + script-service.
+# Connects to an EXTERNAL agent-compose daemon (default: the host's 7410).
+#
+# Usage:
+#   cp .env.example .env   # then edit .env (set SCRIPT_SERVICE_TOKEN, etc.)
+#   docker compose up --build
+#
+# If your agent-compose runs as a Docker container instead of on the host,
+# either set AGENT_COMPOSE_URL to its address, or attach it to the agent-web-net
+# network and set AGENT_COMPOSE_URL=http://agent-compose:7410.
+# To run agent-compose inside this stack too, use docker-compose.full.yml.
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    environment:
+      AGENT_COMPOSE_URL: ${AGENT_COMPOSE_URL:-http://host.docker.internal:7410}
+      SCRIPT_SERVICE_URL: http://scripts:7420
+      SCRIPT_SERVICE_TOKEN: ${SCRIPT_SERVICE_TOKEN:?set SCRIPT_SERVICE_TOKEN in .env}
+    extra_hosts:
+      # Lets the container reach a host-exposed agent-compose via host.docker.internal.
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - scripts
+    restart: unless-stopped
+    networks:
+      - agent-web-net
+
+  scripts:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.scripts
+    environment:
+      SCRIPT_SERVICE_TOKEN: ${SCRIPT_SERVICE_TOKEN:?set SCRIPT_SERVICE_TOKEN in .env}
+      SCRIPT_SERVICE_PORT: "7420"
+      SCRIPT_DATA_DIR: /data/scripts
+      # SCRIPT_SERVICE_HOST=0.0.0.0 is baked into the image; override here if needed.
+    volumes:
+      - script-data:/data/scripts
+    restart: unless-stopped
+    networks:
+      - agent-web-net
+
+networks:
+  agent-web-net:
+    name: agent-web-net
+
+volumes:
+  script-data:
