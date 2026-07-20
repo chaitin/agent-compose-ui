@@ -125,7 +125,9 @@ func isDaemonPath(path string) bool {
 		strings.HasPrefix(path, "/health.v1.") ||
 		strings.HasPrefix(path, "/api/") ||
 		strings.HasPrefix(path, "/oauth/") ||
-		strings.HasPrefix(path, "/agent-compose/session/")
+		strings.HasPrefix(path, "/agent-compose/session/") ||
+		path == "/jupyter" ||
+		strings.HasPrefix(path, "/jupyter/")
 }
 
 func methodNotAllowed(w http.ResponseWriter, methods ...string) {

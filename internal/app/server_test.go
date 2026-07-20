@@ -153,6 +153,8 @@ func TestRoutesOnlyExplicitUpstreamFamilies(t *testing.T) {
 		"/api/test",
 		"/oauth/callback",
 		"/agent-compose/session/abc",
+		"/jupyter",
+		"/jupyter/lab/tree/notebook.ipynb",
 		"/script-api/v1/health",
 	} {
 		response := httptest.NewRecorder()
@@ -165,12 +167,49 @@ func TestRoutesOnlyExplicitUpstreamFamilies(t *testing.T) {
 		}
 	}
 
-	for _, path := range []string{"/not-an-upstream", "/agentcompose.v3.Service/Call", "/api", "/script-api", "/api/auth", "/api/auth/status/extra"} {
+	for _, path := range []string{"/not-an-upstream", "/agentcompose.v3.Service/Call", "/api", "/script-api", "/api/auth", "/api/auth/status/extra", "/jupyterevil"} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		if response.Code != http.StatusNotFound {
 			t.Errorf("%s status = %d", path, response.Code)
 		}
+	}
+}
+
+func TestJupyterRouteRequiresPasswordSessionAndProxiesAfterLogin(t *testing.T) {
+	received := make(chan string, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received <- r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer upstream.Close()
+	target, _ := url.Parse(upstream.URL)
+	cfg := testConfig(target)
+	cfg.AuthMode = config.AuthPassword
+	cfg.AuthPassword = "password"
+	cfg.AuthSecret = "secret"
+	handler := New(cfg)
+
+	unauthenticated := httptest.NewRecorder()
+	handler.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/jupyter/lab", nil))
+	if unauthenticated.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status = %d, want %d", unauthenticated.Code, http.StatusUnauthorized)
+	}
+
+	login := httptest.NewRecorder()
+	handler.ServeHTTP(login, httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"admin","password":"password"}`)))
+	if login.Code != http.StatusOK || len(login.Result().Cookies()) != 1 {
+		t.Fatalf("login response = %d, cookies = %#v", login.Code, login.Result().Cookies())
+	}
+	request := httptest.NewRequest(http.MethodGet, "/jupyter/lab", nil)
+	request.AddCookie(login.Result().Cookies()[0])
+	authenticated := httptest.NewRecorder()
+	handler.ServeHTTP(authenticated, request)
+	if authenticated.Code != http.StatusNoContent {
+		t.Fatalf("authenticated status = %d, want %d", authenticated.Code, http.StatusNoContent)
+	}
+	if got := <-received; got != "/jupyter/lab" {
+		t.Fatalf("proxied path = %q", got)
 	}
 }
 
