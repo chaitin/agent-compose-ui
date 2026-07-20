@@ -23,4 +23,10 @@ describe('nginx gateway boundary', () => {
     expect(config).toContain('X-Forwarded-Proto $scheme');
     expect(config).not.toContain('X-Script-Service-Token ${SCRIPT_SERVICE_TOKEN}');
   });
+
+  test('preserves websocket upgrades through the gateway proxy', () => {
+    expect(config).toMatch(/map \$http_upgrade \$connection_upgrade\s*{[^}]*default upgrade;[^}]*'' close;/s);
+    expect(config).toContain('proxy_set_header Upgrade $http_upgrade;');
+    expect(config).toContain('proxy_set_header Connection $connection_upgrade;');
+  });
 });
