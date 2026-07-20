@@ -1,6 +1,6 @@
 import { apiFetchJson } from './http';
 import { projectClient } from './client';
-import { EventTriggerSpec, ProjectValidationSeverity, SchedulerRunStatus, TriggerSpec, type Project, type ResolvedTrigger, type SchedulerRun, type SchedulerSummary } from '../gen/agentcompose/v2/agentcompose_pb.js';
+import { EnvVarSpec, EventTriggerSpec, ProjectValidationSeverity, SchedulerRunStatus, TriggerSpec, type Project, type ResolvedTrigger, type SchedulerRun, type SchedulerSummary } from '../gen/agentcompose/v2/agentcompose_pb.js';
 import { toLegacySessionPolicy, toProjectSandboxPolicy, type LegacySessionPolicy } from '../model/sandbox-policy';
 
 export type AutomationTask = {
@@ -163,16 +163,21 @@ export async function listAutomationTasks(): Promise<AutomationTask[]> {
 
 export async function getAutomationTask(id: string): Promise<AutomationTaskDetail> {
   const found = await findScheduler(id); if (!found) throw new Error('自动化任务不存在');
-  const response = await projectClient.getScheduler({ project: { projectId: found.projectId }, agentName: found.agentName });
+  const [response, project] = await Promise.all([
+    projectClient.getScheduler({ project: { projectId: found.projectId }, agentName: found.agentName }),
+    loadProject(found.projectId),
+  ]);
+  const agent = project.spec?.agents.find((item) => item.name === found.agentName);
   const summary = taskFromV2(found);
   return {
     ...summary,
     name: response.spec?.displayName.trim() || response.scheduler?.displayName.trim() || summary.name,
     description: response.spec?.description.trim() || response.scheduler?.description.trim() || summary.description,
+    capsetIds: [...(agent?.capsetIds ?? [])],
     sessionPolicy: toLegacySessionPolicy(response.spec?.sandboxPolicy || summary.sessionPolicy),
     script: response.spec?.script ?? '',
     triggers: response.triggers.map(triggerFromResolved),
-    envItems: [],
+    envItems: (agent?.env ?? []).map((item) => ({ name: item.name, value: item.value, secret: item.secret })),
   };
 }
 
@@ -180,7 +185,7 @@ export async function resolveAutomationSessionTarget(id:string):Promise<{project
 
 export async function saveAutomationTask(input: SaveAutomationTaskInput): Promise<AutomationTaskDetail> {
   const target = input.id ? await findScheduler(input.id) : await findProjectAgent(input.agentId || input.defaultAgent); if (!target) throw new Error('自动化任务必须关联项目智能体');
-  const project = await loadProject(target.projectId); const agents = (project.spec?.agents ?? []).map((agent) => agent.name === target.agentName ? { ...agent, scheduler: { enabled: input.enabled, displayName: input.name.trim(), description: input.description.trim(), script: input.script, sandboxPolicy: toProjectSandboxPolicy(input.sessionPolicy), triggers: (input.triggers ?? []).map(triggerSpecFromInput) } } : agent);
+  const project = await loadProject(target.projectId); const agents = (project.spec?.agents ?? []).map((agent) => agent.name === target.agentName ? { ...agent, capsetIds: input.capsetIds.map((item) => item.trim()).filter(Boolean), env: (input.envItems ?? []).map((item) => new EnvVarSpec({ name: item.name.trim(), value: item.value, secret: item.secret })).filter((item) => item.name), scheduler: { enabled: input.enabled, displayName: input.name.trim(), description: input.description.trim(), script: input.script, sandboxPolicy: toProjectSandboxPolicy(input.sessionPolicy), triggers: (input.triggers ?? []).map(triggerSpecFromInput) } } : agent);
   await projectClient.applyProject({ spec: { ...project.spec!, agents } });
   const refreshed = await findSchedulerByAgent(target.projectId, target.agentName); if (!refreshed) throw new Error('自动化任务保存失败'); return getAutomationTask(refreshed.schedulerId);
 }

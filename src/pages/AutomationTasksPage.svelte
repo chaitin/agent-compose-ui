@@ -868,10 +868,10 @@ scheduler.cron(${triggerName}, "0 8 * * *", function ${handlerName}(payload) {
             <section>
               <h3>能力集</h3>
               <div class="side-facts">
-                {#if activeTask.capsetIds.length === 0}
+                {#if !detail || detail.capsetIds.length === 0}
                   <div><span>能力集</span><b>未选择</b></div>
                 {:else}
-                  {#each activeTask.capsetIds as capsetId}
+                  {#each detail.capsetIds as capsetId}
                     {@const capset = capsets.find((item) => item.id === capsetId)}
                     <div><span>能力集</span><b>{capset?.name || capsetId}</b></div>
                   {/each}
@@ -1009,6 +1009,7 @@ scheduler.cron(${triggerName}, "0 8 * * *", function ${handlerName}(payload) {
               <h3>环境变量</h3>
               <button type="button" on:click={addEnvItem}>添加变量</button>
             </div>
+            <p class="form-muted">环境变量属于关联智能体，会应用于该智能体的手动运行和自动化任务。</p>
             {#if draft.envItems.length === 0}
               <p class="form-muted">未配置环境变量。</p>
             {:else}

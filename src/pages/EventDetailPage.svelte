@@ -393,8 +393,9 @@
       sessionTraces = sessionTraces.map((item) => item.link.sessionId === sessionId && item.session
         ? { ...item, session: { ...item.session, proxyPath: proxy.proxyPath, notebookUrl: proxy.notebookUrl } }
         : item);
-      if (proxy.notebookUrl) {
-        const notebookUrl = new URL(apiPath(proxy.notebookUrl), window.location.origin).toString();
+      const notebookPath = proxy.notebookUrl || proxy.proxyPath.replace(/\/lab\/?$/, '');
+      if (notebookPath) {
+        const notebookUrl = new URL(apiPath(notebookPath), window.location.origin).toString();
         if (popup) {
           popup.opener = null;
           popup.location.href = notebookUrl;
