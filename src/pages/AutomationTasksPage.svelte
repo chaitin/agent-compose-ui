@@ -1009,6 +1009,7 @@ scheduler.cron(${triggerName}, "0 8 * * *", function ${handlerName}(payload) {
               <h3>环境变量</h3>
               <button type="button" on:click={addEnvItem}>添加变量</button>
             </div>
+            <p class="form-muted">环境变量属于关联智能体，会应用于该智能体的手动运行和自动化任务。</p>
             {#if draft.envItems.length === 0}
               <p class="form-muted">未配置环境变量。</p>
             {:else}
