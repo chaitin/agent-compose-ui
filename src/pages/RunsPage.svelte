@@ -637,6 +637,9 @@
     for (const run of sourceRuns) {
       let key = runAgentGroupKey(run);
       let knownAgent = run.agentId ? agentById.get(run.agentId) : null;
+      if (knownAgent) {
+        key = knownAgent.id;
+      }
       if (!knownAgent && run.agent && run.agent !== '-') {
         const matchedId = agentIdByName.get(run.agent);
         if (matchedId) {
@@ -2966,15 +2969,15 @@
         const productRun = sessionToRun(session);
         const agentID = tagValue(session.tags, 'agent_id');
         const projectID = tagValue(session.tags, 'project');
-        const agent = agentID
-          ? agentById.get(agentID)
-          : agentByProjectAndName.get(`${projectID}\u0000${productRun.agent}`);
-        const sessionAgentID = agentID || agent?.id || (projectID && productRun.agent
-          ? `project:${encodeURIComponent(projectID)}:agent:${encodeURIComponent(productRun.agent)}`
-          : '');
         const loaderID = tagValue(session.tags, 'loader_id') || productRun.automationId;
         const loaderName = tagValue(session.tags, 'loader_name') || productRun.automation;
         const task = loaderID ? taskById.get(loaderID) : null;
+        const agent = (agentID ? agentById.get(agentID) : null)
+          || agentByProjectAndName.get(`${projectID}\u0000${productRun.agent}`)
+          || (task?.agentId ? agentById.get(task.agentId) : null);
+        const sessionAgentID = agent?.id || agentID || (projectID && productRun.agent
+          ? `project:${encodeURIComponent(projectID)}:agent:${encodeURIComponent(productRun.agent)}`
+          : '');
         return {
           ...productRun,
           agentId: sessionAgentID || productRun.agentId,
@@ -2997,7 +3000,7 @@
               title: task.name || productRun.title,
               automation: task.name || productRun.automation,
               agent: agentName,
-              agentId: task.agentId || productRun.agentId,
+              agentId: agent?.id || task.agentId || productRun.agentId,
               agentProvider: agent?.provider || task.defaultAgent || productRun.agentProvider,
               workspace: task.workspaceId || productRun.workspace,
           }
@@ -3035,15 +3038,15 @@
             const productRun = sessionToRun(session);
             const agentID = tagValue(session.tags, 'agent_id');
             const projectID = tagValue(session.tags, 'project');
-            const agent = agentID
-              ? agentById.get(agentID)
-              : agentByProjectAndName.get(`${projectID}\u0000${productRun.agent}`);
-            const sessionAgentID = agentID || agent?.id || (projectID && productRun.agent
-              ? `project:${encodeURIComponent(projectID)}:agent:${encodeURIComponent(productRun.agent)}`
-              : '');
             const loaderID = tagValue(session.tags, 'loader_id') || productRun.automationId;
             const loaderName = tagValue(session.tags, 'loader_name') || productRun.automation;
             const task = loaderID ? taskById.get(loaderID) : null;
+            const agent = (agentID ? agentById.get(agentID) : null)
+              || agentByProjectAndName.get(`${projectID}\u0000${productRun.agent}`)
+              || (task?.agentId ? agentById.get(task.agentId) : null);
+            const sessionAgentID = agent?.id || agentID || (projectID && productRun.agent
+              ? `project:${encodeURIComponent(projectID)}:agent:${encodeURIComponent(productRun.agent)}`
+              : '');
             return {
               ...productRun,
               agentId: sessionAgentID || productRun.agentId,
