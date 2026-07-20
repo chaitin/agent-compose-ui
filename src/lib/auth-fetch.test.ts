@@ -25,22 +25,28 @@ describe('authFetch', () => {
     expect(requireLogin).toHaveBeenCalledOnce();
   });
 
-  test('notifies only once until a non-401 response ends the anonymous transition', async () => {
+  test('notifies for every 401 regardless of interleaved successful responses', async () => {
     globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce(new Response(null, { status: 204 }))
-      .mockResolvedValueOnce(new Response(null, { status: 401 }))
       .mockResolvedValueOnce(new Response(null, { status: 401 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(null, { status: 401 }));
 
-    await authFetch('/initial-state');
-    vi.mocked(requireLogin).mockClear();
     await authFetch('/first');
+    await authFetch('/interleaved-success');
     await authFetch('/second');
-    expect(requireLogin).toHaveBeenCalledOnce();
+    expect(requireLogin).toHaveBeenCalledTimes(2);
+  });
 
-    await authFetch('/recovered');
-    await authFetch('/expired-again');
+  test('does not let a non-401 response suppress a later expiry broadcast', async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 401 }));
+
+    await authFetch('/expired-before-login');
+    await authFetch('/login-or-unrelated-success');
+    await authFetch('/expired-after-login');
+
     expect(requireLogin).toHaveBeenCalledTimes(2);
   });
 });

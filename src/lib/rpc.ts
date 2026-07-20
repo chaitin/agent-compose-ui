@@ -25,17 +25,24 @@ const transport: Transport = createConnectTransport({
   fetch: (input, init) => {
     const controller = new AbortController();
     const sourceSignal = init?.signal;
+    let sourceAbortListener: (() => void) | undefined;
     if (sourceSignal) {
       if (sourceSignal.aborted) {
         // Signal already aborted — propagate immediately
         controller.abort(sourceSignal.reason);
       } else {
-        sourceSignal.addEventListener('abort', () => controller.abort(sourceSignal.reason), { once: true });
+        sourceAbortListener = () => controller.abort(sourceSignal.reason);
+        sourceSignal.addEventListener('abort', sourceAbortListener, { once: true });
       }
     }
     const timeout = setTimeout(() => controller.abort(new DOMException('RPC timeout', 'TimeoutError')), RPC_TIMEOUT_MS);
     return authFetch(input, { ...init, signal: controller.signal })
-      .finally(() => clearTimeout(timeout));
+      .finally(() => {
+        clearTimeout(timeout);
+        if (sourceSignal && sourceAbortListener) {
+          sourceSignal.removeEventListener('abort', sourceAbortListener);
+        }
+      });
   },
 });
 
