@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"io"
@@ -46,8 +47,8 @@ func (m *Manager) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	usernameOK := subtle.ConstantTimeCompare([]byte(credentials.Username), []byte(m.username))
-	passwordOK := subtle.ConstantTimeCompare([]byte(credentials.Password), []byte(m.password))
+	usernameOK := constantTimeStringEqual(credentials.Username, m.username)
+	passwordOK := constantTimeStringEqual(credentials.Password, m.password)
 	if usernameOK&passwordOK != 1 {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
@@ -60,12 +61,19 @@ func (m *Manager) Login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func constantTimeStringEqual(left, right string) int {
+	leftDigest := sha256.Sum256([]byte(left))
+	rightDigest := sha256.Sum256([]byte(right))
+	return subtle.ConstantTimeCompare(leftDigest[:], rightDigest[:])
+}
+
 func (m *Manager) Logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, m.cookie(r, "", time.Unix(1, 0), -1))
 	writeJSON(w, http.StatusOK, statusResponse{Enabled: m.mode != config.AuthDisabled})
 }
 
 func (m *Manager) cookie(r *http.Request, value string, expires time.Time, maxAge int) *http.Cookie {
+	// X-Forwarded-Proto is trusted because requests reach this handler through loopback nginx.
 	return &http.Cookie{
 		Name: cookieName, Value: value, Path: "/", Expires: expires, MaxAge: maxAge,
 		HttpOnly: true, SameSite: http.SameSiteLaxMode,

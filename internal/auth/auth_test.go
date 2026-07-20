@@ -48,11 +48,40 @@ func TestPasswordLoginSetsSignedCookieAndUnlocksProtectedRoute(t *testing.T) {
 
 func TestInvalidLoginIsUnauthorized(t *testing.T) {
 	manager := newTestManager(t)
-	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"admin","password":"wrong"}`))
-	response := httptest.NewRecorder()
-	manager.Login(response, request)
-	if response.Code != http.StatusUnauthorized || len(response.Result().Cookies()) != 0 {
-		t.Fatalf("invalid login response: %d", response.Code)
+	tests := map[string]string{
+		"wrong password":         `{"username":"admin","password":"wrong"}`,
+		"short username":         `{"username":"a","password":"correct"}`,
+		"long username":          `{"username":"administrator","password":"correct"}`,
+		"short password":         `{"username":"admin","password":"x"}`,
+		"long password":          `{"username":"admin","password":"incorrect-password"}`,
+		"both different lengths": `{"username":"a","password":"x"}`,
+	}
+	for name, body := range tests {
+		t.Run(name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(body))
+			response := httptest.NewRecorder()
+			manager.Login(response, request)
+			if response.Code != http.StatusUnauthorized || len(response.Result().Cookies()) != 0 {
+				t.Fatalf("invalid login response: %d", response.Code)
+			}
+		})
+	}
+}
+
+func TestConstantTimeStringEqualHashesInputsBeforeComparison(t *testing.T) {
+	tests := []struct {
+		left, right string
+		want        int
+	}{
+		{left: "same", right: "same", want: 1},
+		{left: "short", right: "a much longer value", want: 0},
+		{left: "a much longer value", right: "short", want: 0},
+		{left: "same-length-a", right: "same-length-b", want: 0},
+	}
+	for _, test := range tests {
+		if got := constantTimeStringEqual(test.left, test.right); got != test.want {
+			t.Fatalf("constantTimeStringEqual(%q, %q) = %d, want %d", test.left, test.right, got, test.want)
+		}
 	}
 }
 
