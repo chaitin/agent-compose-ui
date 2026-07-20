@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App.svelte';
-import { getAuthStatus, login } from '../src/lib/auth';
+import { getAuthStatus, login, requireLogin } from '../src/lib/auth';
 
 const rpcMocks = vi.hoisted(() => ({ listProjects: vi.fn() }));
 
@@ -124,5 +124,49 @@ describe('App authentication gate', () => {
     expect((await screen.findByText('Agent Compose')).closest('nav')).toBeInTheDocument();
     expect(location.pathname).toBe('/');
     expect(sessionStorage.getItem('agent-compose.auth.return-target')).toBeNull();
+  });
+
+  it('unmounts protected children on session expiry and restores the saved target after login', async () => {
+    history.replaceState(null, '', '/workspace?tab=files#detail');
+    vi.mocked(getAuthStatus).mockResolvedValue({ enabled: true, loggedIn: true, username: 'operator' });
+    vi.mocked(login).mockResolvedValue({ enabled: true, loggedIn: true, username: 'operator' });
+    render(App);
+
+    expect((await screen.findByText('Agent Compose')).closest('nav')).toBeInTheDocument();
+    expect(rpcMocks.listProjects).toHaveBeenCalled();
+
+    requireLogin();
+
+    expect(await screen.findByRole('form', { name: '登录' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    expect(sessionStorage.getItem('agent-compose.auth.return-target')).toBe('/workspace?tab=files#detail');
+
+    history.replaceState(null, '', '/');
+    await fireEvent.input(screen.getByLabelText('用户名'), { target: { value: 'operator' } });
+    await fireEvent.input(screen.getByLabelText('密码'), { target: { value: 'secret' } });
+    await fireEvent.click(screen.getByRole('button', { name: '进入控制台' }));
+
+    await waitFor(() => expect(screen.getByText('Agent Compose').closest('nav')).toBeInTheDocument());
+    expect(location.pathname + location.search + location.hash).toBe('/workspace?tab=files#detail');
+  });
+
+  it('broadcasts session expiry to every authenticated App when another App is already anonymous', async () => {
+    let resolveAnonymous!: (status: { enabled: boolean; loggedIn: boolean }) => void;
+    vi.mocked(getAuthStatus)
+      .mockResolvedValueOnce({ enabled: true, loggedIn: true })
+      .mockResolvedValueOnce({ enabled: true, loggedIn: true })
+      .mockReturnValueOnce(new Promise((resolve) => { resolveAnonymous = resolve; }));
+
+    render(App);
+    render(App);
+    render(App);
+    await waitFor(() => expect(screen.getAllByText('Agent Compose')).toHaveLength(2));
+    resolveAnonymous({ enabled: true, loggedIn: false });
+    await waitFor(() => expect(screen.getAllByRole('form', { name: '登录' })).toHaveLength(1));
+
+    requireLogin();
+
+    await waitFor(() => expect(screen.getAllByRole('form', { name: '登录' })).toHaveLength(3));
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
   });
 });

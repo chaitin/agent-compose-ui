@@ -55,3 +55,30 @@ bun run check
 ```
 
 Result: 0 errors and 0 warnings.
+
+## Session-expiry review fix
+
+Closed the remaining Task 4 review blocker:
+
+- Each mounted `App` now subscribes to unauthorized-session broadcasts and removes the subscription during component cleanup.
+- An unauthorized event invalidates that instance's pending auth request, stores the full local return target, switches its local render gate to anonymous, and immediately unmounts Sidebar/RPC-backed children.
+- `requireLogin()` now broadcasts on every call. De-duplication is instance-local, so an anonymous App cannot suppress expiry handling in authenticated sibling App instances. Because `logout()` delegates to `requireLogin()`, it uses the same behavior.
+- Regression coverage verifies expiry teardown and post-login target restoration, plus the mixed anonymous/authenticated multi-App case that previously swallowed the broadcast.
+
+TDD red evidence: the two new `AppAuth` tests initially failed because the protected shell remained mounted and only the already-anonymous App showed the login form.
+
+Fresh verification:
+
+```text
+bunx vitest run test/auth.test.ts test/components/LoginView.test.ts test/AppAuth.test.ts
+```
+
+Result: 3 files, 18 tests passed.
+
+```text
+bun run check
+```
+
+Result: 0 errors and 0 warnings.
+
+Concerns: none.

@@ -11,7 +11,7 @@
   import VolumeListView from './pages/VolumeListView.svelte';
   import EventSandboxDetailPage from './pages/EventSandboxDetailPage.svelte';
   import LoginView from './components/LoginView.svelte';
-  import { authState, getAuthStatus, type AuthState, type AuthStatus } from './lib/auth';
+  import { authState, getAuthStatus, subscribeUnauthorized, type AuthState, type AuthStatus } from './lib/auth';
   import { store } from './lib/stores.svelte';
 
   let authentication = $state<AuthState>({ phase: 'loading', enabled: true, loggedIn: false });
@@ -98,7 +98,19 @@
     restoreReturnTarget();
   }
 
-  onMount(() => { mounted = true; void checkAuthentication(); });
+  function requireLocalLogin() {
+    if (!mounted || authentication.phase === 'anonymous') return;
+    authGeneration += 1;
+    saveReturnTarget();
+    publish({ phase: 'anonymous', enabled: true, loggedIn: false });
+  }
+
+  onMount(() => {
+    mounted = true;
+    const unsubscribeUnauthorized = subscribeUnauthorized(requireLocalLogin);
+    void checkAuthentication();
+    return unsubscribeUnauthorized;
+  });
   onDestroy(() => { mounted = false; authGeneration += 1; });
 </script>
 

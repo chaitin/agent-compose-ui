@@ -59,12 +59,8 @@ export async function logout(): Promise<void> {
 }
 
 export function requireLogin(): void {
-  let notify = false;
-  authState.update((current) => {
-    notify = current.phase !== 'anonymous';
-    return { phase: 'anonymous', enabled: true, loggedIn: false };
-  });
-  if (notify) unauthorizedListeners.forEach((listener) => listener());
+  authState.set({ phase: 'anonymous', enabled: true, loggedIn: false });
+  unauthorizedListeners.forEach((listener) => listener());
 }
 
 export function subscribeUnauthorized(listener: () => void): () => void {
