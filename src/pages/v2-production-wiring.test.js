@@ -25,7 +25,7 @@ test('event pathname renders the standalone Session page outside the project she
   const app = readFileSync(new URL('../App.svelte', import.meta.url), 'utf8');
   expect(app).toContain("import EventSandboxDetailPage from './pages/EventSandboxDetailPage.svelte'");
   expect(app).toContain("/(?:^|\\/agent-compose)\\/events\\/([^/]+)\\/?$/");
-  expect(app).toMatch(/\{#if eventId\}[\s\S]*<EventSandboxDetailPage \{eventId\} \/>[\s\S]*\{:else\}[\s\S]*<div class="shell">/);
+  expect(app).toMatch(/\{#if authentication\.phase === 'loading'\}[\s\S]*\{:else if authentication\.phase === 'error'\}[\s\S]*\{:else if authentication\.phase === 'anonymous'\}[\s\S]*\{:else if eventId\}[\s\S]*<EventSandboxDetailPage \{eventId\} \/>[\s\S]*\{:else\}[\s\S]*<div class="shell">/);
   expect(app).toContain("window.addEventListener('popstate', syncPathname)");
   expect(app).toContain("window.removeEventListener('popstate', syncPathname)");
   expect(app).toContain('let eventId = $derived');
