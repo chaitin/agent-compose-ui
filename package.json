@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun run scripts/dev.mjs",
+    "dev:gateway": "go run ./cmd/agent-compose-ui-server",
     "dev:web": "vite --host 0.0.0.0 --port 5174",
     "dev:scripts": "bun run script-service/server.mjs",
     "test": "bun test .test.js .test.mjs",

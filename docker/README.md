@@ -10,8 +10,7 @@
 ## 服务说明
 
 - **web**：nginx 既托管 SPA 静态文件，又把 API 路径反代到后端。
-  - `/agentcompose.v1./v2.`、`/health.v1.`、`/api/` → agent-compose daemon
-  - `/script-api/` → script-service（nginx 注入内部 token）
+  - `/agentcompose.v1./v2.`、`/health.v1.`、`/api/`、`/script-api/` → UI 认证网关
   - 其余路径 → SPA（`try_files` 回退 `index.html`，支持 hash 路由与 `/events/<id>` 真实路径）
 - **scripts**：bun 运行的脚本文件服务（无外部依赖），脚本文件存于命名卷 `script-data`。
 - **agent-compose**（仅 full）：后端 daemon，挂载宿主 `docker.sock`、后端 `data/` 与 `.env`。
@@ -52,8 +51,12 @@ docker compose -f docker-compose.full.yml up --build
 
 ## 连接与认证
 
-- web 与开发期行为一致：假定 agent-compose daemon 的控制面认证**关闭**（`AGENT_COMPOSE_AUTH_TOKEN` 为空）。若你在后端 `.env` 中启用了该 token，需另行让反代注入 `Authorization: Bearer`（当前模板未注入，与 dev 一致）。
-- `SCRIPT_SERVICE_TOKEN` 是 web 与 script-service 之间的内部共享令牌，不会下发到浏览器。
+- 公司内网共享测试环境可保留 `AUTH_MODE=disabled`（默认值）。此模式不要求登录，必须限制在可信公司网络或 VPN 内。
+- 密码部署需在 `.env` 设置 `AUTH_MODE=password`、`AUTH_PASSWORD=<强密码>`、`AUTH_SECRET=<持久随机签名密钥>`。`AUTH_USERNAME` 默认 `admin`，`AUTH_SESSION_TTL` 默认 `24h`；可用 `openssl rand -hex 32` 生成 `AUTH_SECRET`，部署重启时不要重新生成。
+- 登录成功后浏览器获得 HttpOnly 签名会话 Cookie；注销会清除 Cookie，会话超过 `AUTH_SESSION_TTL` 后须重新登录。所有已认证用户都拥有 UI 暴露的完整操作能力，本功能不提供角色或细粒度授权。
+- `SCRIPT_SERVICE_TOKEN` 是网关与 script-service 之间的内部共享令牌，不会下发到浏览器。
+- 认证网关完全属于 `agent-compose-ui`，不会修改 agent-compose daemon 的认证或其他行为。
+- 公司网络之外仍必须通过 HTTPS 暴露 UI；互联网部署还应按组织要求在入口增加限流或 SSO。
 
 ## 端口
 

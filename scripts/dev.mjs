@@ -3,9 +3,10 @@ import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export function childSpecs({ executable, token }) {
+export function childSpecs({ executable, token, authMode = 'disabled' }) {
   const env = { SCRIPT_SERVICE_TOKEN: token };
   return [
+    { name: 'gateway', command: 'go', args: ['run', './cmd/agent-compose-ui-server'], env: { ...env, AUTH_MODE: authMode } },
     { name: 'web', command: executable, args: ['run', 'dev:web'], env },
     { name: 'scripts', command: executable, args: ['run', 'dev:scripts'], env },
   ];
@@ -14,7 +15,7 @@ export function childSpecs({ executable, token }) {
 async function startDevelopment() {
   const executable = process.execPath;
   const token = randomBytes(32).toString('hex');
-  const specs = childSpecs({ executable, token });
+  const specs = childSpecs({ executable, token, authMode: process.env.AUTH_MODE });
 
   const children = specs.map((spec) => {
     const child = spawn(spec.command, spec.args, {
