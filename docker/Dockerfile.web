@@ -18,14 +18,27 @@ RUN npm install
 COPY . ./
 RUN npm run build
 
-# ---- Stage 2: nginx serves the static bundle and reverse-proxies the API ----
+# ---- Stage 2: test and build the loopback authentication gateway ----
+FROM golang:1.24-alpine AS gateway-build
+WORKDIR /src
+
+COPY go.mod ./
+COPY cmd ./cmd
+COPY internal ./internal
+RUN go test ./...
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \
+    -o /out/agent-compose-ui-server ./cmd/agent-compose-ui-server
+
+# ---- Stage 3: nginx serves the SPA and fronts the loopback Go gateway ----
 FROM nginx:1.27-alpine
 LABEL org.opencontainers.image.title="agent-compose-web"
 LABEL org.opencontainers.image.description="Agent Compose Web (SPA + reverse proxy)"
 
 COPY --from=build /build/dist /usr/share/nginx/html
-# The nginx image auto-runs envsubst on /etc/nginx/templates/*.template at start,
-# substituting ${AGENT_COMPOSE_URL}, ${SCRIPT_SERVICE_URL}, ${SCRIPT_SERVICE_TOKEN}.
+COPY --from=gateway-build /out/agent-compose-ui-server /usr/local/bin/agent-compose-ui-server
+# The stock nginx entrypoint still renders templates before starting nginx.
 COPY docker/nginx/default.conf.template /etc/nginx/templates/default.conf.template
+COPY docker/web-entrypoint.sh /usr/local/bin/web-entrypoint.sh
 
 EXPOSE 80
+ENTRYPOINT ["/usr/local/bin/web-entrypoint.sh"]

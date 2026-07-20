@@ -21,6 +21,11 @@ services:
       AGENT_COMPOSE_URL: ${AGENT_COMPOSE_URL:-http://host.docker.internal:7410}
       SCRIPT_SERVICE_URL: http://scripts:7420
       SCRIPT_SERVICE_TOKEN: ${SCRIPT_SERVICE_TOKEN:?set SCRIPT_SERVICE_TOKEN in .env}
+      AUTH_MODE: ${AUTH_MODE:-disabled}
+      AUTH_USERNAME: ${AUTH_USERNAME:-admin}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      AUTH_SESSION_TTL: ${AUTH_SESSION_TTL:-24h}
     extra_hosts:
       # Lets the container reach a host-exposed agent-compose via host.docker.internal.
       - "host.docker.internal:host-gateway"
