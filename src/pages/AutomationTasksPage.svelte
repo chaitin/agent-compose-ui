@@ -868,10 +868,10 @@ scheduler.cron(${triggerName}, "0 8 * * *", function ${handlerName}(payload) {
             <section>
               <h3>能力集</h3>
               <div class="side-facts">
-                {#if activeTask.capsetIds.length === 0}
+                {#if !detail || detail.capsetIds.length === 0}
                   <div><span>能力集</span><b>未选择</b></div>
                 {:else}
-                  {#each activeTask.capsetIds as capsetId}
+                  {#each detail.capsetIds as capsetId}
                     {@const capset = capsets.find((item) => item.id === capsetId)}
                     <div><span>能力集</span><b>{capset?.name || capsetId}</b></div>
                   {/each}
