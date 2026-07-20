@@ -32,11 +32,23 @@ export default defineConfig({
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
       },
-      '/api': {
+      '^/api/': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
       },
-      '/script-api': {
+      '^/oauth/': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '^/agent-compose/session/': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '^/jupyter(?:/|$)': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '^/script-api/': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
       },
