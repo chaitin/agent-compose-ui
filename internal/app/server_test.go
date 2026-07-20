@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,7 +15,109 @@ import (
 	"agent-compose-ui/internal/config"
 )
 
+func TestServeDrainsInFlightRequestBeforeReturning(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-release
+		w.WriteHeader(http.StatusNoContent)
+	})
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- serve(ctx, &http.Server{Handler: handler}, listener)
+	}()
+
+	requestDone := make(chan error, 1)
+	go func() {
+		response, err := http.Get("http://" + listener.Addr().String())
+		if err == nil {
+			_ = response.Body.Close()
+		}
+		requestDone <- err
+	}()
+	<-started
+	cancel()
+	select {
+	case err := <-done:
+		t.Fatalf("serve returned before request drained: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	if err := <-requestDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("serve returned %v", err)
+	}
+}
+
+func TestServeReturnsShutdownTimeoutAfterForcingConnectionsClosed(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-release
+	})
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- serveWithShutdownTimeout(ctx, &http.Server{Handler: handler}, listener, 20*time.Millisecond)
+	}()
+	requestDone := make(chan error, 1)
+	go func() {
+		response, err := http.Get("http://" + listener.Addr().String())
+		if err == nil {
+			_ = response.Body.Close()
+		}
+		requestDone <- err
+	}()
+	<-started
+	cancel()
+	if err := <-done; !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("serve returned %v, want shutdown deadline error", err)
+	}
+	close(release)
+	<-requestDone
+}
+
+func TestProxyAbortPanicIsNotRecovered(t *testing.T) {
+	panickingProxy := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = io.WriteString(w, "partial")
+		panic(http.ErrAbortHandler)
+	})
+	handler := routeHandler(http.NotFoundHandler(), panickingProxy, panickingProxy)
+	response := httptest.NewRecorder()
+
+	deferred := func() (recovered any) {
+		defer func() { recovered = recover() }()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/test", nil))
+		return nil
+	}()
+	if deferred != http.ErrAbortHandler {
+		t.Fatalf("recovered = %v, want http.ErrAbortHandler", deferred)
+	}
+	if got := response.Body.String(); got != "partial" {
+		t.Fatalf("body = %q, want partial response without JSON", got)
+	}
+}
+
 func TestRunReturnsWhenContextIsAlreadyCanceled(t *testing.T) {
+	listener, err := net.Listen("tcp", listenAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	cfg := testConfig(mustURL(t, "http://127.0.0.1:1"))
@@ -61,7 +165,7 @@ func TestRoutesOnlyExplicitUpstreamFamilies(t *testing.T) {
 		}
 	}
 
-	for _, path := range []string{"/not-an-upstream", "/agentcompose.v3.Service/Call", "/api", "/script-api", "/api/auth/status/extra"} {
+	for _, path := range []string{"/not-an-upstream", "/agentcompose.v3.Service/Call", "/api", "/script-api", "/api/auth", "/api/auth/status/extra"} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		if response.Code != http.StatusNotFound {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -22,12 +23,18 @@ func New(cfg config.Config) http.Handler {
 	manager := auth.New(cfg)
 	daemonProxy := manager.Require(proxy.NewDaemon(cfg.AgentComposeURL))
 	scriptProxy := manager.Require(proxy.NewScripts(cfg.ScriptServiceURL, cfg.ScriptServiceToken))
+	authHandler := recoverAuthPanics(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		serveAuth(manager, w, r)
+	}))
+	return routeHandler(authHandler, scriptProxy, daemonProxy)
+}
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func routeHandler(authHandler, scriptProxy, daemonProxy http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
-		case strings.HasPrefix(path, "/api/auth/"):
-			serveAuth(manager, w, r)
+		case path == "/api/auth" || strings.HasPrefix(path, "/api/auth/"):
+			authHandler.ServeHTTP(w, r)
 		case strings.HasPrefix(path, "/script-api/"):
 			scriptProxy.ServeHTTP(w, r)
 		case isDaemonPath(path):
@@ -36,29 +43,51 @@ func New(cfg config.Config) http.Handler {
 			http.NotFound(w, r)
 		}
 	})
-	return recoverPanics(handler)
 }
 
 func Run(ctx context.Context, cfg config.Config) error {
+	if ctx.Err() != nil {
+		return nil
+	}
+	listener, err := net.Listen("tcp", listenAddress)
+	if err != nil {
+		return err
+	}
 	server := &http.Server{
 		Addr:              listenAddress,
 		Handler:           New(cfg),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	return serve(ctx, server, listener)
+}
 
-	shutdownComplete := make(chan struct{})
+func serve(ctx context.Context, server *http.Server, listener net.Listener) error {
+	return serveWithShutdownTimeout(ctx, server, listener, shutdownTimeout)
+}
+
+func serveWithShutdownTimeout(ctx context.Context, server *http.Server, listener net.Listener, timeout time.Duration) error {
+	serveResult := make(chan error, 1)
 	go func() {
-		select {
-		case <-ctx.Done():
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-			defer cancel()
-			_ = server.Shutdown(shutdownCtx)
-		case <-shutdownComplete:
-		}
+		serveResult <- server.Serve(listener)
 	}()
 
-	err := server.ListenAndServe()
-	close(shutdownComplete)
+	select {
+	case err := <-serveResult:
+		return normalizeServeError(err)
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		shutdownErr := server.Shutdown(shutdownCtx)
+		cancel()
+		if shutdownErr != nil {
+			closeErr := server.Close()
+			serveErr := normalizeServeError(<-serveResult)
+			return errors.Join(shutdownErr, closeErr, serveErr)
+		}
+		return normalizeServeError(<-serveResult)
+	}
+}
+
+func normalizeServeError(err error) error {
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
@@ -106,10 +135,13 @@ func methodNotAllowed(w http.ResponseWriter, methods ...string) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
 }
 
-func recoverPanics(next http.Handler) http.Handler {
+func recoverAuthPanics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
-			if recover() != nil {
+			if recovered := recover(); recovered != nil {
+				if recovered == http.ErrAbortHandler {
+					panic(recovered)
+				}
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
 				_ = json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
