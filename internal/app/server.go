@@ -14,19 +14,16 @@ import (
 	"agent-compose-ui/internal/proxy"
 )
 
-const (
-	listenAddress   = "127.0.0.1:8080"
-	shutdownTimeout = 10 * time.Second
-)
+const shutdownTimeout = 10 * time.Second
 
 func New(cfg config.Config) http.Handler {
 	manager := auth.New(cfg)
 	daemonProxy := manager.Require(proxy.NewDaemon(cfg.AgentComposeURL))
 	scriptProxy := manager.Require(proxy.NewScripts(cfg.ScriptServiceURL, cfg.ScriptServiceToken))
-	authHandler := recoverAuthPanics(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	authHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		serveAuth(manager, w, r)
-	}))
-	return routeHandler(authHandler, scriptProxy, daemonProxy)
+	})
+	return recoverHTTPPanics(routeHandler(authHandler, scriptProxy, daemonProxy))
 }
 
 func routeHandler(authHandler, scriptProxy, daemonProxy http.Handler) http.Handler {
@@ -49,16 +46,19 @@ func Run(ctx context.Context, cfg config.Config) error {
 	if ctx.Err() != nil {
 		return nil
 	}
-	listener, err := net.Listen("tcp", listenAddress)
+	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		return err
 	}
-	server := &http.Server{
-		Addr:              listenAddress,
-		Handler:           New(cfg),
+	return serve(ctx, newServer(cfg, New(cfg)), listener)
+}
+
+func newServer(cfg config.Config, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              cfg.ListenAddr,
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	return serve(ctx, server, listener)
 }
 
 func serve(ctx context.Context, server *http.Server, listener net.Listener) error {
@@ -137,7 +137,7 @@ func methodNotAllowed(w http.ResponseWriter, methods ...string) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
 }
 
-func recoverAuthPanics(next http.Handler) http.Handler {
+func recoverHTTPPanics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if recovered := recover(); recovered != nil {

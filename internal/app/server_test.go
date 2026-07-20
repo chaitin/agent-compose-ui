@@ -96,7 +96,7 @@ func TestProxyAbortPanicIsNotRecovered(t *testing.T) {
 		_, _ = io.WriteString(w, "partial")
 		panic(http.ErrAbortHandler)
 	})
-	handler := routeHandler(http.NotFoundHandler(), panickingProxy, panickingProxy)
+	handler := recoverHTTPPanics(routeHandler(http.NotFoundHandler(), panickingProxy, panickingProxy))
 	response := httptest.NewRecorder()
 
 	deferred := func() (recovered any) {
@@ -112,15 +112,42 @@ func TestProxyAbortPanicIsNotRecovered(t *testing.T) {
 	}
 }
 
-func TestRunReturnsWhenContextIsAlreadyCanceled(t *testing.T) {
-	listener, err := net.Listen("tcp", listenAddress)
-	if err != nil {
-		t.Fatal(err)
+func TestHTTPBoundaryRecoversOrdinaryProxyPanicAsGenericJSON(t *testing.T) {
+	panickingProxy := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("sensitive internal detail")
+	})
+	handler := recoverHTTPPanics(routeHandler(http.NotFoundHandler(), panickingProxy, panickingProxy))
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/test", nil))
+
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
 	}
-	defer listener.Close()
+	if got := response.Header().Get("Content-Type"); got != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", got)
+	}
+	if got := strings.TrimSpace(response.Body.String()); got != `{"error":"internal server error"}` {
+		t.Fatalf("body = %q, want generic JSON error", got)
+	}
+}
+
+func TestNewServerUsesConfiguredListenAddress(t *testing.T) {
+	cfg := testConfig(mustURL(t, "http://127.0.0.1:1"))
+	cfg.ListenAddr = "127.0.0.1:0"
+
+	server := newServer(cfg, http.NotFoundHandler())
+
+	if server.Addr != cfg.ListenAddr {
+		t.Fatalf("server Addr = %q, want %q", server.Addr, cfg.ListenAddr)
+	}
+}
+
+func TestRunReturnsWhenContextIsAlreadyCanceled(t *testing.T) {
+	cfg := testConfig(mustURL(t, "http://127.0.0.1:1"))
+	cfg.ListenAddr = "127.0.0.1:0"
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	cfg := testConfig(mustURL(t, "http://127.0.0.1:1"))
 	done := make(chan error, 1)
 	go func() {
 		done <- Run(ctx, cfg)

@@ -54,11 +54,23 @@ func (m *Manager) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	expires := time.Now().Add(m.ttl)
-	http.SetCookie(w, m.cookie(r, m.signedValue(credentials.Username, expires), expires, 0))
+	http.SetCookie(w, m.cookie(r, m.signedValue(credentials.Username, expires), expires, boundedMaxAge(m.ttl)))
 	writeJSON(w, http.StatusOK, statusResponse{
 		Enabled: true, LoggedIn: true, Username: credentials.Username,
 		ExpiresAt: expires.UTC().Format(time.RFC3339),
 	})
+}
+
+func boundedMaxAge(ttl time.Duration) int {
+	seconds := ttl / time.Second
+	if seconds < 1 {
+		return 1
+	}
+	maxInt := int64(^uint(0) >> 1)
+	if int64(seconds) > maxInt {
+		return int(maxInt)
+	}
+	return int(seconds)
 }
 
 func constantTimeStringEqual(left, right string) int {

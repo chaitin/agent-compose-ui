@@ -54,10 +54,13 @@ bun run dev
 如需分别启动（例如只调试前端）：
 
 ```bash
+export SCRIPT_SERVICE_TOKEN="$(openssl rand -hex 32)"  # 三个进程共享同一个非空令牌
 bun run dev:web      # 仅前端，Vite 开发服务器，监听 0.0.0.0:5174
 bun run dev:gateway  # 仅 UI 认证网关，监听 127.0.0.1:8080
 bun run dev:scripts  # 仅脚本服务，监听 127.0.0.1:7420
 ```
+
+在继承上述环境变量的三个终端中分别运行这些命令。
 
 ### 方式二：Docker 启动
 

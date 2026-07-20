@@ -35,6 +35,9 @@ func TestPasswordLoginSetsSignedCookieAndUnlocksProtectedRoute(t *testing.T) {
 	if !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode || cookie.Path != "/" || cookie.Expires.IsZero() {
 		t.Fatalf("cookie attributes: %#v", cookie)
 	}
+	if cookie.MaxAge != int(time.Hour/time.Second) {
+		t.Fatalf("cookie MaxAge = %d, want %d", cookie.MaxAge, int(time.Hour/time.Second))
+	}
 
 	protected := manager.Require(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 	request := httptest.NewRequest(http.MethodGet, "/agentcompose.v2.ProjectService/ListProjects", nil)
