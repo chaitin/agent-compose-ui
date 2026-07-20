@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App.svelte';
 import { getAuthStatus, login } from '../src/lib/auth';
 
@@ -21,6 +21,8 @@ vi.mock('../src/components/YamlEditor.svelte', async () => ({
 }));
 
 describe('App authentication gate', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   beforeEach(() => {
     vi.mocked(getAuthStatus).mockReset();
     vi.mocked(login).mockReset();
@@ -72,5 +74,55 @@ describe('App authentication gate', () => {
     expect(rpcMocks.listProjects).not.toHaveBeenCalled();
     await fireEvent.click(screen.getByRole('button', { name: '重试' }));
     expect(await screen.findByRole('form', { name: '登录' })).toBeInTheDocument();
+  });
+
+  it('ignores a status completion from an unmounted older App instance', async () => {
+    let resolveOld!: (status: { enabled: boolean; loggedIn: boolean }) => void;
+    vi.mocked(getAuthStatus)
+      .mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }))
+      .mockResolvedValueOnce({ enabled: true, loggedIn: false });
+
+    const oldApp = render(App);
+    oldApp.unmount();
+    render(App);
+    expect(await screen.findByRole('form', { name: '登录' })).toBeInTheDocument();
+
+    resolveOld({ enabled: false, loggedIn: true });
+    await Promise.resolve();
+    expect(screen.getByRole('form', { name: '登录' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+  });
+
+  it('continues authentication when sessionStorage throws', async () => {
+    history.replaceState(null, '', '/workspace?tab=files#detail');
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('denied'); });
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied'); });
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('denied'); });
+    vi.mocked(getAuthStatus).mockResolvedValue({ enabled: true, loggedIn: false });
+    vi.mocked(login).mockResolvedValue({ enabled: true, loggedIn: true });
+    render(App);
+
+    await fireEvent.input(await screen.findByLabelText('用户名'), { target: { value: 'operator' } });
+    await fireEvent.input(screen.getByLabelText('密码'), { target: { value: 'secret' } });
+    await fireEvent.click(screen.getByRole('button', { name: '进入控制台' }));
+
+    expect((await screen.findByText('Agent Compose')).closest('nav')).toBeInTheDocument();
+    expect(location.pathname + location.search + location.hash).toBe('/workspace?tab=files#detail');
+  });
+
+  it('discards a malicious stored return target without navigating', async () => {
+    sessionStorage.setItem('agent-compose.auth.return-target', '//evil.example/steal');
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('denied'); });
+    vi.mocked(getAuthStatus).mockResolvedValue({ enabled: true, loggedIn: false });
+    vi.mocked(login).mockResolvedValue({ enabled: true, loggedIn: true });
+    render(App);
+
+    await fireEvent.input(await screen.findByLabelText('用户名'), { target: { value: 'operator' } });
+    await fireEvent.input(screen.getByLabelText('密码'), { target: { value: 'secret' } });
+    await fireEvent.click(screen.getByRole('button', { name: '进入控制台' }));
+
+    expect((await screen.findByText('Agent Compose')).closest('nav')).toBeInTheDocument();
+    expect(location.pathname).toBe('/');
+    expect(sessionStorage.getItem('agent-compose.auth.return-target')).toBeNull();
   });
 });

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import { login, type AuthStatus } from '../lib/auth';
 
   let { onAuthenticated }: { onAuthenticated: (status: AuthStatus) => void } = $props();
@@ -6,19 +7,26 @@
   let password = $state('');
   let pending = $state(false);
   let error = $state('');
+  let generation = 0;
+
+  onDestroy(() => { generation += 1; });
 
   function submit(event: SubmitEvent) {
     event.preventDefault();
     if (pending) return;
     pending = true;
     error = '';
+    const submittedGeneration = ++generation;
     void login(username, password).then((status) => {
+      if (submittedGeneration !== generation) return;
       if (!status.loggedIn) throw new Error('用户名或密码错误');
       password = '';
       onAuthenticated(status);
     }).catch((cause: unknown) => {
+      if (submittedGeneration !== generation) return;
       error = cause instanceof Error ? cause.message : '登录失败，请重试';
     }).finally(() => {
+      if (submittedGeneration !== generation) return;
       pending = false;
     });
   }

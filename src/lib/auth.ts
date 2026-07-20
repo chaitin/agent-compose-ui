@@ -24,14 +24,22 @@ async function authRequest(path: string, init: RequestInit = {}): Promise<AuthSt
     headers: { Accept: 'application/json', ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
   });
   if (!response.ok) {
-    let message = response.status === 401 ? '用户名或密码错误' : '认证服务暂时不可用';
-    try {
-      const body = await response.json() as { error?: string };
-      if (body.error && response.status !== 401) message = body.error;
-    } catch { /* use the status-based message */ }
-    throw new Error(message);
+    throw new Error(response.status === 401 ? '用户名或密码错误' : '认证服务暂时不可用');
   }
-  return response.json() as Promise<AuthStatus>;
+  let body: unknown;
+  try { body = await response.json(); }
+  catch { throw new Error('认证服务返回了无效响应'); }
+  if (!isAuthStatus(body)) throw new Error('认证服务返回了无效响应');
+  return body;
+}
+
+function isAuthStatus(value: unknown): value is AuthStatus {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.enabled === 'boolean'
+    && typeof candidate.loggedIn === 'boolean'
+    && (candidate.username === undefined || typeof candidate.username === 'string')
+    && (candidate.expiresAt === undefined || typeof candidate.expiresAt === 'string');
 }
 
 export function getAuthStatus(): Promise<AuthStatus> {

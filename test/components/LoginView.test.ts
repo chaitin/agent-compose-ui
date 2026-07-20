@@ -32,4 +32,19 @@ describe('LoginView', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('用户名或密码错误');
     expect(screen.getByRole('button', { name: '进入控制台' })).toBeEnabled();
   });
+
+  it('does not call back after it is destroyed during login', async () => {
+    let resolveLogin!: (status: { enabled: boolean; loggedIn: boolean }) => void;
+    vi.mocked(login).mockReturnValue(new Promise((resolve) => { resolveLogin = resolve; }));
+    const onAuthenticated = vi.fn();
+    const view = render(LoginView, { onAuthenticated });
+    await fireEvent.input(screen.getByLabelText('用户名'), { target: { value: 'operator' } });
+    await fireEvent.input(screen.getByLabelText('密码'), { target: { value: 'secret' } });
+    await fireEvent.click(screen.getByRole('button', { name: '进入控制台' }));
+
+    view.unmount();
+    resolveLogin({ enabled: true, loggedIn: true });
+    await Promise.resolve();
+    expect(onAuthenticated).not.toHaveBeenCalled();
+  });
 });

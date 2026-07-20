@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import Sidebar from './components/Sidebar.svelte';
   import YamlEditor from './components/YamlEditor.svelte';
   import Resizer from './components/Resizer.svelte';
@@ -11,10 +11,12 @@
   import VolumeListView from './pages/VolumeListView.svelte';
   import EventSandboxDetailPage from './pages/EventSandboxDetailPage.svelte';
   import LoginView from './components/LoginView.svelte';
-  import { authState, getAuthStatus, type AuthStatus } from './lib/auth';
+  import { authState, getAuthStatus, type AuthState, type AuthStatus } from './lib/auth';
   import { store } from './lib/stores.svelte';
 
-  authState.set({ phase: 'loading', enabled: true, loggedIn: false });
+  let authentication = $state<AuthState>({ phase: 'loading', enabled: true, loggedIn: false });
+  let authGeneration = 0;
+  let mounted = false;
 
   let showRuntimePanel = $derived(store.currentPage === 'project');
   let pathname = $state(window.location.pathname);
@@ -36,52 +38,75 @@
   }
 
   const RETURN_TARGET_KEY = 'agent-compose.auth.return-target';
+  let memoryReturnTarget: string | null = null;
 
   function currentTarget(): string { return location.pathname + location.search + location.hash; }
 
   function saveReturnTarget() {
-    sessionStorage.setItem(RETURN_TARGET_KEY, currentTarget());
+    memoryReturnTarget = currentTarget();
+    try { sessionStorage.setItem(RETURN_TARGET_KEY, memoryReturnTarget); }
+    catch { /* in-memory fallback remains available */ }
   }
 
   function restoreReturnTarget() {
-    const target = sessionStorage.getItem(RETURN_TARGET_KEY);
-    sessionStorage.removeItem(RETURN_TARGET_KEY);
+    let target = memoryReturnTarget;
+    try { target = sessionStorage.getItem(RETURN_TARGET_KEY) ?? target; }
+    catch { /* use the in-memory target */ }
+    try { sessionStorage.removeItem(RETURN_TARGET_KEY); }
+    catch { /* best-effort cleanup */ }
+    memoryReturnTarget = null;
     if (!target) return;
-    const resolved = new URL(target, location.origin);
-    if (resolved.origin === location.origin) history.replaceState(null, '', resolved.pathname + resolved.search + resolved.hash);
-    syncPathname();
+    try {
+      const resolved = new URL(target, location.origin);
+      if (resolved.origin !== location.origin) return;
+      history.replaceState(null, '', resolved.pathname + resolved.search + resolved.hash);
+      syncPathname();
+    } catch { /* malformed targets are discarded */ }
+  }
+
+  function publish(state: AuthState) {
+    authentication = state;
+    authState.set(state);
   }
 
   function applyStatus(status: AuthStatus) {
-    if (!status.enabled) authState.set({ ...status, phase: 'disabled' });
-    else if (status.loggedIn) authState.set({ ...status, phase: 'authenticated' });
+    if (!status.enabled) publish({ ...status, phase: 'disabled' });
+    else if (status.loggedIn) publish({ ...status, phase: 'authenticated' });
     else {
       saveReturnTarget();
-      authState.set({ ...status, phase: 'anonymous' });
+      publish({ ...status, phase: 'anonymous' });
     }
   }
 
   async function checkAuthentication() {
-    authState.set({ phase: 'loading', enabled: true, loggedIn: false });
-    try { applyStatus(await getAuthStatus()); }
+    const generation = ++authGeneration;
+    publish({ phase: 'loading', enabled: true, loggedIn: false });
+    try {
+      const status = await getAuthStatus();
+      if (!mounted || generation !== authGeneration) return;
+      applyStatus(status);
+    }
     catch (cause) {
-      authState.set({ phase: 'error', enabled: true, loggedIn: false, error: cause instanceof Error ? cause.message : 'unknown error' });
+      if (!mounted || generation !== authGeneration) return;
+      publish({ phase: 'error', enabled: true, loggedIn: false, error: cause instanceof Error ? cause.message : 'unknown error' });
     }
   }
 
   function authenticated(status: AuthStatus) {
-    authState.set({ ...status, phase: status.enabled ? 'authenticated' : 'disabled' });
+    if (!mounted) return;
+    publish({ ...status, phase: status.enabled ? 'authenticated' : 'disabled' });
     restoreReturnTarget();
   }
 
-  onMount(() => { void checkAuthentication(); });
+  onMount(() => { mounted = true; void checkAuthentication(); });
+  onDestroy(() => { mounted = false; authGeneration += 1; });
 </script>
 
-{#if $authState.phase === 'loading'}
+{#if authentication.phase === 'loading'}
   <main class="auth-message" role="status"><span class="status-dot"></span>正在检查访问权限</main>
-{:else if $authState.phase === 'error'}
+{:else if authentication.phase === 'error'}
   <main class="auth-message"><section role="alert"><strong>无法确认访问权限</strong><p>检查网络连接后重试。</p><button onclick={() => void checkAuthentication()}>重试</button></section></main>
-{:else if $authState.phase === 'anonymous'}
+{:else if authentication.phase === 'anonymous'}
   <LoginView onAuthenticated={authenticated} />
 {:else if eventId}
   <div class="standalone"><EventSandboxDetailPage {eventId} /></div>
@@ -113,7 +138,7 @@
   </div>
 </div>
 {/if}
-{#if $authState.phase === 'authenticated' || $authState.phase === 'disabled'}<Toast />{/if}
+{#if authentication.phase === 'authenticated' || authentication.phase === 'disabled'}<Toast />{/if}
 
 <style>
   .shell {
