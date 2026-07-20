@@ -19,7 +19,7 @@ type loginRequest struct {
 }
 
 func (m *Manager) Status(w http.ResponseWriter, r *http.Request) {
-	status := statusResponse{Enabled: m.mode != config.AuthDisabled}
+	status := statusResponse{Enabled: m.mode != config.AuthDisabled, LoggedIn: m.mode == config.AuthDisabled}
 	if status.Enabled {
 		if username, expires, ok := m.validate(r); ok {
 			status.LoggedIn = true

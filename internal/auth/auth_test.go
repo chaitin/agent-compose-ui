@@ -137,7 +137,7 @@ func TestDisabledModeAllowsRequestsAndReportsDisabled(t *testing.T) {
 
 	status := httptest.NewRecorder()
 	manager.Status(status, httptest.NewRequest(http.MethodGet, "/api/auth/status", nil))
-	if status.Code != http.StatusOK || strings.TrimSpace(status.Body.String()) != `{"enabled":false,"loggedIn":false}` {
+	if status.Code != http.StatusOK || strings.TrimSpace(status.Body.String()) != `{"enabled":false,"loggedIn":true}` {
 		t.Fatalf("disabled status: %d %s", status.Code, status.Body.String())
 	}
 }

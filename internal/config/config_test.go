@@ -43,6 +43,8 @@ func TestLoadRejectsInvalidModeDurationAndUpstreams(t *testing.T) {
 		{"AUTH_SESSION_TTL": "zero"},
 		{"AGENT_COMPOSE_URL": "://bad"},
 		{"SCRIPT_SERVICE_URL": "://bad"},
+		{"AGENT_COMPOSE_URL": "ftp://agent-compose:7410"},
+		{"SCRIPT_SERVICE_URL": "unix://scripts"},
 	}
 	for _, values := range cases {
 		values["SCRIPT_SERVICE_TOKEN"] = "token"

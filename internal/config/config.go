@@ -50,7 +50,7 @@ func Load(getenv func(string) string) (Config, error) {
 			raw = fallback
 		}
 		value, err := url.ParseRequestURI(raw)
-		if err != nil || value.Scheme == "" || value.Host == "" {
+		if err != nil || (value.Scheme != "http" && value.Scheme != "https") || value.Host == "" {
 			return nil, fmt.Errorf("%s must be an absolute HTTP URL", name)
 		}
 		return value, nil
