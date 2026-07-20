@@ -1,4 +1,5 @@
 import type { ScriptFile, ScriptManifest, ScriptTreeNode } from './types';
+import { authFetch } from '../auth-fetch';
 
 const BASE = '/script-api/v1';
 
@@ -37,7 +38,7 @@ export class ScriptApiError extends Error {
 async function request(pathname: string, init: RequestInit = {}): Promise<Response> {
   let response: Response;
   try {
-    response = await fetch(`${BASE}${pathname}`, {
+    response = await authFetch(`${BASE}${pathname}`, {
       ...init,
       headers: { 'content-type': 'application/json', ...((init.headers as Record<string, string>) ?? {}) },
     });

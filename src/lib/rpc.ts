@@ -1,6 +1,7 @@
 import { createConnectTransport } from '@connectrpc/connect-web';
 import { createClient } from '@connectrpc/connect';
 import type { Transport } from '@connectrpc/connect';
+import { authFetch } from './auth-fetch';
 
 // Generated service descriptors
 import {
@@ -33,7 +34,7 @@ const transport: Transport = createConnectTransport({
       }
     }
     const timeout = setTimeout(() => controller.abort(new DOMException('RPC timeout', 'TimeoutError')), RPC_TIMEOUT_MS);
-    return fetch(input, { ...init, signal: controller.signal })
+    return authFetch(input, { ...init, signal: controller.signal })
       .finally(() => clearTimeout(timeout));
   },
 });

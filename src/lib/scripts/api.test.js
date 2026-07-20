@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { scriptApi, ScriptApiError, scriptErrorMessage } from './api';
+import { subscribeUnauthorized } from '../auth';
 
 const originalFetch = globalThis.fetch;
 
@@ -60,6 +61,23 @@ describe('scriptApi.readFile', () => {
       code: 'SERVICE_UNAVAILABLE',
       status: 0,
     });
+  });
+
+  test('reports a gateway 401 as an expired UI session, not script-service UNAUTHORIZED', async () => {
+    let notifications = 0;
+    const unsubscribe = subscribeUnauthorized(() => { notifications += 1; });
+    mockFetch(() => jsonResponse({ error: 'authentication required' }, 401));
+
+    try {
+      await scriptApi.readFile('demo/a.js');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ScriptApiError);
+      expect(error.status).toBe(401);
+      expect(error.code).not.toBe('UNAUTHORIZED');
+    } finally {
+      unsubscribe();
+    }
+    expect(notifications).toBe(1);
   });
 });
 
