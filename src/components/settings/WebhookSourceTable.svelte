@@ -6,9 +6,26 @@
     sessionTokenIds: Set<string>;
     selectedSourceId: string | null;
     testStates: Map<string, TestState>;
+    onselect: (id: string) => void;
+    ontoggle: (id: string) => void;
+    ondelete: (id: string) => void;
+    oncopycurl: (id: string) => void;
+    ontest: (id: string) => void;
+    onregen: (id: string) => void;
   }
 
-  let { sources, sessionTokenIds, selectedSourceId, testStates }: Props = $props();
+  let {
+    sources,
+    sessionTokenIds,
+    selectedSourceId,
+    testStates,
+    onselect,
+    ontoggle,
+    ondelete,
+    oncopycurl,
+    ontest,
+    onregen,
+  }: Props = $props();
 </script>
 
 <div class="table-wrap">
@@ -35,7 +52,8 @@
         </tr>
       {:else}
         {#each sources as source (source.id)}
-          <tr class="source-row" class:selected={selectedSourceId === source.id}>
+          <tr class="source-row" class:selected={selectedSourceId === source.id}
+              onclick={() => onselect(source.id)}>
             <td class="name">{source.name}</td>
             <td class="topic">{source.topic_prefix}</td>
             <td>
@@ -43,6 +61,9 @@
                 <span class="status-pill" class:enabled={source.enabled} class:disabled={!source.enabled}>
                   <span class="dot"></span>{source.enabled ? '启用' : '停用'}
                 </span>
+                <div class="mini-toggle" class:on={source.enabled} role="switch" aria-checked={source.enabled} tabindex="0"
+                     onclick={(e) => { e.stopPropagation(); ontoggle(source.id); }}
+                     onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); ontoggle(source.id); } }}></div>
               </div>
             </td>
             <td>
@@ -58,10 +79,10 @@
             </td>
             <td>
               <div class="row-actions">
-                <button type="button" disabled>📋 curl</button>
+                <button type="button" onclick={(e) => { e.stopPropagation(); oncopycurl(source.id); }}>📋 curl</button>
                 <button type="button" disabled>⚡ 测试</button>
-                <button type="button" disabled>↻ 重生成</button>
-                <button type="button" class="danger" disabled>✕</button>
+                <button type="button" onclick={(e) => { e.stopPropagation(); onregen(source.id); }}>↻ 重生成</button>
+                <button type="button" class="danger" onclick={(e) => { e.stopPropagation(); ondelete(source.id); }}>✕</button>
               </div>
             </td>
           </tr>
@@ -80,6 +101,7 @@
     text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border-color);
   }
   .webhook-table td { padding: 12px 16px; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
+  .webhook-table tr.source-row { cursor: pointer; }
   .webhook-table tr.source-row:hover td { background: var(--bg-tertiary); }
   .webhook-table tr.source-row.selected td { background: color-mix(in srgb, var(--accent-blue) 6%, var(--bg-secondary)); }
   .webhook-table tr.source-row.selected td:first-child { box-shadow: inset 2px 0 0 var(--accent-blue); }
@@ -96,6 +118,19 @@
   .status-pill.disabled { background: var(--bg-tertiary); color: var(--text-muted); border: 1px solid var(--border-color); }
   .status-pill .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 
+  .mini-toggle {
+    width: 28px; height: 16px; background: var(--bg-tertiary);
+    border: 1px solid var(--border-color); border-radius: 8px;
+    position: relative; cursor: pointer; transition: background 0.15s; flex-shrink: 0;
+  }
+  .mini-toggle::after {
+    content: ''; position: absolute; top: 1px; left: 1px;
+    width: 12px; height: 12px; background: var(--text-secondary);
+    border-radius: 50%; transition: transform 0.15s, background 0.15s;
+  }
+  .mini-toggle.on { background: color-mix(in srgb, var(--accent-green) 30%, var(--bg-tertiary)); border-color: var(--accent-green); }
+  .mini-toggle.on::after { transform: translateX(12px); background: var(--accent-green); }
+
   .token-cell { display: flex; align-items: center; gap: 6px; font-size: var(--font-size-xs); font-family: var(--font-mono); color: var(--text-secondary); }
   .token-cell .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-green); }
   .token-cell .dot.missing { background: var(--text-muted); }
@@ -111,6 +146,8 @@
   }
   .row-actions button.danger { color: var(--text-secondary); }
   .row-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .row-actions button:not(:disabled):hover { color: var(--accent-blue); border-color: var(--accent-blue); }
+  .row-actions button.danger:not(:disabled):hover { color: var(--accent-red); border-color: var(--accent-red); }
 
   .empty-state { padding: 48px 24px; text-align: center; color: var(--text-muted); }
   .empty-state .icon { font-size: 28px; opacity: 0.4; margin-bottom: 8px; }

@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/svelte';
-import { expect, test } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/svelte';
+import { expect, test, vi } from 'vitest';
 import WebhookSourceTable from './WebhookSourceTable.svelte';
 import type { WebhookSource } from '../../lib/webhook/types';
 
@@ -9,8 +9,17 @@ const baseSource: WebhookSource = {
   body_limit_bytes: 0, created_at: '2026-07-21T10:00:00Z', updated_at: '2026-07-21T10:00:00Z',
 };
 
+const noopCallbacks = {
+  onselect: () => {},
+  ontoggle: () => {},
+  ondelete: () => {},
+  oncopycurl: () => {},
+  ontest: () => {},
+  onregen: () => {},
+};
+
 test('renders header row with all columns', () => {
-  render(WebhookSourceTable, { props: { sources: [], sessionTokenIds: new Set<string>(), selectedSourceId: null, testStates: new Map() } });
+  render(WebhookSourceTable, { props: { sources: [], sessionTokenIds: new Set<string>(), selectedSourceId: null, testStates: new Map(), ...noopCallbacks } });
   expect(screen.getByText('名称')).toBeInTheDocument();
   expect(screen.getByText('Topic 前缀')).toBeInTheDocument();
   expect(screen.getByText('状态')).toBeInTheDocument();
@@ -19,7 +28,7 @@ test('renders header row with all columns', () => {
 });
 
 test('renders empty state when sources is empty', () => {
-  render(WebhookSourceTable, { props: { sources: [], sessionTokenIds: new Set<string>(), selectedSourceId: null, testStates: new Map() } });
+  render(WebhookSourceTable, { props: { sources: [], sessionTokenIds: new Set<string>(), selectedSourceId: null, testStates: new Map(), ...noopCallbacks } });
   expect(screen.getByText('暂无 webhook 源')).toBeInTheDocument();
 });
 
@@ -28,7 +37,7 @@ test('renders one row per source', () => {
     baseSource,
     { ...baseSource, id: 'b', name: 'github-push', topic_prefix: 'webhook.github.', enabled: false },
   ];
-  render(WebhookSourceTable, { props: { sources, sessionTokenIds: new Set<string>(['a']), selectedSourceId: 'a', testStates: new Map() } });
+  render(WebhookSourceTable, { props: { sources, sessionTokenIds: new Set<string>(['a']), selectedSourceId: 'a', testStates: new Map(), ...noopCallbacks } });
   expect(screen.getByText('siem-alert')).toBeInTheDocument();
   expect(screen.getByText('github-push')).toBeInTheDocument();
   expect(screen.getByText('webhook.siem.alert.')).toBeInTheDocument();
@@ -39,17 +48,33 @@ test('shows enabled pill for enabled source and disabled pill for disabled', () 
     baseSource,
     { ...baseSource, id: 'b', name: 'beta', topic_prefix: 'webhook.beta.', enabled: false },
   ];
-  render(WebhookSourceTable, { props: { sources, sessionTokenIds: new Set<string>(), selectedSourceId: null, testStates: new Map() } });
+  render(WebhookSourceTable, { props: { sources, sessionTokenIds: new Set<string>(), selectedSourceId: null, testStates: new Map(), ...noopCallbacks } });
   expect(screen.getByText('启用')).toBeInTheDocument();
   expect(screen.getByText('停用')).toBeInTheDocument();
 });
 
 test('shows session-available badge when sessionTokenIds has the id', () => {
-  render(WebhookSourceTable, { props: { sources: [baseSource], sessionTokenIds: new Set<string>(['a']), selectedSourceId: 'a', testStates: new Map() } });
+  render(WebhookSourceTable, { props: { sources: [baseSource], sessionTokenIds: new Set<string>(['a']), selectedSourceId: 'a', testStates: new Map(), ...noopCallbacks } });
   expect(screen.getByText('会话内')).toBeInTheDocument();
 });
 
 test('shows needs-regen badge when sessionTokenIds does not have the id', () => {
-  render(WebhookSourceTable, { props: { sources: [baseSource], sessionTokenIds: new Set<string>(), selectedSourceId: null, testStates: new Map() } });
+  render(WebhookSourceTable, { props: { sources: [baseSource], sessionTokenIds: new Set<string>(), selectedSourceId: null, testStates: new Map(), ...noopCallbacks } });
   expect(screen.getByText('需重生成')).toBeInTheDocument();
+});
+
+test('clicking row calls onselect with source id', async () => {
+  const onselect = vi.fn();
+  const { container } = render(WebhookSourceTable, { props: { sources: [baseSource], sessionTokenIds: new Set<string>(), selectedSourceId: null, testStates: new Map(), ...noopCallbacks, onselect } });
+  await fireEvent.click(screen.getByText('siem-alert'));
+  expect(onselect).toHaveBeenCalledWith('a');
+});
+
+test('clicking toggle calls ontoggle with source id', async () => {
+  const ontoggle = vi.fn();
+  const { container } = render(WebhookSourceTable, { props: { sources: [baseSource], sessionTokenIds: new Set<string>(), selectedSourceId: null, testStates: new Map(), ...noopCallbacks, ontoggle } });
+  const toggle = container.querySelector('.mini-toggle');
+  if (!toggle) throw new Error('mini-toggle not found');
+  await fireEvent.click(toggle);
+  expect(ontoggle).toHaveBeenCalledWith('a');
 });

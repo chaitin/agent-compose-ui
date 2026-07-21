@@ -7,6 +7,8 @@
 
   let testStates = $state<Map<string, TestState>>(new Map());
   let registerOpen = $state(false);
+  let deleteTarget = $state<{ id: string; name: string; topic: string } | null>(null);
+  let togglingId = $state<string | null>(null);
 
   function sessionTokenIds(): Set<string> {
     return new Set(webhookStore.sessionTokens.keys());
@@ -15,6 +17,43 @@
   onMount(() => {
     webhookStore.loadSources();
   });
+
+  async function handleToggle(id: string): Promise<void> {
+    const source = webhookStore.sources.find(s => s.id === id);
+    if (!source) return;
+    togglingId = id;
+    try {
+      await webhookStore.upsert({
+        id: source.id,
+        name: source.name,
+        enabled: !source.enabled,
+        provider: source.provider,
+        topic_prefix: source.topic_prefix,
+        signature_type: source.signature_type ?? 'none',
+      });
+    } catch (error) {
+      console.error('toggle failed', error);
+    } finally {
+      togglingId = null;
+    }
+  }
+
+  function handleDeleteRequest(id: string): void {
+    const source = webhookStore.sources.find(s => s.id === id);
+    if (!source) return;
+    deleteTarget = { id, name: source.name, topic: source.topic_prefix };
+  }
+
+  async function handleDeleteConfirm(): Promise<void> {
+    if (!deleteTarget) return;
+    try {
+      await webhookStore.remove(deleteTarget.id);
+    } catch (error) {
+      console.error('delete failed', error);
+    } finally {
+      deleteTarget = null;
+    }
+  }
 </script>
 
 <div class="webhook-panel">
@@ -45,12 +84,42 @@
         sessionTokenIds={sessionTokenIds()}
         selectedSourceId={webhookStore.selectedSourceId}
         {testStates}
+        onselect={(id) => webhookStore.selectSource(id)}
+        ontoggle={handleToggle}
+        ondelete={handleDeleteRequest}
+        oncopycurl={(id) => { /* Task 7 */ }}
+        ontest={(id) => { /* Task 6 */ }}
+        onregen={(id) => { /* Task 8 */ }}
       />
     {/if}
   </section>
 </div>
 
 <WebhookRegisterModal open={registerOpen} onclose={() => registerOpen = false} />
+
+{#if deleteTarget}
+  <div class="modal-backdrop" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) deleteTarget = null; }}>
+    <div class="modal" role="dialog" aria-modal="true">
+      <header class="modal-header">
+        <span class="icon danger">⚠</span>
+        <div class="title">删除 Webhook 源</div>
+        <button type="button" class="close" onclick={() => deleteTarget = null}>×</button>
+      </header>
+      <div class="modal-body">
+        <p>确定删除源 <code>{deleteTarget.name}</code>？此操作不可撤销。</p>
+        <ul class="impact-list">
+          <li>所有使用此源 token 的调用方将立即收到 401</li>
+          <li>YAML 中 <code>scheduler.on("{deleteTarget.topic}*", ...)</code> 的订阅将不再被触发</li>
+          <li>已入库的历史事件保留，可通过 /api/events 查询</li>
+        </ul>
+      </div>
+      <footer class="modal-footer">
+        <button type="button" class="btn" onclick={() => deleteTarget = null}>取消</button>
+        <button type="button" class="btn danger" onclick={handleDeleteConfirm}>删除</button>
+      </footer>
+    </div>
+  </div>
+{/if}
 
 <style>
   .webhook-panel { display: flex; flex-direction: column; gap: 16px; }
@@ -69,4 +138,32 @@
 
   .loading, .error { padding: 24px; color: var(--text-secondary); font-size: var(--font-size-sm); }
   .error button { margin-left: 12px; padding: 4px 10px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--bg-tertiary); color: var(--text-primary); font-size: var(--font-size-xs); }
+
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(1,4,9,0.7);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; backdrop-filter: blur(2px);
+  }
+  .modal {
+    background: var(--bg-secondary); border: 1px solid var(--border-color);
+    border-radius: 8px; width: 480px; max-width: calc(100% - 32px);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+  }
+  .modal-header { display: flex; align-items: center; gap: 8px; padding: 14px 18px; border-bottom: 1px solid var(--border-color); }
+  .modal-header .title { font-size: var(--font-size-xl); font-weight: 600; }
+  .modal-header .icon.danger { color: var(--accent-red); font-size: 18px; }
+  .modal-header .close { margin-left: auto; color: var(--text-muted); font-size: 18px; padding: 4px; }
+  .modal-header .close:hover { color: var(--text-primary); }
+  .modal-body { padding: 16px 18px; }
+  .modal-body p { margin: 0 0 12px; font-size: var(--font-size-sm); color: var(--text-primary); }
+  .modal-body code { font-family: var(--font-mono); color: var(--accent-blue); background: color-mix(in srgb, var(--accent-blue) 10%, transparent); padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .impact-list { margin: 0; padding-left: 18px; color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.7; }
+  .impact-list li { margin-bottom: 4px; }
+  .impact-list code { font-family: var(--font-mono); color: var(--accent-blue); background: color-mix(in srgb, var(--accent-blue) 10%, transparent); padding: 1px 4px; border-radius: 2px; font-size: 11px; }
+
+  .modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border-color); background: var(--bg-tertiary); border-radius: 0 0 8px 8px; }
+  .modal-footer .btn { padding: 6px 14px; border-radius: 4px; font-size: var(--font-size-sm); border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); }
+  .modal-footer .btn:hover:not(:disabled) { border-color: var(--accent-blue); }
+  .modal-footer .btn.danger { background: var(--accent-red); color: #fff; border-color: var(--accent-red); font-weight: 600; }
+  .modal-footer .btn.danger:hover { opacity: 0.9; }
 </style>
