@@ -1,22 +1,32 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { Code, ConnectError } from '@connectrpc/connect';
 import RunExecutionProcess from './RunExecutionProcess.svelte';
-import { ListSandboxHistoryResponse, ListSandboxRunEventsResponse, RunDetail, RunStatus, RunSummary } from '../../gen/agentcompose/v2/agentcompose_pb';
+import { ExecStreamEventType, ExecStreamResponse, ListSandboxHistoryResponse, ListSandboxRunEventsResponse, RunDetail, RunStatus, RunSummary, StdioStream } from '../../gen/agentcompose/v2/agentcompose_pb';
+import { store } from '../../lib/stores.svelte';
 
 const mocks = vi.hoisted(() => ({
   runService: { getRun: vi.fn(), listRunEvents: vi.fn(), listSandboxRunEvents: vi.fn(), followRunLogs: vi.fn() },
   projectService: { listSchedulerEvents: vi.fn() },
-  sandboxService: { listSandboxHistory: vi.fn() },
+  sandboxService: { listSandboxHistory: vi.fn(), getSandbox: vi.fn(), resumeSandbox: vi.fn() },
+  execService: { execStream: vi.fn() },
 }));
 
 vi.mock('../../lib/rpc', () => ({
   runService: mocks.runService,
   projectService: mocks.projectService,
   sandboxService: mocks.sandboxService,
+  execService: mocks.execService,
 }));
 
 async function* emptyLogs() {}
+async function* artifactStream(path: string) {
+  yield new ExecStreamResponse({
+    eventType: ExecStreamEventType.OUTPUT,
+    stream: StdioStream.STDOUT,
+    chunk: `1784604700\t${path}\0`,
+  });
+}
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>(done => { resolve = done; });
@@ -35,6 +45,8 @@ beforeEach(() => {
   mocks.runService.followRunLogs.mockReturnValue(emptyLogs());
   mocks.projectService.listSchedulerEvents.mockResolvedValue({ events: [], nextCursor: '' });
   mocks.sandboxService.listSandboxHistory.mockResolvedValue(new ListSandboxHistoryResponse());
+  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: { status: 'RUNNING' } });
+  mocks.execService.execStream.mockReturnValue(emptyLogs());
 });
 
 afterEach(() => cleanup());
@@ -45,6 +57,87 @@ test('renders only the execution process', async () => {
   expect(await screen.findByText('执行过程')).toBeTruthy();
   expect(screen.getByRole('button', { name: '全部' })).toBeTruthy();
   expect(screen.queryByText('Run ID')).toBeNull();
+});
+
+test('opens a discovered Workspace artifact in the Sandbox files tab', async () => {
+  const navigate = vi.spyOn(store, 'navigateTo').mockImplementation(() => {});
+  window.history.replaceState(null, '', '/?view=run');
+  mocks.runService.getRun.mockResolvedValue({ run: new RunDetail({
+    summary: new RunSummary({ runId: 'run-1', agentName: 'writer', sandboxId: 'sandbox-1', status: RunStatus.SUCCEEDED,
+      startedAt: '2026-07-21T03:30:37Z', completedAt: '2026-07-21T03:32:31Z' }),
+    artifactsDir: '/existing/artifacts',
+  }) });
+  mocks.execService.execStream.mockReturnValue(artifactStream('/workspace/2026-07-21/report.md'));
+  render(RunExecutionProcess, { projectId: 'p1', agentName: 'writer', runId: 'run-1' });
+
+  await fireEvent.click(await screen.findByRole('button', { name: '打开 Workspace 文件 /workspace/2026-07-21/report.md' }));
+  expect(navigate).toHaveBeenCalledWith('sandbox-detail', { sandboxId: 'sandbox-1' });
+  expect(new URLSearchParams(location.search).get('sandboxTab')).toBe('files');
+  expect(new URLSearchParams(location.search).get('sandboxPath')).toBe('/workspace/2026-07-21/report.md');
+});
+
+test('keeps existing artifacts and does not exec or resume a stopped Sandbox', async () => {
+  mocks.runService.getRun.mockResolvedValue({ run: new RunDetail({
+    summary: new RunSummary({ runId: 'run-1', agentName: 'writer', sandboxId: 'sandbox-1', status: RunStatus.SUCCEEDED,
+      startedAt: '2026-07-21T03:30:37Z', completedAt: '2026-07-21T03:32:31Z' }),
+    artifactsDir: '/existing/artifacts',
+  }) });
+  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: { status: 'STOPPED' } });
+  render(RunExecutionProcess, { projectId: 'p1', agentName: 'writer', runId: 'run-1' });
+
+  expect(await screen.findByText('Sandbox 已停止，请先手动恢复后刷新产物')).toBeTruthy();
+  await fireEvent.click(screen.getByRole('button', { name: '产物' }));
+  expect(await screen.findByText('/existing/artifacts')).toBeTruthy();
+  expect(mocks.execService.execStream).not.toHaveBeenCalled();
+  expect(mocks.sandboxService.resumeSandbox).not.toHaveBeenCalled();
+});
+
+test('keeps existing artifacts when the Sandbox was removed', async () => {
+  mocks.runService.getRun.mockResolvedValue({ run: new RunDetail({
+    summary: new RunSummary({ runId: 'run-1', agentName: 'writer', sandboxId: 'sandbox-1', status: RunStatus.SUCCEEDED,
+      startedAt: '2026-07-21T03:30:37Z', completedAt: '2026-07-21T03:32:31Z' }),
+    artifactsDir: '/existing/artifacts',
+  }) });
+  mocks.sandboxService.getSandbox.mockRejectedValueOnce(new ConnectError('gone', Code.NotFound));
+  const view = render(RunExecutionProcess, { projectId: 'p1', agentName: 'writer', runId: 'run-1' });
+  expect(await screen.findByText('产物所在 Sandbox 已删除，无法读取 Workspace 文件')).toBeTruthy();
+  await fireEvent.click(screen.getByRole('button', { name: '产物' }));
+  expect(await screen.findByText('/existing/artifacts')).toBeTruthy();
+});
+
+test('shows a non-blocking exec failure while keeping existing artifacts', async () => {
+  mocks.runService.getRun.mockResolvedValue({ run: new RunDetail({
+    summary: new RunSummary({ runId: 'run-1', agentName: 'writer', sandboxId: 'sandbox-1', status: RunStatus.SUCCEEDED,
+      startedAt: '2026-07-21T03:30:37Z', completedAt: '2026-07-21T03:32:31Z' }), artifactsDir: '/existing/artifacts',
+  }) });
+  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: { status: 'RUNNING' } });
+  mocks.execService.execStream.mockImplementation(() => { throw new Error('find unavailable'); });
+  render(RunExecutionProcess, { projectId: 'p1', agentName: 'writer', runId: 'run-1' });
+  expect(await screen.findByText(/Workspace 产物加载失败：.*find unavailable/)).toBeTruthy();
+  await fireEvent.click(screen.getByRole('button', { name: '产物' }));
+  expect(await screen.findByText('/existing/artifacts')).toBeTruthy();
+});
+
+test('ignores Workspace artifacts returned after the run identity changes', async () => {
+  const oldSandbox = deferred<any>();
+  mocks.runService.getRun
+    .mockResolvedValueOnce({ run: new RunDetail({ summary: new RunSummary({ runId: 'run-1', agentName: 'writer', sandboxId: 'sandbox-a', status: RunStatus.SUCCEEDED,
+      startedAt: '2026-07-21T03:30:37Z', completedAt: '2026-07-21T03:32:31Z' }) }) })
+    .mockResolvedValueOnce({ run: new RunDetail({ summary: new RunSummary({ runId: 'run-2', agentName: 'reviewer', sandboxId: 'sandbox-b', status: RunStatus.SUCCEEDED,
+      startedAt: '2026-07-21T03:30:37Z', completedAt: '2026-07-21T03:32:31Z' }) }) });
+  mocks.sandboxService.getSandbox
+    .mockReturnValueOnce(oldSandbox.promise)
+    .mockResolvedValueOnce({ sandbox: { status: 'RUNNING' } });
+  mocks.execService.execStream.mockReturnValue(artifactStream('/workspace/run-b.md'));
+  const view = render(RunExecutionProcess, { projectId: 'p1', agentName: 'writer', runId: 'run-1' });
+  await waitFor(() => expect(mocks.sandboxService.getSandbox).toHaveBeenCalledTimes(1));
+  await view.rerender({ projectId: 'p1', agentName: 'reviewer', runId: 'run-2' });
+  expect(await screen.findByRole('button', { name: '打开 Workspace 文件 /workspace/run-b.md' })).toBeTruthy();
+
+  oldSandbox.resolve({ sandbox: { status: 'RUNNING' } });
+  await oldSandbox.promise;
+  await Promise.resolve();
+  expect(screen.queryByRole('button', { name: '打开 Workspace 文件 /workspace/run-a.md' })).toBeNull();
 });
 
 test('ignores a late detail response after the run identity changes', async () => {

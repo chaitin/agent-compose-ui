@@ -4,7 +4,12 @@
   import { store } from '../../lib/stores.svelte';
   import { copyText } from '../../lib/clipboard';
 
-  let { entry, lead, trailing }: { entry: RuntimeTimelineEntry; lead?: Snippet<[]>; trailing?: Snippet<[]> } = $props();
+  let { entry, lead, trailing, onOpenArtifact }: {
+    entry: RuntimeTimelineEntry;
+    lead?: Snippet<[]>;
+    trailing?: Snippet<[]>;
+    onOpenArtifact?: (target: { sandboxId: string; path: string }) => void;
+  } = $props();
   let expanded = $state(false);
   let overflowing = $state(false);
   let rawOpen = $state(false);
@@ -40,6 +45,9 @@
   </header>
   {#if lead}{@render lead()}{/if}
   <pre class="entry-content" class:collapsed={!expanded} use:overflowAction={expanded}>{entry.content}</pre>
+  {#if entry.artifactTarget}
+    <button class="artifact-link" aria-label={`打开 Workspace 文件 ${entry.artifactTarget.path}`} onclick={() => onOpenArtifact?.(entry.artifactTarget!)}>{entry.artifactTarget.path}</button>
+  {/if}
   {#if overflowing}<button class="entry-toggle" aria-expanded={expanded} onclick={() => expanded = !expanded}>{expanded ? '收起' : '展示全部'}<span class="entry-toggle-icon" aria-hidden="true">{expanded ? '↑' : '↓'}</span></button>{/if}
   {#if trailing}{@render trailing()}{/if}
   <details bind:open={rawOpen}>
@@ -61,6 +69,8 @@
   .entry-toggle:active { transform:translateY(1px); }
   .entry-toggle:focus-visible { outline:2px solid var(--accent-blue); outline-offset:2px; }
   .entry-toggle-icon { font-size:10px; line-height:1; }
+  .artifact-link { display:block; margin-top:6px; padding:0; border:0; background:transparent; color:var(--accent-blue); font:var(--font-size-sm) var(--font-mono); cursor:pointer; text-align:left; overflow-wrap:anywhere; }
+  .artifact-link:focus-visible { outline:2px solid var(--accent-blue); outline-offset:2px; }
   details { margin-top:8px; color:var(--text-muted); font-size:var(--font-size-xs); } pre.raw { margin-top:6px; }
   :global(.te-lead-note) { display:block; margin:4px 0 0; color:var(--text-muted); font-size:var(--font-size-xs); }
   :global(.te-entry-actions) { display:flex; gap:5px; margin-top:6px; }:global(.te-entry-actions button) { padding:3px 6px; border:1px solid var(--border-color); border-radius:3px; background:var(--bg-tertiary); color:var(--text-muted); font-size:var(--font-size-xs); cursor:pointer; }

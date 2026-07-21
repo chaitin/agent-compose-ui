@@ -2,16 +2,17 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/sv
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { Code, ConnectError } from '@connectrpc/connect';
 import RunDetailView from './RunDetailView.svelte';
-import { GetSchedulerRunResponse, ListSandboxHistoryResponse, ListSandboxRunEventsResponse, RunDetail, RunEvent, RunEventKind, RunSource, RunStatus, RunSummary, SandboxHistoryCell, SchedulerEvent, SchedulerRun } from '../../gen/agentcompose/v2/agentcompose_pb';
+import { ExecStreamEventType, ExecStreamResponse, GetSchedulerRunResponse, ListSandboxHistoryResponse, ListSandboxRunEventsResponse, RunDetail, RunEvent, RunEventKind, RunSource, RunStatus, RunSummary, SandboxHistoryCell, SchedulerEvent, SchedulerRun, StdioStream } from '../../gen/agentcompose/v2/agentcompose_pb';
 import { store } from '../../lib/stores.svelte';
 import { stableProjectRunId } from '../../lib/run-scheduler-evidence';
 
 const mocks = vi.hoisted(() => ({
   runService: { getRun: vi.fn(), listRunEvents: vi.fn(), listSandboxRunEvents: vi.fn(), followRunLogs: vi.fn(), stopRun: vi.fn() },
   projectService: { getSchedulerRun: vi.fn(), listSchedulerEvents: vi.fn() },
-  sandboxService: { listSandboxHistory: vi.fn() },
+  sandboxService: { listSandboxHistory: vi.fn(), getSandbox: vi.fn() },
+  execService: { execStream: vi.fn() },
 }));
-vi.mock('../../lib/rpc', () => ({ runService: mocks.runService, projectService: mocks.projectService, sandboxService: mocks.sandboxService }));
+vi.mock('../../lib/rpc', () => ({ runService: mocks.runService, projectService: mocks.projectService, sandboxService: mocks.sandboxService, execService: mocks.execService }));
 
 async function* emptyLogs() {}
 function failedRunDetail() {
@@ -84,6 +85,8 @@ beforeEach(() => {
   mocks.projectService.listSchedulerEvents.mockResolvedValue({ events: [], nextCursor: '' });
   mocks.projectService.getSchedulerRun.mockResolvedValue(new GetSchedulerRunResponse());
   mocks.sandboxService.listSandboxHistory.mockResolvedValue(new ListSandboxHistoryResponse());
+  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: { status: 'RUNNING' } });
+  mocks.execService.execStream.mockReturnValue(emptyLogs());
 });
 afterEach(() => cleanup());
 
@@ -93,9 +96,10 @@ test('merges only confirmed Scheduler, Cell, and Sandbox Run evidence and filter
   mocks.runService.getRun.mockResolvedValue({ run: new RunDetail({
     summary: new RunSummary({
       runId: projectRunId, agentName: 'worker', source: RunSource.SCHEDULER, triggerId: 'trigger-1',
-      sandboxId: 'sandbox-1', status: RunStatus.SUCCEEDED, completedAt: '2026-07-15T01:01:00Z',
+      sandboxId: 'sandbox-1', status: RunStatus.SUCCEEDED,
+      startedAt: '2026-07-21T03:30:37Z', completedAt: '2026-07-21T03:32:31Z',
     }),
-    resultJson: '{"cellId":"cell-1"}', logsPath: '/logs/output.txt', artifactsDir: '/artifacts/cell-1',
+    resultJson: '{"cellId":"cell-1"}', logsPath: '/logs/output.txt', artifactsDir: '/data/sessions/sandbox-1/state/cells/cell-1',
   }) });
   mocks.runService.listRunEvents.mockResolvedValue({ events: [], nextCursor: '', historyAvailable: true });
   mocks.projectService.listSchedulerEvents.mockResolvedValue({ events: [
@@ -110,6 +114,11 @@ test('merges only confirmed Scheduler, Cell, and Sandbox Run evidence and filter
     new RunEvent({ id: 'sandbox-current', runId: projectRunId, kind: RunEventKind.AGENT_MESSAGE, text: 'confirmed sandbox response' }),
     new RunEvent({ id: 'sandbox-other', runId: 'other-run', text: 'unrelated sandbox response' }),
   ] }));
+  mocks.execService.execStream.mockReturnValue(streamOf(new ExecStreamResponse({
+    eventType: ExecStreamEventType.OUTPUT,
+    stream: StdioStream.STDOUT,
+    chunk: '1784604700\t/workspace/2026-07-21/report.md\0',
+  })));
 
   render(RunDetailView);
 
@@ -128,7 +137,8 @@ test('merges only confirmed Scheduler, Cell, and Sandbox Run evidence and filter
   await fireEvent.click(screen.getByRole('button', { name: '产物' }));
   expect(screen.getByText(/confirmed cell answer/)).toBeTruthy();
   expect(screen.getByText('/logs/output.txt')).toBeTruthy();
-  expect(screen.getByText('/artifacts/cell-1')).toBeTruthy();
+  expect(screen.getByText('/data/sessions/sandbox-1/state/cells/cell-1')).toBeTruthy();
+  expect(await screen.findByRole('button', { name: '打开 Workspace 文件 /workspace/2026-07-21/report.md' })).toBeTruthy();
   expect(screen.queryByText('confirmed scheduler start')).toBeNull();
 });
 

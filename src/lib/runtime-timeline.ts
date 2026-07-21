@@ -47,6 +47,10 @@ export interface RuntimeTimelineEntry {
   timestampBasis?: 'run-start' | 'run-end' | 'run-updated';
   offset?: bigint;
   filterTags?: RuntimeTimelineFilterTag[];
+  artifactTarget?: {
+    sandboxId: string;
+    path: string;
+  };
 }
 
 export interface BuildRuntimeTimelineOptions {

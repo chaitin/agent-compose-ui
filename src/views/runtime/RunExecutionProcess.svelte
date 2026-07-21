@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Code, ConnectError } from '@connectrpc/connect';
   import { untrack } from 'svelte';
-  import { projectService, runService, sandboxService } from '../../lib/rpc';
+  import { execService, projectService, runService, sandboxService } from '../../lib/rpc';
   import { GetRunRequest, GetSchedulerRunRequest, ListSandboxHistoryRequest, ListSandboxRunEventsRequest, RunStatus, RunSource, type RunDetail, type RunEvent, type SandboxHistoryCell, type SchedulerEvent } from '../../gen/agentcompose/v2/agentcompose_pb';
   import {
     listAllRunEvents,
@@ -25,6 +25,8 @@
   import { findSchedulerRunEvidence } from '../../lib/run-scheduler-evidence';
   import { schedulerRunEventId } from '../../lib/scheduler-run-event';
   import { buildConfirmedEvidenceTimeline, confirmedCell, confirmedSandboxRunEvents, resultCellId } from '../../lib/run-confirmed-evidence';
+  import { discoverWorkspaceArtifacts, type WorkspaceArtifactFile } from '../../lib/workspace-artifacts';
+  import { store } from '../../lib/stores.svelte';
 
   let {
     projectId,
@@ -55,6 +57,8 @@
   let detailNotFound = $state(false);
   let eventsError = $state('');
   let evidenceError = $state('');
+  let workspaceArtifacts: WorkspaceArtifactFile[] = $state([]);
+  let workspaceArtifactNotice = $state('');
   let logWindow = $state(initialRunLogWindow());
   let logError = $state('');
   let logFollowing = $state(false);
@@ -95,6 +99,8 @@
     detailNotFound = false;
     eventsError = '';
     evidenceError = '';
+    workspaceArtifacts = [];
+    workspaceArtifactNotice = '';
     onDetail(null);
     onEventId('');
     structuredEvents = [];
@@ -146,6 +152,9 @@
       runDetail = resp.run || null;
       onDetail(runDetail);
       if (runDetail) void fetchConfirmedEvidence(generation, projectId, requestedRunId, requestedAgent, runDetail);
+      if (runDetail?.summary?.sandboxId && runDetail.summary.startedAt) {
+        void fetchWorkspaceArtifacts(generation, projectId, requestedRunId, requestedAgent, runDetail);
+      }
       if (runDetail?.summary && isTerminalStatus(runDetail.summary.status)) {
         onSettled(runDetail.summary.status, runDetail.summary.completedAt || '');
       }
@@ -169,6 +178,32 @@
     } finally {
       if (isCurrentDetail(generation, projectId, requestedRunId, requestedAgent)) detailLoading = false;
     }
+  }
+
+  async function fetchWorkspaceArtifacts(
+    generation: number,
+    projectId: string,
+    requestedRunId: string,
+    requestedAgent: string,
+    detail: RunDetail,
+  ) {
+    const summary = detail.summary!;
+    const result = await discoverWorkspaceArtifacts({
+      sandboxId: summary.sandboxId,
+      startedAt: summary.startedAt,
+      completedAt: summary.completedAt,
+      now: () => new Date(),
+      getSandbox: (request, options) => sandboxService.getSandbox(request, options),
+      execStream: (request, options) => execService.execStream(request, options),
+      signal: identitySignal(),
+    });
+    if (!isCurrentDetail(generation, projectId, requestedRunId, requestedAgent)) return;
+    workspaceArtifacts = result.files;
+    if (result.status === 'stopped') workspaceArtifactNotice = 'Sandbox 已停止，请先手动恢复后刷新产物';
+    else if (result.status === 'removed') workspaceArtifactNotice = '产物所在 Sandbox 已删除，无法读取 Workspace 文件';
+    else if (result.status === 'error') workspaceArtifactNotice = `Workspace 产物加载失败：${result.message}`;
+    else if (result.truncated) workspaceArtifactNotice = 'Workspace 文件列表已截断';
+    else workspaceArtifactNotice = '';
   }
 
   async function fetchConfirmedEvidence(
@@ -445,7 +480,29 @@
     }
     const baseIds = new Set(structuredEvents.map(event => event.id));
     const evidence = confirmedEvidence.filter(entry => !entry.id.startsWith('sandbox-run:') || !baseIds.has(entry.id.slice('sandbox-run:'.length)));
-    return [...base, ...evidence].sort((left, right) => left.sortTime - right.sortTime || left.sequence - right.sequence || left.id.localeCompare(right.id));
+    const sandboxId = detail?.summary?.sandboxId;
+    const workspaceEntries: RuntimeTimelineEntry[] = sandboxId ? workspaceArtifacts.map((file, index) => ({
+      id: `workspace-file:${file.path}`,
+      timestamp: file.modifiedAt,
+      sortTime: file.modifiedAtMs,
+      sequence: 20_000 + index,
+      kind: 'result',
+      source: 'Workspace 文件',
+      level: 'info',
+      content: file.path,
+      timestampInferred: false,
+      filterTags: ['artifact'],
+      artifactTarget: { sandboxId, path: file.path },
+    })) : [];
+    return [...base, ...evidence, ...workspaceEntries].sort((left, right) => left.sortTime - right.sortTime || left.sequence - right.sequence || left.id.localeCompare(right.id));
+  }
+
+  function openWorkspaceArtifact(target: { sandboxId: string; path: string }) {
+    store.navigateTo('sandbox-detail', { sandboxId: target.sandboxId });
+    const url = new URL(window.location.href);
+    url.searchParams.set('sandboxTab', 'files');
+    url.searchParams.set('sandboxPath', target.path);
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
   }
 
   let timelineEntries = $derived(timelineFor(runDetail));
@@ -524,6 +581,7 @@
 {:else}
         {#if eventsError}<div class="process-error" role="alert">结构化运行事件加载失败：{eventsError}</div>{/if}
         {#if evidenceError}<div class="process-error" role="alert">运行证据加载失败：{evidenceError}</div>{/if}
+        {#if workspaceArtifactNotice}<div class="workspace-artifact-notice">{workspaceArtifactNotice}</div>{/if}
         <div class="section-heading" class:embedded><span>执行过程</span><span class="heading-time">{formatTime(runDetail.summary?.startedAt ?? '')} → {formatTime(runDetail.summary?.completedAt ?? '')}</span></div>
         <section class="timeline-panel" class:embedded>
         <header class="timeline-toolbar">
@@ -544,7 +602,7 @@
             <div class="timeline-entry-growth">
             <article class="timeline-entry {entry.kind} {entry.level}">
               <time title={entry.timestamp}><span>{formatTime(entry.timestamp)}</span><small>{formatElapsed(runDetail.summary?.startedAt ?? '', entry.timestamp)}</small></time>
-              <RunExecutionTimelineEntry {entry}>
+              <RunExecutionTimelineEntry {entry} onOpenArtifact={openWorkspaceArtifact}>
                 {#snippet lead()}{#if entry.timestampInferred}<small class="te-lead-note">{timestampBasisLabel(entry.timestampBasis)}</small>{/if}{/snippet}
                 {#snippet trailing()}{#if entry.kind === 'error' && entry.source === 'log'}<div class="te-entry-actions"><button onclick={retryLogs}>重试日志加载</button></div>{/if}{/snippet}
               </RunExecutionTimelineEntry>
@@ -565,6 +623,7 @@
   .timeline-toolbar { display: flex; align-items: center; gap: 12px; padding: 8px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: var(--font-size-xs); }.timeline-toolbar > span { margin-left: auto; white-space: nowrap; }
   .timeline-filters { display: flex; flex-wrap: wrap; gap: 4px; }.timeline-filters button, .log-actions button { padding: 3px 6px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--bg-tertiary); color: var(--text-muted); font-size: var(--font-size-xs); }.timeline-filters button.active { border-color: var(--accent-blue); color: var(--accent-blue); }
   .earlier-log-notice { padding: 6px 9px; border-bottom: 1px solid var(--border-color); color: var(--accent-yellow); font-size: var(--font-size-xs); }
+  .workspace-artifact-notice { padding:6px 9px; color:var(--accent-yellow); font-size:var(--font-size-xs); }
   .log-actions { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: var(--font-size-xs); }.timeline-error { white-space: pre-wrap; color: var(--accent-red); }
   .timeline-list { display: grid; }.timeline-entry-growth { display: grid; grid-template-rows: 1fr; min-width: 0; animation: timeline-grow 180ms ease-out both; }.timeline-entry { display: grid; min-height: 0; overflow: hidden; grid-template-columns: 145px minmax(0, 1fr); border-bottom: 1px solid var(--border-color); }.timeline-entry-growth:last-child .timeline-entry { border-bottom: 0; }.timeline-entry > time { display: grid; align-content: start; gap: 3px; padding: 10px; color: var(--text-muted); font-family: var(--font-mono); font-size: var(--font-size-xs); }.timeline-entry > time small { color: var(--text-secondary); font-size: var(--font-size-xs); }
   .timeline-empty { padding: 18px; color: var(--text-muted); font-size: var(--font-size-xs); text-align: center; }
