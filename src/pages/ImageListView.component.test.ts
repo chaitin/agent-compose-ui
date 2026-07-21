@@ -48,6 +48,51 @@ test('hides dangling images until showing intermediate layers is enabled', async
   expect(mocks.listImages.mock.calls[1][0]).toMatchObject({ all: true });
 });
 
+test('hides known system images while keeping sandbox and build-base images visible', async () => {
+  mocks.listImages.mockReset();
+  mocks.listImages.mockResolvedValue({
+    images: [
+      new Image({ imageId: 'sha256:web', imageRef: 'agent-compose-ui:auth-final' }),
+      new Image({ imageId: 'sha256:daemon', imageRef: 'ghcr.io/chaitin/agent-compose:latest' }),
+      new Image({ imageId: 'sha256:scripts', imageRef: 'docker-scripts:latest' }),
+      new Image({ imageId: 'sha256:guest', imageRef: 'ghcr.io/chaitin/agent-compose-guest:latest' }),
+      new Image({ imageId: 'sha256:node', imageRef: 'node:22-alpine' }),
+      new Image({ imageId: 'sha256:user', imageRef: 'reviewer:dev' }),
+    ],
+    hasMore: false,
+    nextOffset: 6,
+  });
+  render(ImageListView);
+
+  expect(await screen.findByRole('button', { name: '展开镜像 ghcr.io/chaitin/agent-compose-guest:latest' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '展开镜像 node:22-alpine' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '展开镜像 reviewer:dev' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '展开镜像 agent-compose-ui:auth-final' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '展开镜像 ghcr.io/chaitin/agent-compose:latest' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '展开镜像 docker-scripts:latest' })).toBeNull();
+});
+
+test('continues loading when a backend page contains only hidden system images', async () => {
+  mocks.listImages.mockReset();
+  mocks.listImages
+    .mockResolvedValueOnce({
+      images: [new Image({ imageId: 'sha256:web', imageRef: 'agent-compose-ui:auth-final' })],
+      hasMore: true,
+      nextOffset: 1,
+    })
+    .mockResolvedValueOnce({
+      images: [new Image({ imageId: 'sha256:guest', imageRef: 'ghcr.io/chaitin/agent-compose-guest:latest' })],
+      hasMore: false,
+      nextOffset: 2,
+    });
+  render(ImageListView);
+
+  expect(await screen.findByRole('button', { name: '展开镜像 ghcr.io/chaitin/agent-compose-guest:latest' })).toBeInTheDocument();
+  expect(mocks.listImages).toHaveBeenCalledTimes(2);
+  expect(mocks.listImages.mock.calls[0][0]).toMatchObject({ offset: 0 });
+  expect(mocks.listImages.mock.calls[1][0]).toMatchObject({ offset: 1 });
+});
+
 test('labels image types and expands inspected details directly below the selected row', async () => {
   mocks.listImages.mockReset();
   mocks.listImages.mockResolvedValue({ images: [finalImage, intermediateImage], hasMore: false, nextOffset: 2 });

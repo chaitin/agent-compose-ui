@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import AgentListView from '../../src/views/runtime/AgentListView.svelte';
 import { store } from '../../src/lib/stores.svelte';
 import { RunSource, RunStatus, RunSummary, SchedulerEvent } from '../../src/gen/agentcompose/v2/agentcompose_pb';
@@ -76,7 +77,53 @@ function setupProjectWithAgent() {
   });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 describe('AgentListView', () => {
+  it('keeps the current project agents when an older project request finishes later', async () => {
+    const oldProject = deferred<any>();
+    store.activeProjectId = 'p1';
+    store.projects = [makeProjectEntry('p1', '项目一'), makeProjectEntry('p2', '项目二')];
+    rpcMocks.projectService.getProject.mockImplementation((request: any) => (
+      request.project.projectId === 'p1'
+        ? oldProject.promise
+        : Promise.resolve({ project: { agents: [{ agentName: 'current-agent' }], spec: { agents: [] } } })
+    ));
+    rpcMocks.runService.listRuns.mockResolvedValue({ runs: [] });
+
+    render(AgentListView);
+    await waitFor(() => expect(rpcMocks.projectService.getProject).toHaveBeenCalledTimes(1));
+    store.activeProjectId = 'p2';
+    expect(await screen.findByText('current-agent')).toBeInTheDocument();
+
+    oldProject.resolve({ project: { agents: [], spec: { agents: [] } } });
+    await oldProject.promise;
+    await Promise.resolve();
+    await tick();
+
+    expect(screen.getByText('current-agent')).toBeInTheDocument();
+    expect(screen.queryByText('暂无智能体。请启用一个项目来查看。')).not.toBeInTheDocument();
+    expect(screen.queryByText('加载中...')).not.toBeInTheDocument();
+  });
+
+  it('aborts the project request when the view is destroyed', async () => {
+    const pending = deferred<any>();
+    store.activeProjectId = 'p1';
+    rpcMocks.projectService.getProject.mockReturnValue(pending.promise);
+
+    const view = render(AgentListView);
+    await waitFor(() => expect(rpcMocks.projectService.getProject).toHaveBeenCalled());
+    const options = rpcMocks.projectService.getProject.mock.calls[0][1];
+
+    expect(options?.signal).toBeInstanceOf(AbortSignal);
+    view.unmount();
+    expect(options.signal.aborted).toBe(true);
+  });
+
   // 回归：listRuns 失败不应被静默吞掉后误显示为"就绪"，应显示"加载失败"。
   it('listRuns 失败时显示"加载失败"而非"就绪"', async () => {
     setupProjectWithAgent();

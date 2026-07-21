@@ -8,6 +8,7 @@
   import { filterSandboxes, listAllSandboxes, sandboxLifecycle } from '../../lib/sandbox-inventory';
   import { formatMetric, sandboxJupyterPath } from '../../lib/sandboxes';
   import { store } from '../../lib/stores.svelte';
+  import { sandboxResumeErrorMessage } from '../../lib/sandbox-resume-error';
   import RuntimeBreadcrumb from './RuntimeBreadcrumb.svelte';
 
   let inventory: Sandbox[] = $state([]);
@@ -142,7 +143,7 @@
       await sandboxService.resumeSandbox(new ResumeSandboxRequest({ sandboxId: item.sandboxId }));
       store.addToast('Sandbox 已恢复', 'success');
       store.triggerRuntimeRefresh();
-    } catch (error: any) { store.addToast(error?.message || '恢复 Sandbox 失败', 'error'); }
+    } catch (error: unknown) { store.addToast(sandboxResumeErrorMessage(error), 'error'); }
     finally { busy[item.sandboxId] = false; }
   }
 

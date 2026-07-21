@@ -21,6 +21,8 @@ services:
       - "${WEB_PORT:-8080}:80"
     environment:
       AGENT_COMPOSE_URL: ${AGENT_COMPOSE_URL:-http://agent-compose:7410}
+      AGENT_COMPOSE_DB_PATH: /data/agent-compose/data.db
+      UI_STATE_DB_PATH: /data/ui/project-env.db
       SCRIPT_SERVICE_URL: http://scripts:7420
       SCRIPT_SERVICE_TOKEN: ${SCRIPT_SERVICE_TOKEN:?set SCRIPT_SERVICE_TOKEN in .env}
       AUTH_MODE: ${AUTH_MODE:-disabled}
@@ -28,6 +30,11 @@ services:
       AUTH_PASSWORD: ${AUTH_PASSWORD:-}
       AUTH_SECRET: ${AUTH_SECRET:-}
       AUTH_SESSION_TTL: ${AUTH_SESSION_TTL:-24h}
+    volumes:
+      # Read daemon variables server-side; never expose this mount to nginx or the browser.
+      - ${AGENT_COMPOSE_DATA_DIR:-./data}:/data/agent-compose:ro
+      # Reference-only project shadows and pending-sync state.
+      - ui-state:/data/ui
     depends_on:
       - scripts
       - agent-compose
@@ -66,7 +73,7 @@ services:
       - ${AGENT_COMPOSE_ENV_FILE:-./agent-compose.env}:/data/work/.env:ro
     working_dir: /data/work
     ports:
-      - "${AGENT_COMPOSE_PORT:-7410}:7410"
+      - "127.0.0.1:${AGENT_COMPOSE_PORT:-7410}:7410"
     networks:
       - agent-web-net
 
@@ -76,3 +83,4 @@ networks:
 
 volumes:
   script-data:
+  ui-state:

@@ -49,6 +49,14 @@ docker compose -f docker-compose.full.yml up --build
 > 注意：full 模式会挂载宿主 `/var/run/docker.sock`（agent-compose 管理沙箱所需），并占用宿主 `7410` 端口（可用 `AGENT_COMPOSE_PORT` 调整）。
 > **不要与宿主机已运行的 agent-compose 并存**：full 模式用 Docker 容器跑 agent-compose，需独占 `7410` 端口与 `data/` 目录。若宿主机已在跑 agent-compose（占用 7410 或持有 `data/` 锁），full 模式会因端口/数据冲突启动失败。此时请先停掉宿主机的 agent-compose，或改用上面的**纯前端模式**连接宿主机 daemon。
 
+## YAML 全局变量引用
+
+full 模式默认启用服务端 `${VAR}` 解析：web 网关只读挂载 daemon 数据目录，并把引用原文、依赖关系和“待同步”状态保存到独立的 `ui-state` 卷。浏览器始终保留 `${VAR}`，不会收到已保存的密钥；普通字面量不变，`Bearer ${TOKEN}` 仅替换引用部分。解析会递归处理项目配置中的全部字符串值，但任何层级中键名精确为 `script` 的字段会被整体跳过，脚本内容中的 `${...}` 不会替换、记录依赖或产生缺失变量警告。
+
+修改全局变量只会把相关项目标记为“变量已更新，待同步”，不会自动 Apply、运行、启停或改动调度。用户下次明确保存、启用或同步项目时才使用新值，已有延时与定时任务保持不变。受 daemon 无法修改的限制，解析后的明文仍会持久化在 daemon 数据库中；请同时保护和备份 daemon 数据目录与 `ui-state` 卷。
+
+纯前端模式默认不启用解析，因为 web 容器看不到外部 daemon 数据库。如需启用，必须通过自有 Compose override 将 daemon 数据目录只读挂载到 web，并同时设置不同的 `AGENT_COMPOSE_DB_PATH` 与 `UI_STATE_DB_PATH`；不要把数据库文件或 `ui-state` 目录暴露给浏览器静态服务。
+
 ## 连接与认证
 
 - 公司内网共享测试环境可保留 `AUTH_MODE=disabled`（默认值）。此模式不要求登录，必须限制在可信公司网络或 VPN 内。
@@ -63,7 +71,7 @@ docker compose -f docker-compose.full.yml up --build
 | 端口 | 服务 | 默认 |
 | --- | --- | --- |
 | `WEB_PORT` | web UI | 8080 → 80 |
-| `AGENT_COMPOSE_PORT`（仅 full） | agent-compose | 7410 → 7410 |
+| `AGENT_COMPOSE_PORT`（仅 full） | agent-compose | 127.0.0.1:7410 → 7410 |
 
 ## 构建说明
 

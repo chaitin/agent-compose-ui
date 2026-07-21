@@ -502,6 +502,7 @@
     const url = new URL(window.location.href);
     url.searchParams.set('sandboxTab', 'files');
     url.searchParams.set('sandboxPath', target.path);
+    url.searchParams.set('sandboxPathSandboxId', target.sandboxId);
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
   }
 

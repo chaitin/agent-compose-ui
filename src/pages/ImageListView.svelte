@@ -11,7 +11,7 @@
     type ImageStoreStatus,
   } from '../gen/agentcompose/v2/agentcompose_pb';
   import { formatImageBytes, formatImagePlatform, imageAvailabilityLabel, imageStoreLabel } from '../lib/images';
-  import { imageDisplayRef, imageSelectionKey, type ImageRemovalResult } from '../lib/image-management';
+  import { imageDisplayRef, imageSelectionKey, isSystemImage, type ImageRemovalResult } from '../lib/image-management';
   import PullImageModal from '../modals/PullImageModal.svelte';
   import RemoveImageModal from '../modals/RemoveImageModal.svelte';
 
@@ -53,16 +53,25 @@
     loading = true;
     error = '';
     try {
-      const resp = await imageService.listImages(new ListImagesRequest({
-        query: query.trim(),
-        store: storeFilter,
-        all: includeIntermediate,
-        includeCacheStatus: true,
-        offset: reset ? 0 : nextOffset,
-        limit: PAGE_SIZE,
-      }));
+      let requestOffset = reset ? 0 : nextOffset;
+      let resp;
+      let receivedImages: Image[] = [];
+      while (true) {
+        resp = await imageService.listImages(new ListImagesRequest({
+          query: query.trim(),
+          store: storeFilter,
+          all: includeIntermediate,
+          includeCacheStatus: true,
+          offset: requestOffset,
+          limit: PAGE_SIZE,
+        }));
+        if (generation !== requestGeneration) return;
+        const visiblePage = resp.images.filter(image => (includeIntermediate || !image.dangling) && !isSystemImage(image));
+        receivedImages = [...receivedImages, ...visiblePage];
+        if (visiblePage.length > 0 || !resp.hasMore || resp.nextOffset <= requestOffset) break;
+        requestOffset = resp.nextOffset;
+      }
       if (generation !== requestGeneration) return;
-      const receivedImages = includeIntermediate ? resp.images : resp.images.filter(image => !image.dangling);
       const nextImages = reset ? receivedImages : [...images, ...receivedImages];
       images = nextImages;
       if (reset) {

@@ -1,6 +1,12 @@
 import { describe, expect, test, vi } from 'vitest';
 import { Image, ImageStoreKind, RemoveImageResponse } from '../gen/agentcompose/v2/agentcompose_pb';
-import { imageDisplayRef, imageSelectionKey, removeImagesSequentially } from './image-management';
+import {
+  imageDisplayRef,
+  imageSelectionKey,
+  isSystemImage,
+  isSystemImageRef,
+  removeImagesSequentially,
+} from './image-management';
 
 function image(imageId: string, imageRef: string): Image {
   return new Image({ imageId, imageRef, store: ImageStoreKind.DOCKER_DAEMON });
@@ -13,6 +19,34 @@ describe('image identity', () => {
 
     expect(imageDisplayRef(tagged)).toBe('demo:latest');
     expect(imageSelectionKey(tagged)).not.toBe(imageSelectionKey(cached));
+  });
+
+  test.each([
+    ['agent-compose-ui:auth-final', true],
+    ['ghcr.io/chaitin/agent-compose:latest', true],
+    ['ghcr.io/chaitin/agent-compose@sha256:daemon', true],
+    ['agent-compose-ui-scripts:latest', true],
+    ['docker-scripts:latest', true],
+    ['ghcr.io/chaitin/agent-compose-guest:latest', false],
+    ['node:22-alpine', false],
+    ['golang:1.24-alpine', false],
+    ['nginx:1.27-alpine', false],
+    ['oven/bun:1-alpine', false],
+    ['reviewer:dev', false],
+    ['', false],
+  ])('classifies known system image reference %j as %j', (reference, expected) => {
+    expect(isSystemImageRef(reference)).toBe(expected);
+  });
+
+  test('checks every image reference instead of only the display reference', () => {
+    const tagged = new Image({
+      imageId: 'sha256:system',
+      imageRef: 'harmless:latest',
+      repoTags: ['harmless:latest', 'agent-compose-ui:auth-final'],
+      repoDigests: ['harmless@sha256:system'],
+    });
+
+    expect(isSystemImage(tagged)).toBe(true);
   });
 });
 

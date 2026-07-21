@@ -54,6 +54,13 @@ test('shows non-secret values in the read-only list and masks stored secrets', a
   expect(screen.queryByText('server-secret-must-not-render')).not.toBeInTheDocument();
 });
 
+test('explains that global updates wait for an explicit project sync', async () => {
+  mocks.settingsService.getGlobalEnv.mockResolvedValue({ env: loaded });
+  render(GlobalEnvPanel);
+  expect(await screen.findByText(/相关项目会标记为待同步/)).toBeInTheDocument();
+  expect(screen.getByText(/不会自动运行或改变定时任务/)).toBeInTheDocument();
+});
+
 test('appends an empty row from the dialog add button', async () => {
   mocks.settingsService.getGlobalEnv.mockResolvedValue({ env: [loaded[0]] });
   render(GlobalEnvPanel);

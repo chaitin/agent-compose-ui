@@ -20,6 +20,7 @@ type Config struct {
 	SessionTTL                                         time.Duration
 	AgentComposeURL, ScriptServiceURL                  *url.URL
 	ScriptServiceToken                                 string
+	AgentComposeDBPath, UIStateDBPath                  string
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -65,6 +66,14 @@ func Load(getenv func(string) string) (Config, error) {
 	cfg.ScriptServiceToken = getenv("SCRIPT_SERVICE_TOKEN")
 	if cfg.ScriptServiceToken == "" {
 		return Config{}, fmt.Errorf("SCRIPT_SERVICE_TOKEN is required")
+	}
+	cfg.AgentComposeDBPath = strings.TrimSpace(getenv("AGENT_COMPOSE_DB_PATH"))
+	cfg.UIStateDBPath = strings.TrimSpace(getenv("UI_STATE_DB_PATH"))
+	if (cfg.AgentComposeDBPath == "") != (cfg.UIStateDBPath == "") {
+		return Config{}, fmt.Errorf("AGENT_COMPOSE_DB_PATH and UI_STATE_DB_PATH must be configured together")
+	}
+	if cfg.AgentComposeDBPath != "" && cfg.AgentComposeDBPath == cfg.UIStateDBPath {
+		return Config{}, fmt.Errorf("AGENT_COMPOSE_DB_PATH and UI_STATE_DB_PATH must be different")
 	}
 	return cfg, nil
 }

@@ -1,5 +1,4 @@
 import { expect, test } from 'bun:test';
-import { yamlToSpec } from '../yaml';
 import { prepareScriptRequest } from './request-pipeline';
 
 const refYaml = 'name: demo\nagents:\n  worker:\n    scheduler:\n      script: $ref:demo/a.js\n';
@@ -103,53 +102,13 @@ test('a referenced script blocks the request when the service is unavailable', a
   })).rejects.toMatchObject({ code: 'SERVICE_UNAVAILABLE' });
 });
 
-test('expands ${VAR} from globalEnv before returning yamlText', async () => {
-  const yaml = 'name: demo\nagents:\n  worker:\n    env:\n      ANTHROPIC_MODEL:\n        value: ${LLM_MODEL}\n';
+test('keeps literal and ${VAR} values unchanged for server-side resolution', async () => {
+  const yaml = 'name: demo\nagents:\n  worker:\n    env:\n      MODE:\n        value: production\n      ANTHROPIC_MODEL:\n        value: ${LLM_MODEL}\n';
   const result = await prepareScriptRequest({
     mode: 'validate',
     editorYaml: yaml,
     workspace: { getContent: () => undefined, flushDirty: async () => {} },
     readFile: async () => ({ content: '', sha256: '' }),
-    globalEnv: [{ name: 'LLM_MODEL', value: 'GLM-5.2', secret: false }],
   });
-  expect(result.yamlText).toContain('value: GLM-5.2');
-  expect(result.yamlText).not.toContain('${LLM_MODEL}');
-});
-
-test('leaves secret ${VAR} intact when expanding globalEnv', async () => {
-  const yaml = 'env:\n  ANTHROPIC_API_KEY:\n    value: ${LLM_API_KEY}\n    secret: true\n';
-  const result = await prepareScriptRequest({
-    mode: 'validate',
-    editorYaml: yaml,
-    workspace: { getContent: () => undefined, flushDirty: async () => {} },
-    readFile: async () => ({ content: '', sha256: '' }),
-    globalEnv: [{ name: 'LLM_API_KEY', value: '********', secret: true }],
-  });
-  expect(result.yamlText).toContain('value: ${LLM_API_KEY}');
-});
-
-test('global env values remain strings through request preparation and protobuf decoding', async () => {
-  const values = {
-    JSON_ARRAY: '[{"webhook":"https://example.test"}]',
-    JSON_OBJECT: '{"repository":"owner/repo"}',
-    NUMBER: '30000',
-    BOOLEAN: 'true',
-    NULL_LIKE: 'null',
-  };
-  const entries = Object.keys(values)
-    .map((name) => `      ${name}:\n        value: \${${name}}`)
-    .join('\n');
-  const result = await prepareScriptRequest({
-    mode: 'validate',
-    editorYaml: `name: demo\nagents:\n  worker:\n    env:\n${entries}\n`,
-    workspace: { getContent: () => undefined, flushDirty: async () => {} },
-    readFile: async () => ({ content: '', sha256: '' }),
-    globalEnv: Object.entries(values).map(([name, value]) => ({ name, value, secret: false })),
-  });
-
-  const decoded = yamlToSpec(result.yamlText);
-
-  expect(decoded.error).toBeUndefined();
-  expect(Object.fromEntries(decoded.spec.agents[0].env.map(({ name, value }) => [name, value])))
-    .toEqual(values);
+  expect(result.yamlText).toBe(yaml);
 });

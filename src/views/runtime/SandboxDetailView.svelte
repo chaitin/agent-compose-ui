@@ -12,6 +12,7 @@
   import { buildSandboxDetailSnapshot, buildSandboxTimeline, type SandboxDetailSnapshot } from '../../lib/sandbox-detail';
   import { mergeSandboxWatchEvent } from '../../lib/sandbox-watch';
   import { formatMetric } from '../../lib/sandboxes';
+  import { sandboxResumeErrorMessage } from '../../lib/sandbox-resume-error';
   import { execService, runService, sandboxService } from '../../lib/rpc';
   import { store } from '../../lib/stores.svelte';
   import RuntimeBreadcrumb from './RuntimeBreadcrumb.svelte';
@@ -39,6 +40,7 @@
   let command = $state('');
   let output = $state('');
   let generation = 0;
+  let destroyed = false;
   let watchController: AbortController | undefined;
   type SandboxTab = 'details' | 'exec' | 'terminal' | 'files';
   const sandboxTabs: readonly SandboxTab[] = ['details', 'exec', 'terminal', 'files'];
@@ -108,6 +110,7 @@
     return ({ running: '运行中', stopped: '已停止 · 可恢复', destroyed: '已销毁', unknown: snapshot?.sandbox.status || '状态未知' })[lifecycle()];
   }
   function targetIsCurrent(projectId: string, sandboxId: string, current: number) {
+    if (destroyed) return false;
     return current === generation && projectId === targetProjectId && sandboxId === targetSandboxId;
   }
   function errorMessage(error: any, fallback: string) { return error?.message || fallback; }
@@ -146,7 +149,7 @@
     const projectId = targetProjectId;
     const sandboxId = targetSandboxId;
     const current = ++generation;
-    watchController?.abort();
+    stopWatch();
     loading = true; loadError = ''; removed = false; snapshot = undefined; runs = []; runsError = ''; historyError = ''; runEventsError = ''; busy = false; agentReplying = false;
     visibleTimelineCount = timelinePageSize;
     stats = undefined; statsError = ''; output = '';
@@ -180,7 +183,14 @@
     }
   }
 
+  function stopWatch() {
+    watchController?.abort();
+    watchController = undefined;
+  }
+
   function startWatch(current: number, projectId: string, sandboxId: string) {
+    if (document.visibilityState !== 'visible' || destroyed || !targetIsCurrent(projectId, sandboxId, current)) return;
+    if (watchController && !watchController.signal.aborted) return;
     const controller = new AbortController();
     watchController = controller;
     void (async () => {
@@ -190,11 +200,21 @@
           snapshot = mergeSandboxWatchEvent(snapshot, event);
         }
       } catch {}
-      if (controller.signal.aborted || !targetIsCurrent(projectId, sandboxId, current)) return;
+      if (watchController === controller) watchController = undefined;
+      if (controller.signal.aborted || document.visibilityState !== 'visible' || !targetIsCurrent(projectId, sandboxId, current)) return;
       window.setTimeout(() => {
-        if (!controller.signal.aborted && targetIsCurrent(projectId, sandboxId, current)) startWatch(current, projectId, sandboxId);
+        if (!controller.signal.aborted && document.visibilityState === 'visible' && targetIsCurrent(projectId, sandboxId, current)) startWatch(current, projectId, sandboxId);
       }, 1000);
     })();
+  }
+
+  function syncWatchVisibility() {
+    if (document.visibilityState !== 'visible') {
+      stopWatch();
+      return;
+    }
+    const sandboxId = snapshot?.sandbox.sandboxId || '';
+    if (sandboxId) startWatch(generation, targetProjectId, sandboxId);
   }
 
   async function probe(current = generation, projectId = targetProjectId, sandboxId = snapshot?.sandbox.sandboxId || '') {
@@ -215,7 +235,14 @@
     return sandboxTabs.includes(value as SandboxTab) ? value as SandboxTab : 'details';
   }
   function sandboxPathFromUrl() {
-    return new URLSearchParams(window.location.search).get('sandboxPath') || '';
+    const url = new URL(window.location.href);
+    const path = url.searchParams.get('sandboxPath') || '';
+    if (!path) return '';
+    if (url.searchParams.get('sandboxPathSandboxId') === targetSandboxId) return path;
+    url.searchParams.delete('sandboxPath');
+    url.searchParams.delete('sandboxPathSandboxId');
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    return '';
   }
   function syncTabFromUrl() { activeTab = tabFromUrl(); }
   function selectTab(tab: SandboxTab) {
@@ -227,9 +254,17 @@
   }
   onMount(() => {
     window.addEventListener('popstate', syncTabFromUrl);
-    return () => window.removeEventListener('popstate', syncTabFromUrl);
+    document.addEventListener('visibilitychange', syncWatchVisibility);
+    return () => {
+      window.removeEventListener('popstate', syncTabFromUrl);
+      document.removeEventListener('visibilitychange', syncWatchVisibility);
+    };
   });
-  onDestroy(() => { generation++; watchController?.abort(); });
+  onDestroy(() => {
+    destroyed = true;
+    generation++;
+    stopWatch();
+  });
 
   async function execute(runtime: 'javascript' | 'python') {
     const sandboxId = snapshot?.sandbox.sandboxId || '';
@@ -286,7 +321,7 @@
       if (response.sandbox) snapshot = { ...snapshot, sandbox: response.sandbox };
       store.addToast('Sandbox 已恢复', 'success');
       return true;
-    } catch (error: any) { if (targetIsCurrent(projectId, sandboxId, current)) store.addToast(errorMessage(error, '恢复 Sandbox 失败'), 'error'); return false; }
+    } catch (error: unknown) { if (targetIsCurrent(projectId, sandboxId, current)) store.addToast(sandboxResumeErrorMessage(error), 'error'); return false; }
     finally { if (targetIsCurrent(projectId, sandboxId, current)) busy = false; }
   }
   async function stop() {

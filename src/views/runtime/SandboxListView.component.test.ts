@@ -204,6 +204,21 @@ test('restores through the direct lifecycle RPC and opens the same-origin Jupyte
   expect(open).toHaveBeenCalledWith('/jupyter/sandbox%2Fa%20b', '_blank', 'noopener,noreferrer');
 });
 
+test('shows a clear message when a deleted Sandbox cannot be resumed', async () => {
+  mocks.sandboxService.listSandboxes.mockResolvedValue({
+    sandboxes: [new Sandbox({ sandboxId: 'deleted-sandbox', projectId: 'project-1', agentName: 'reviewer', status: 'stopped' })],
+    nextCursor: '',
+  });
+  mocks.sandboxService.resumeSandbox.mockRejectedValue(new Error(
+    'docker runtime state for stopped sandbox deleted-sandbox is missing; refusing to recreate it during resume: only canonical legacy UUID sandboxes may be reconstructed',
+  ));
+  render(SandboxListView);
+
+  await fireEvent.click(await screen.findByRole('button', { name: '恢复' }));
+  await waitFor(() => expect(store.addToast).toHaveBeenCalledWith('该 Sandbox 已被删除，无法恢复', 'error'));
+  expect(store.addToast).not.toHaveBeenCalledWith(expect.stringContaining('canonical legacy UUID'), 'error');
+});
+
 test('closes and disposes a terminal when the active project changes', async () => {
   mocks.sandboxService.listSandboxes.mockImplementation(() => Promise.resolve({ sandboxes: [new Sandbox({ sandboxId: `sandbox-${store.activeProjectId}`, projectId: store.activeProjectId, agentName: 'reviewer', status: 'running' })], nextCursor: '' }));
   render(SandboxListView);

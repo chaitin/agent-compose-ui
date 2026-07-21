@@ -77,6 +77,7 @@ test('opens a discovered Workspace artifact in the Sandbox files tab', async () 
   expect(navigate).toHaveBeenCalledWith('sandbox-detail', { sandboxId: 'sandbox-1' });
   expect(new URLSearchParams(location.search).get('sandboxTab')).toBe('files');
   expect(new URLSearchParams(location.search).get('sandboxPath')).toBe('/workspace/2026-07-21/report.md');
+  expect(new URLSearchParams(location.search).get('sandboxPathSandboxId')).toBe('sandbox-1');
 });
 
 test('keeps existing artifacts and does not exec or resume a stopped Sandbox', async () => {

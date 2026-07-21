@@ -2,7 +2,6 @@
   import { onMount, tick } from 'svelte';
   import { EnvVarUpdateSpec, GetGlobalEnvRequest, UpdateGlobalEnvRequest, type EnvVarSpec } from '../../gen/agentcompose/v2/agentcompose_pb';
   import { settingsService } from '../../lib/rpc';
-  import { invalidateGlobalEnvCache } from '../../lib/scripts/global-env';
 
   type EnvDraft = {
     id: string;
@@ -115,9 +114,6 @@
         });
       });
       rows = mapRows((await settingsService.updateGlobalEnv(new UpdateGlobalEnvRequest({ env }))).env);
-      // Panel values changed: drop the interpolation cache so the next apply
-      // expands ${VAR} with the new values instead of the stale ones.
-      invalidateGlobalEnvCache();
       await closeEditor();
     } catch (cause) {
       editorError = message(cause);
@@ -133,6 +129,7 @@
   <header>
     <div>
       <h2 id="env-title">全局环境变量</h2>
+      <p class="hint">保存后，相关项目会标记为待同步；下次手动保存或启用项目时生效，不会自动运行或改变定时任务。</p>
     </div>
     <button bind:this={modifyButton} onclick={openEditor}>修改变量</button>
   </header>
@@ -191,7 +188,7 @@
 <style>
   .panel{padding:16px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-secondary)}
   header,.row,.dialog-title,.dialog-actions{display:flex;align-items:center;justify-content:space-between;gap:10px}
-  h2{margin:0;font-size:var(--font-size-xl)}
+  h2{margin:0;font-size:var(--font-size-xl)}.hint{margin:6px 0 0;color:var(--text-muted);font-size:var(--font-size-sm)}
   button,input{border:1px solid var(--border-color);border-radius:5px;background:var(--bg-primary);color:var(--text-primary);padding:7px 10px}
   .rows{display:grid;gap:8px;margin-top:14px}.row{min-width:0;padding:8px 0;border-bottom:1px solid var(--border-color)}
   .name{display:flex;min-width:0;align-items:center;gap:7px;overflow:hidden;font:var(--font-size-sm) var(--font-mono);text-overflow:ellipsis;white-space:nowrap}em{font-size:var(--font-size-xs);color:var(--accent-orange);font-style:normal}

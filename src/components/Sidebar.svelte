@@ -15,6 +15,7 @@
   import { scriptApi, ScriptApiError, scriptErrorMessage } from '../lib/scripts/api';
   import { scriptWorkspace } from '../lib/scripts/workspace.svelte';
   import { restoreProjectScripts } from '../lib/scripts/project-lifecycle';
+  import { getProjectEnvStatus } from '../lib/project-env-status';
 
   let deletingProjectId = $state('');
 
@@ -30,6 +31,7 @@
   let projectOffset = $state(0);
   let hasMore = $state(false);
   let filterLoading = $state(false);
+  let pendingSync = $state<Record<string, boolean>>({});
   let filterTimer: ReturnType<typeof setTimeout> | undefined;
   let requestGeneration = 0;
   let visibleDrafts = $derived(store.browserDrafts.filter((draft) => (
@@ -86,10 +88,24 @@
       projectOffset = resp.nextOffset || visibleProjects.length;
       hasMore = resp.hasMore;
       store.projects = deduplicateProjectEntries([...store.projects, ...entries]);
+      void loadProjectStatuses(entries, generation, reset);
       return entries;
     } finally {
       if (generation === requestGeneration) filterLoading = false;
     }
+  }
+
+  async function loadProjectStatuses(entries: ProjectEntry[], generation: number, reset: boolean) {
+    const statuses = await Promise.all(entries.map(async (entry) => {
+        try {
+          const status = await getProjectEnvStatus(entry.summary.projectId);
+          return [entry.summary.projectId, status.pendingSync] as const;
+        } catch {
+          return [entry.summary.projectId, false] as const;
+        }
+    }));
+    if (generation !== requestGeneration) return;
+    pendingSync = reset ? Object.fromEntries(statuses) : { ...pendingSync, ...Object.fromEntries(statuses) };
   }
 
   async function loadProjectsWithToast() {
@@ -183,15 +199,14 @@
 
     const sourcePath = project.summary.sourcePath || '未知来源路径';
     const confirmed = window.confirm(
-      `确定删除智能体应用 "${project.summary.name}" 吗？\n\n来源：${sourcePath}\n\n此操作会永久删除项目定义、运行历史、关联 Sandbox 与脚本目录。Sandbox 清理失败时项目不会被删除。`,
+      `确定删除智能体应用 "${project.summary.name}" 吗？\n\n来源：${sourcePath}\n\n此操作会停用 Trigger 并移除项目定义、关联 Sandbox 与脚本目录，运行历史将保留。Sandbox 清理失败时项目不会被删除。`,
     );
     if (!confirmed) return;
 
     const projectId = project.summary.projectId;
     deletingProjectId = projectId;
     try {
-      const { removedSandboxes } =
-        await cascadeDeleteProject(projectId, cascadeDeleteClient);
+      const { removedSandboxes } = await cascadeDeleteProject(projectId, cascadeDeleteClient);
       let scriptCleanupError = '';
       try {
         await scriptApi.deleteProject(projectId);
@@ -211,12 +226,14 @@
       }
       await loadProjects(true);
       if (scriptCleanupError) store.addToast(`智能体应用已删除，但脚本目录清理失败：${scriptCleanupError}`, 'error');
-      else store.addToast(
-        `智能体应用 "${project.summary.name}" 的项目定义、运行历史及 ${removedSandboxes} 个关联 Sandbox 与脚本目录已删除`,
-        'success',
-      );
+      else store.addToast(`智能体应用 "${project.summary.name}" 已停用并移除，${removedSandboxes} 个关联 Sandbox 与脚本目录已删除；运行历史已保留`, 'success');
     } catch (e: any) {
-      store.addToast(`删除智能体应用失败: ${e.message}`, 'error');
+      const message = String(e?.message || '未知错误');
+      if (message.toLowerCase().includes('unimplemented')) {
+        store.addToast('当前后端不支持删除智能体应用，请升级后端后重试', 'error');
+      } else {
+        store.addToast(`删除智能体应用失败: ${message}`, 'error');
+      }
     } finally {
       deletingProjectId = '';
     }
@@ -301,6 +318,9 @@
         >
           <span class="status" class:running={!!p.summary.runningRunCount}></span>
           <span class="project-name">{p.summary.name}</span>
+          {#if pendingSync[p.summary.projectId]}
+            <span class="sync-badge" title="全局变量已更新；保存或启用项目后同步最新值">变量已更新，待同步</span>
+          {/if}
           {#if p.summary.runningRunCount}
             <span class="badge">{p.summary.runningRunCount}</span>
           {/if}
@@ -550,6 +570,17 @@
     min-width: 16px;
     text-align: center;
   }
+  .sync-badge {
+    margin-left: auto;
+    padding: 1px 5px;
+    border: 1px solid color-mix(in srgb, var(--accent-yellow) 45%, var(--border-color));
+    border-radius: 8px;
+    color: var(--accent-yellow);
+    font-size: var(--font-size-xs);
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  .sync-badge + .badge { margin-left: 0; }
   .project-actions {
     flex-shrink: 0;
     margin: 0 7px;

@@ -22,6 +22,9 @@ const rpcMocks = vi.hoisted(() => ({
 const scriptMocks = vi.hoisted(() => ({
   deleteProject: vi.fn(),
 }));
+const projectEnvMocks = vi.hoisted(() => ({
+  getProjectEnvStatus: vi.fn(),
+}));
 
 vi.mock('../../src/lib/rpc', () => ({
   projectService: rpcMocks.projectService,
@@ -39,6 +42,7 @@ vi.mock('../../src/lib/scripts/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/lib/scripts/api')>();
   return { ...actual, scriptApi: { ...actual.scriptApi, deleteProject: scriptMocks.deleteProject } };
 });
+vi.mock('../../src/lib/project-env-status', () => projectEnvMocks);
 
 function makeProject(id: string, name: string, runningRunCount = 0) {
   return {
@@ -61,14 +65,13 @@ beforeEach(() => {
   rpcMocks.projectService.removeProject.mockReset();
   rpcMocks.projectService.getProject.mockReset();
   rpcMocks.sandboxService.listSandboxes.mockReset();
-  rpcMocks.sandboxService.listSandboxes.mockResolvedValue({
-    sandboxes: [],
-    nextCursor: '',
-  });
+  rpcMocks.sandboxService.listSandboxes.mockResolvedValue({ sandboxes: [], nextCursor: '' });
   rpcMocks.sandboxService.removeSandbox.mockReset();
   rpcMocks.sandboxService.removeSandbox.mockResolvedValue({ removed: true });
   scriptMocks.deleteProject.mockReset();
   scriptMocks.deleteProject.mockResolvedValue(undefined);
+  projectEnvMocks.getProjectEnvStatus.mockReset();
+  projectEnvMocks.getProjectEnvStatus.mockResolvedValue({ pendingSync: false });
   store.projects = [];
   store.currentPage = 'dashboard';
   store.activeProjectId = '';
@@ -82,6 +85,16 @@ beforeEach(() => {
 });
 
 describe('Sidebar', () => {
+  it('shows projects whose global variables are waiting for explicit synchronization', async () => {
+    rpcMocks.projectService.listProjects.mockResolvedValue({
+      projects: [makeProject('pending-project', 'pending-project')], hasMore: false, nextOffset: 0,
+    });
+    projectEnvMocks.getProjectEnvStatus.mockResolvedValue({ pendingSync: true });
+    render(Sidebar);
+    expect(await screen.findByText('变量已更新，待同步')).toBeInTheDocument();
+    expect(rpcMocks.projectService.applyProject).not.toHaveBeenCalled();
+  });
+
   it('shows and selects multiple saved drafts as separate application rows', async () => {
     rpcMocks.projectService.listProjects.mockResolvedValue({ projects: [], hasMore: false, nextOffset: 0 });
     store.editorContent = 'name: first-agent\nagents: []\n';
@@ -178,7 +191,7 @@ describe('Sidebar', () => {
     );
   });
 
-  it('确认永久级联删除后调用 Sandbox 与项目删除并刷新列表', async () => {
+  it('确认永久删除后级联清理 Sandbox、项目与脚本并刷新列表', async () => {
     rpcMocks.projectService.listProjects.mockResolvedValue({ projects: [makeProject('p1', '项目一')] });
     rpcMocks.projectService.removeProject.mockResolvedValue({});
     render(Sidebar);
@@ -188,10 +201,9 @@ describe('Sidebar', () => {
     const delBtn = document.querySelector('.project-delete') as HTMLButtonElement;
     await fireEvent.click(delBtn);
     await waitFor(() => expect(rpcMocks.projectService.removeProject).toHaveBeenCalledTimes(1));
-    expect(rpcMocks.sandboxService.listSandboxes).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 500, cursor: '' }),
-    );
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('永久删除项目定义、运行历史、关联 Sandbox 与脚本目录'));
+    expect(rpcMocks.sandboxService.listSandboxes).toHaveBeenCalledTimes(1);
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('项目定义、关联 Sandbox 与脚本目录'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('运行历史将保留'));
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Sandbox 清理失败时项目不会被删除'));
     expect(scriptMocks.deleteProject).toHaveBeenCalledWith('p1');
     expect(rpcMocks.projectService.listProjects).toHaveBeenCalledTimes(2);
@@ -226,10 +238,7 @@ describe('Sidebar', () => {
     vi.stubGlobal('confirm', () => true);
     await fireEvent.click(document.querySelector('.project-delete') as HTMLButtonElement);
 
-    await waitFor(() => expect(toast).toHaveBeenCalledWith(
-      '智能体应用 "项目一" 的项目定义、运行历史及 0 个关联 Sandbox 与脚本目录已删除',
-      'success',
-    ));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith('智能体应用 "项目一" 已停用并移除，0 个关联 Sandbox 与脚本目录已删除；运行历史已保留', 'success'));
     expect(toast).not.toHaveBeenCalledWith(expect.stringContaining('脚本目录清理失败'), 'error');
   });
 
@@ -242,6 +251,22 @@ describe('Sidebar', () => {
     await fireEvent.click(document.querySelector('.project-delete') as HTMLButtonElement);
 
     await waitFor(() => expect(rpcMocks.projectService.removeProject).toHaveBeenCalled());
+    expect(scriptMocks.deleteProject).not.toHaveBeenCalled();
+  });
+
+  it('后端未实现项目删除时显示明确提示并恢复删除按钮', async () => {
+    rpcMocks.projectService.listProjects.mockResolvedValue({ projects: [makeProject('p1', '项目一')], nextOffset: 1, hasMore: false });
+    rpcMocks.projectService.removeProject.mockRejectedValue(new Error('[unimplemented] project operation unimplemented'));
+    const toast = vi.spyOn(store, 'addToast').mockImplementation(() => {});
+    vi.stubGlobal('confirm', () => true);
+
+    render(Sidebar);
+    const delBtn = await screen.findByRole('button', { name: '删除智能体应用 项目一' });
+    await fireEvent.click(delBtn);
+
+    await waitFor(() => expect(toast).toHaveBeenCalledWith('当前后端不支持删除智能体应用，请升级后端后重试', 'error'));
+    expect(delBtn).not.toBeDisabled();
+    expect(delBtn.querySelector('.delete-progress')).toBeNull();
     expect(scriptMocks.deleteProject).not.toHaveBeenCalled();
   });
 

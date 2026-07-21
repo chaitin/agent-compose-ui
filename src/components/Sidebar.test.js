@@ -13,9 +13,10 @@ test('deletes a project from a separate button without selecting it', () => {
   assert.doesNotMatch(source, /\? '…' : '×'/);
   assert.match(source, /event\.stopPropagation\(\)/);
   assert.match(source, /await cascadeDeleteProject\(projectId, cascadeDeleteClient\)/);
-  assert.match(source, /项目定义、运行历史、关联 Sandbox 与脚本目录/);
+  assert.match(source, /项目定义、关联 Sandbox 与脚本目录/);
+  assert.match(source, /运行历史将保留/);
   assert.match(source, /Sandbox 清理失败时项目不会被删除/);
-  assert.match(source, /运行历史[\s\S]*removedSandboxes[\s\S]*Sandbox/);
+  assert.match(source, /removedSandboxes[\s\S]*Sandbox[\s\S]*运行历史已保留/);
 });
 
 test('confirms deletion with both project name and source path', () => {
@@ -64,6 +65,12 @@ test('ignores stale filter responses and always clears loading state', () => {
 
 test('shows an empty hint when no project matches the filter', () => {
   assert.match(source, /无匹配的智能体应用/);
+});
+
+test('loads and displays pending global-variable synchronization without applying projects', () => {
+  assert.match(source, /getProjectEnvStatus/);
+  assert.match(source, /变量已更新，待同步/);
+  assert.doesNotMatch(source, /getProjectEnvStatus[\s\S]{0,300}applyProject/);
 });
 
 test('opens unified system management at daemon images', () => {

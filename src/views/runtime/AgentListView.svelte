@@ -23,18 +23,27 @@
 
   let agents: AgentInfo[] = $state([]);
   let loading = $state(true);
+  let generation = 0;
+
+  function requestIsCurrent(current: number, signal: AbortSignal) {
+    return !signal.aborted && current === generation;
+  }
 
   $effect(() => {
     void store.runtimeRefreshVersion;
-    if (!store.activeProjectId) { loading = false; return; }
+    const projectId = store.activeProjectId;
+    const current = ++generation;
+    const controller = new AbortController();
+    if (!projectId) { agents = []; loading = false; return; }
     (async () => {
       loading = true;
       try {
         const req = new GetProjectRequest({
-          project: { projectId: store.activeProjectId },
+          project: { projectId },
           includeSpec: true,
         });
-        const resp: any = await projectService.getProject(req);
+        const resp: any = await projectService.getProject(req, { signal: controller.signal });
+        if (!requestIsCurrent(current, controller.signal)) return;
         const projectAgents = resp.project?.agents || [];
         const specAgents = resp.project?.spec?.agents || [];
         const specMap: Record<string, any> = {};
@@ -57,14 +66,15 @@
 
         // Fetch operational statistics for each agent.
         for (const a of agents) {
-          fetchOperationalStats(a, store.activeProjectId);
+          fetchOperationalStats(a, projectId);
         }
       } catch (e: any) {
-        store.addToast(e.message || '加载智能体列表失败', 'error');
+        if (requestIsCurrent(current, controller.signal)) store.addToast(e.message || '加载智能体列表失败', 'error');
       } finally {
-        loading = false;
+        if (requestIsCurrent(current, controller.signal)) loading = false;
       }
     })();
+    return () => controller.abort();
   });
 
   async function loadProjectRuns(projectId: string, agentName: string): Promise<RunSummary[]> {

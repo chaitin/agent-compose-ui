@@ -11,19 +11,49 @@ import (
 
 	"agent-compose-ui/internal/auth"
 	"agent-compose-ui/internal/config"
+	"agent-compose-ui/internal/projectenv"
 	"agent-compose-ui/internal/proxy"
 )
 
-const shutdownTimeout = 10 * time.Second
+const (
+	shutdownTimeout = 10 * time.Second
+)
 
 func New(cfg config.Config) http.Handler {
+	handler, cleanup, err := newHandler(cfg)
+	if err != nil {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "gateway unavailable", http.StatusServiceUnavailable)
+		})
+	}
+	_ = cleanup
+	return handler
+}
+
+func newHandler(cfg config.Config) (http.Handler, func() error, error) {
 	manager := auth.New(cfg)
-	daemonProxy := manager.Require(proxy.NewDaemon(cfg.AgentComposeURL))
+	var daemonHandler http.Handler = proxy.NewDaemon(cfg.AgentComposeURL)
+	cleanup := func() error { return nil }
+	if cfg.AgentComposeDBPath != "" {
+		globals, err := projectenv.OpenGlobalStore(cfg.AgentComposeDBPath)
+		if err != nil {
+			return nil, cleanup, err
+		}
+		shadows, err := projectenv.OpenShadowStore(cfg.UIStateDBPath)
+		if err != nil {
+			_ = globals.Close()
+			return nil, cleanup, err
+		}
+		fallback := daemonHandler
+		daemonHandler = projectenv.NewHandler(cfg.AgentComposeURL, globals, shadows, fallback)
+		cleanup = func() error { return errors.Join(shadows.Close(), globals.Close()) }
+	}
+	daemonProxy := manager.Require(daemonHandler)
 	scriptProxy := manager.Require(proxy.NewScripts(cfg.ScriptServiceURL, cfg.ScriptServiceToken))
 	authHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		serveAuth(manager, w, r)
 	})
-	return recoverHTTPPanics(routeHandler(authHandler, scriptProxy, daemonProxy))
+	return recoverHTTPPanics(routeHandler(authHandler, scriptProxy, daemonProxy)), cleanup, nil
 }
 
 func routeHandler(authHandler, scriptProxy, daemonProxy http.Handler) http.Handler {
@@ -50,7 +80,14 @@ func Run(ctx context.Context, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-	return serve(ctx, newServer(cfg, New(cfg)), listener)
+	handler, cleanup, err := newHandler(cfg)
+	if err != nil {
+		_ = listener.Close()
+		return err
+	}
+	defer func() { _ = cleanup() }()
+	server := newServer(cfg, handler)
+	return serve(ctx, server, listener)
 }
 
 func newServer(cfg config.Config, handler http.Handler) *http.Server {

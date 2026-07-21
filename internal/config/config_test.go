@@ -53,3 +53,27 @@ func TestLoadRejectsInvalidModeDurationAndUpstreams(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadProjectEnvironmentPaths(t *testing.T) {
+	cfg, err := Load(env(map[string]string{
+		"SCRIPT_SERVICE_TOKEN":  "token",
+		"AGENT_COMPOSE_DB_PATH": "/data/agent-compose/data.db",
+		"UI_STATE_DB_PATH":      "/data/ui/project-env.db",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AgentComposeDBPath != "/data/agent-compose/data.db" || cfg.UIStateDBPath != "/data/ui/project-env.db" {
+		t.Fatalf("paths = %#v", cfg)
+	}
+	for _, values := range []map[string]string{
+		{"AGENT_COMPOSE_DB_PATH": "/data/data.db"},
+		{"UI_STATE_DB_PATH": "/data/ui.db"},
+		{"AGENT_COMPOSE_DB_PATH": "/same.db", "UI_STATE_DB_PATH": "/same.db"},
+	} {
+		values["SCRIPT_SERVICE_TOKEN"] = "token"
+		if _, err := Load(env(values)); err == nil {
+			t.Fatalf("expected path error for %#v", values)
+		}
+	}
+}

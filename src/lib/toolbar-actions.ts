@@ -517,7 +517,7 @@ export async function cascadeDeleteProject(projectId: string, client: CascadeDel
   }
   await client.removeProject(new RemoveProjectRequest({
     project: new ProjectRef({ projectId }),
-    removeHistory: true,
+    removeHistory: false,
     stopRunningSandboxes: true,
   }));
   return { removedSandboxes: related.length };

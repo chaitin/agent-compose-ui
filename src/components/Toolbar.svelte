@@ -29,7 +29,6 @@
   import { scriptApi, scriptErrorMessage } from '../lib/scripts/api';
   import { scriptWorkspace } from '../lib/scripts/workspace.svelte';
   import { prepareScriptRequest } from '../lib/scripts/request-pipeline';
-  import { getGlobalEnvForInterpolation } from '../lib/scripts/global-env';
   import { canonicalProjectId } from '../lib/scripts/project-lifecycle';
   import { isSameProjectId } from '../lib/projects';
   import { replaceBatchAgent, type BatchAgentStatus } from '../lib/yaml-run-batch';
@@ -222,7 +221,6 @@
         editorYaml: store.editorContent,
         workspace: scriptWorkspace,
         readFile: scriptApi.readFile,
-        globalEnv: await getGlobalEnvForInterpolation(),
       });
       const { spec, error } = yamlToSpec(prepared.yamlText);
       if (error) {
@@ -287,7 +285,6 @@
         editorYaml: snapshotEditorContent,
         workspace: scriptWorkspace,
         readFile: scriptApi.readFile,
-        globalEnv: await getGlobalEnvForInterpolation(),
       }),
       preflight: async (prepared) => {
         const parsed = yamlToSpec(prepared.yamlText);

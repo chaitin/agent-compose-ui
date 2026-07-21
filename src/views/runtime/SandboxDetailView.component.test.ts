@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { Code, ConnectError } from '@connectrpc/connect';
 import SandboxDetailView from './SandboxDetailView.svelte';
+import componentSource from './SandboxDetailView.svelte?raw';
 import {
   MetricStatus, MetricValue, RunAgentRequest, RunDetail, RunEvent, RunEventKind, RunSandboxCleanupPolicy, RunSource, RunStatus, RunSummary, Sandbox, SandboxHistoryCell, SandboxHistoryEvent, SandboxStats,
 } from '../../gen/agentcompose/v2/agentcompose_pb';
@@ -28,6 +29,7 @@ vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() {} } }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
   store.activeProjectId = 'project-1';
   store.runtimeView = { level: 'sandbox-detail', sandboxId: 'sandbox-1', agentName: '', runId: '', sessionId: '' };
   store.sandboxReturnView = null;
@@ -239,7 +241,7 @@ test('does not expose Jupyter or mount live tools for a stopped sandbox', async 
 });
 
 test('passes sandboxPath from the URL to the running Files browser', async () => {
-  history.replaceState(null, '', '/?sandboxTab=files&sandboxPath=%2Fworkspace%2F2026-07-21%2Freport.md#/project/project-1/sandbox/sandbox-1');
+  history.replaceState(null, '', '/?sandboxTab=files&sandboxPath=%2Fworkspace%2F2026-07-21%2Freport.md&sandboxPathSandboxId=sandbox-1#/project/project-1/sandbox/sandbox-1');
   render(SandboxDetailView);
 
   await screen.findByRole('tabpanel', { name: 'Files' });
@@ -249,11 +251,28 @@ test('passes sandboxPath from the URL to the running Files browser', async () =>
   });
 });
 
+test.each([
+  ['a different Sandbox', '&sandboxPathSandboxId=sandbox-old'],
+  ['a legacy URL without an owner', ''],
+])('does not preview a stale sandboxPath from %s', async (_case, ownerQuery) => {
+  history.replaceState(null, '', `/?sandboxTab=files&sandboxPath=%2Fworkspace%2F2026-07-21%2Freport.md${ownerQuery}#/project/project-1/sandbox/sandbox-1`);
+  render(SandboxDetailView);
+
+  await screen.findByRole('tabpanel', { name: 'Files' });
+  await waitFor(() => expect(mocks.execService.execStream).toHaveBeenCalled());
+  expect(mocks.execService.execStream.mock.calls.some(([request]) =>
+    request.command?.command === '/bin/cat' && request.command.args.includes('/workspace/2026-07-21/report.md'),
+  )).toBe(false);
+  await waitFor(() => expect(new URLSearchParams(location.search).has('sandboxPath')).toBe(false));
+  expect(new URLSearchParams(location.search).has('sandboxPathSandboxId')).toBe(false);
+  expect(new URLSearchParams(location.search).get('sandboxTab')).toBe('files');
+});
+
 test('keeps Files unavailable without resuming a stopped sandbox with sandboxPath', async () => {
   mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: new Sandbox({
     sandboxId: 'sandbox-1', projectId: 'project-1', status: 'STOPPED', title: 'Stopped sandbox',
   }) });
-  history.replaceState(null, '', '/?sandboxTab=files&sandboxPath=%2Fworkspace%2F2026-07-21%2Freport.md#/project/project-1/sandbox/sandbox-1');
+  history.replaceState(null, '', '/?sandboxTab=files&sandboxPath=%2Fworkspace%2F2026-07-21%2Freport.md&sandboxPathSandboxId=sandbox-1#/project/project-1/sandbox/sandbox-1');
   render(SandboxDetailView);
 
   expect(await screen.findByText('Sandbox 未运行，Files 不可用。')).toBeTruthy();
@@ -412,6 +431,20 @@ test('uses direct lifecycle RPCs and never creates control runs', async () => {
   expect(mocks.runService.startRun).not.toHaveBeenCalled();
 });
 
+test('shows a clear message when a deleted Sandbox cannot be resumed', async () => {
+  mocks.sandboxService.getSandbox.mockResolvedValue({
+    sandbox: new Sandbox({ sandboxId: 'sandbox-1', projectId: 'project-1', status: 'STOPPED' }),
+  });
+  mocks.sandboxService.resumeSandbox.mockRejectedValue(new Error(
+    'docker runtime state for stopped sandbox sandbox-1 is missing; refusing to recreate it during resume: only canonical legacy UUID sandboxes may be reconstructed',
+  ));
+  render(SandboxDetailView);
+
+  await fireEvent.click(await screen.findByRole('button', { name: '恢复' }));
+  await waitFor(() => expect(store.addToast).toHaveBeenCalledWith('该 Sandbox 已被删除，无法恢复', 'error'));
+  expect(store.addToast).not.toHaveBeenCalledWith(expect.stringContaining('canonical legacy UUID'), 'error');
+});
+
 test('ignores a lifecycle response after navigating to another sandbox', async () => {
   const pending = deferred<{ sandbox: Sandbox }>();
   mocks.sandboxService.stopSandbox.mockReturnValue(pending.promise);
@@ -432,6 +465,24 @@ test('ignores a lifecycle response after navigating to another sandbox', async (
   expect(screen.queryByRole('heading', { name: 'Stale sandbox' })).toBeNull();
   expect(store.addToast).not.toHaveBeenCalledWith('Sandbox 已停止', 'success');
   expect(screen.getByRole('button', { name: '停止' })).not.toBeDisabled();
+});
+
+test('does not read component derived state after an in-flight load is destroyed', async () => {
+  expect(componentSource).toMatch(/let destroyed = false/);
+  expect(componentSource).toMatch(/if \(destroyed\) return false/);
+  const pending = deferred<{ sandbox: Sandbox }>();
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  mocks.sandboxService.getSandbox.mockReturnValue(pending.promise);
+  const view = render(SandboxDetailView);
+
+  await waitFor(() => expect(mocks.sandboxService.getSandbox).toHaveBeenCalled());
+  view.unmount();
+  pending.resolve({ sandbox: new Sandbox({ sandboxId: 'sandbox-1', projectId: 'project-1', status: 'STOPPED' }) });
+  await pending.promise;
+  await Promise.resolve();
+  await Promise.resolve();
+
+  expect(warning.mock.calls.flat().some((value) => String(value).includes('derived_inert'))).toBe(false);
 });
 
 test('keeps direct detail usable when secondary run navigation fails', async () => {
@@ -583,6 +634,39 @@ test('aborts the active watch when the detail view unmounts', async () => {
   await waitFor(() => expect(signal).toBeDefined());
   view.unmount();
   expect(signal?.aborted).toBe(true);
+});
+
+test('aborts the active watch when the browser tab becomes hidden', async () => {
+  let signal: AbortSignal | undefined;
+  mocks.sandboxService.watchSandbox.mockImplementation((_request, options) => {
+    signal = options?.signal;
+    return (async function* () { await new Promise(() => {}); })();
+  });
+  render(SandboxDetailView);
+  await screen.findByText(/agent response/);
+  await waitFor(() => expect(signal).toBeDefined());
+
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+  document.dispatchEvent(new Event('visibilitychange'));
+
+  expect(signal?.aborted).toBe(true);
+});
+
+test('starts no hidden watch and reconnects once when the browser tab becomes visible', async () => {
+  mocks.sandboxService.watchSandbox.mockImplementation(() => (
+    async function* () { await new Promise(() => {}); }
+  )());
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+  render(SandboxDetailView);
+  await screen.findByText(/agent response/);
+  expect(mocks.sandboxService.watchSandbox).not.toHaveBeenCalled();
+
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+  document.dispatchEvent(new Event('visibilitychange'));
+
+  await waitFor(() => expect(mocks.sandboxService.watchSandbox).toHaveBeenCalledTimes(1));
+  document.dispatchEvent(new Event('visibilitychange'));
+  expect(mocks.sandboxService.watchSandbox).toHaveBeenCalledTimes(1);
 });
 
 test('shows a removed state with a back button when the sandbox no longer exists', async () => {

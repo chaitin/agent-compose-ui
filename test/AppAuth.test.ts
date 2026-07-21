@@ -16,15 +16,9 @@ vi.mock('../src/lib/auth', async (importOriginal) => {
 });
 
 vi.mock('../src/lib/rpc', () => ({
-  projectService: {
-    listProjects: rpcMocks.listProjects,
-    removeProject: rpcMocks.removeProject,
-  },
+  projectService: { listProjects: rpcMocks.listProjects, removeProject: rpcMocks.removeProject },
   runService: {}, execService: {},
-  sandboxService: {
-    listSandboxes: rpcMocks.listSandboxes,
-    removeSandbox: rpcMocks.removeSandbox,
-  },
+  sandboxService: { listSandboxes: rpcMocks.listSandboxes, removeSandbox: rpcMocks.removeSandbox },
   sessionService: {}, kernelService: {},
   agentService: {}, loaderService: {}, dashboardService: {}, configService: {},
 }));

@@ -772,7 +772,7 @@ describe('deleteProject', () => {
 });
 
 describe('cascadeDeleteProject', () => {
-  test('removes every related sandbox before removing project history', async () => {
+  test('removes every related sandbox before soft-deleting the project while preserving history', async () => {
     const calls = [];
     const result = await cascadeDeleteProject('project-1', {
       listSandboxes: async ({ cursor }) => cursor === ''
@@ -795,7 +795,7 @@ describe('cascadeDeleteProject', () => {
     expect(calls).toEqual([
       ['sandbox', 'direct', true],
       ['sandbox', 'tagged', true],
-      ['project', true, true],
+      ['project', false, true],
     ]);
     expect(result).toEqual({ removedSandboxes: 2 });
   });
