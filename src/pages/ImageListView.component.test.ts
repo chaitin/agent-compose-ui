@@ -34,9 +34,26 @@ test('keeps pull available by default and only hides its entry when requested', 
   expect(screen.queryByRole('button', { name: '拉取镜像' })).not.toBeInTheDocument();
 });
 
-test('labels image types and expands inspected details directly below the selected row', async () => {
+test('hides dangling images until showing intermediate layers is enabled', async () => {
+  mocks.listImages.mockReset();
+  mocks.listImages.mockResolvedValue({ images: [finalImage, intermediateImage], hasMore: false, nextOffset: 2 });
   render(ImageListView);
 
+  expect(await screen.findByRole('button', { name: '展开镜像 final:dev' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '展开镜像 sha256:layer' })).toBeNull();
+  expect(mocks.listImages.mock.calls[0][0]).toMatchObject({ all: false });
+
+  await fireEvent.click(screen.getByRole('checkbox', { name: '显示中间层' }));
+  expect(await screen.findByRole('button', { name: '展开镜像 sha256:layer' })).toBeInTheDocument();
+  expect(mocks.listImages.mock.calls[1][0]).toMatchObject({ all: true });
+});
+
+test('labels image types and expands inspected details directly below the selected row', async () => {
+  mocks.listImages.mockReset();
+  mocks.listImages.mockResolvedValue({ images: [finalImage, intermediateImage], hasMore: false, nextOffset: 2 });
+  render(ImageListView);
+
+  await fireEvent.click(screen.getByRole('checkbox', { name: '显示中间层' }));
   expect(await screen.findByText('中间层')).toBeInTheDocument();
   expect(screen.getByText('成品镜像')).toBeInTheDocument();
   const trigger = screen.getByRole('button', { name: '展开镜像 final:dev' });
@@ -54,7 +71,13 @@ test('labels image types and expands inspected details directly below the select
 });
 
 test('selects only currently loaded images and opens bulk removal for that selection', async () => {
+  mocks.listImages.mockReset();
+  mocks.listImages
+    .mockResolvedValueOnce({ images: [finalImage, intermediateImage], hasMore: true, nextOffset: 2 })
+    .mockResolvedValueOnce({ images: [finalImage, intermediateImage], hasMore: true, nextOffset: 2 })
+    .mockResolvedValueOnce({ images: [appendedImage], hasMore: false, nextOffset: 3 });
   render(ImageListView);
+  await fireEvent.click(screen.getByRole('checkbox', { name: '显示中间层' }));
   const selectAll = await screen.findByLabelText('选择当前已加载镜像');
 
   await fireEvent.click(selectAll);

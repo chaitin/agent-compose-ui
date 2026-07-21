@@ -8,7 +8,8 @@ test('lists daemon images with server-side filters and pagination', () => {
   assert.match(source, /new ListImagesRequest/);
   assert.match(source, /query: query\.trim\(\)/);
   assert.match(source, /store: storeFilter/);
-  assert.match(source, /all: showIntermediate/);
+  assert.match(source, /all: includeIntermediate/);
+  assert.match(source, /resp\.images\.filter\(image => !image\.dangling\)/);
   assert.match(source, /includeCacheStatus: true/);
   assert.match(source, /offset: reset \? 0 : nextOffset/);
   assert.match(source, /limit: PAGE_SIZE/);

@@ -49,19 +49,21 @@
 
   async function load(reset = true) {
     const generation = ++requestGeneration;
+    const includeIntermediate = showIntermediate;
     loading = true;
     error = '';
     try {
       const resp = await imageService.listImages(new ListImagesRequest({
         query: query.trim(),
         store: storeFilter,
-        all: showIntermediate,
+        all: includeIntermediate,
         includeCacheStatus: true,
         offset: reset ? 0 : nextOffset,
         limit: PAGE_SIZE,
       }));
       if (generation !== requestGeneration) return;
-      const nextImages = reset ? resp.images : [...images, ...resp.images];
+      const receivedImages = includeIntermediate ? resp.images : resp.images.filter(image => !image.dangling);
+      const nextImages = reset ? receivedImages : [...images, ...receivedImages];
       images = nextImages;
       if (reset) {
         const loadedKeys = new Set(nextImages.map(imageSelectionKey));
