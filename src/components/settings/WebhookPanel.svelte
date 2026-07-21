@@ -4,6 +4,7 @@
   import { webhookApi, WebhookApiError } from '../../lib/webhook/api';
   import WebhookSourceTable from './WebhookSourceTable.svelte';
   import WebhookRegisterModal from './WebhookRegisterModal.svelte';
+  import WebhookCurlPreview from './WebhookCurlPreview.svelte';
   import type { TestState } from '../../lib/webhook/types';
 
   let testStates = $state<Map<string, TestState>>(new Map());
@@ -12,6 +13,9 @@
   let togglingId = $state<string | null>(null);
 
   const testTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  let selectedSource = $derived(webhookStore.sources.find(s => s.id === webhookStore.selectedSourceId) ?? null);
+  let selectedToken = $derived(selectedSource ? webhookStore.sessionTokens.get(selectedSource.id) ?? null : null);
 
   function sessionTokenIds(): Set<string> {
     return new Set(webhookStore.sessionTokens.keys());
@@ -97,6 +101,25 @@
     }, 30_000);
     testTimers.set(id, timer);
   }
+
+  async function handleCopyCurl(id: string): Promise<void> {
+    const source = webhookStore.sources.find(s => s.id === id);
+    if (!source) return;
+    const token = webhookStore.sessionTokens.get(id) ?? null;
+    const topic = source.topic_prefix.replace(/\.+$/, '');
+    const auth = token ?? '<your-token>';
+    const cmd = [
+      `curl -X POST 'http://127.0.0.1:7410/api/webhooks/${topic}' \\`,
+      `  -H 'Content-Type: application/json' \\`,
+      `  -H 'Authorization: Bearer ${auth}' \\`,
+      `  --data '{"alert_type":"Webshell上传","src_ip":"192.168.1.50"}'`,
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(cmd);
+    } catch {
+      // ignore
+    }
+  }
 </script>
 
 <div class="webhook-panel">
@@ -130,12 +153,16 @@
         onselect={(id) => webhookStore.selectSource(id)}
         ontoggle={handleToggle}
         ondelete={handleDeleteRequest}
-        oncopycurl={(id) => { /* Task 7 */ }}
+        oncopycurl={handleCopyCurl}
         ontest={handleTest}
         onregen={(id) => { /* Task 8 */ }}
       />
     {/if}
   </section>
+
+  {#if webhookStore.sources.length > 0}
+    <WebhookCurlPreview source={selectedSource} token={selectedToken} />
+  {/if}
 </div>
 
 <WebhookRegisterModal open={registerOpen} onclose={() => registerOpen = false} />
