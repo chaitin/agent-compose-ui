@@ -155,4 +155,16 @@ describe('discoverWorkspaceArtifacts', () => {
     expect(getSandbox).not.toHaveBeenCalled();
     expect(execStream).not.toHaveBeenCalled();
   });
+
+  test('rejects an invalid injected current time before calling RPCs', async () => {
+    const getSandbox = vi.fn();
+    const execStream = vi.fn();
+    const result = await discoverWorkspaceArtifacts({
+      sandboxId: 'sandbox-1', startedAt: '2026-07-21T03:30:37Z', completedAt: '',
+      now: () => new Date(Number.NaN), getSandbox, execStream,
+    });
+    expect(result).toMatchObject({ status: 'invalid-time', files: [] });
+    expect(getSandbox).not.toHaveBeenCalled();
+    expect(execStream).not.toHaveBeenCalled();
+  });
 });

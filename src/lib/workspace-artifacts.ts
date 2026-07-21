@@ -78,12 +78,13 @@ function emptyResult(status: WorkspaceArtifactDiscoveryStatus, message: string):
 export async function discoverWorkspaceArtifacts(
   options: DiscoverWorkspaceArtifactsOptions,
 ): Promise<WorkspaceArtifactDiscoveryResult> {
-  const endedAt = options.completedAt || options.now().toISOString();
+  const currentTime = options.completedAt ? undefined : options.now();
   const start = Date.parse(options.startedAt);
-  const end = Date.parse(endedAt);
+  const end = options.completedAt ? Date.parse(options.completedAt) : currentTime!.getTime();
   if (Number.isNaN(start) || Number.isNaN(end) || end < start) {
     return emptyResult('invalid-time', 'Run time window is invalid.');
   }
+  const endedAt = options.completedAt || currentTime!.toISOString();
 
   let status: string;
   try {
