@@ -6,9 +6,10 @@
   import { store } from '../lib/stores.svelte';
   import { countAgents, countSchedulers, yamlToSpec } from '../lib/yaml';
   import Toolbar from './Toolbar.svelte';
-  import ScriptPanel from './scripts/ScriptPanel.svelte';
+  import ResourcePanel from './ResourcePanel.svelte';
   import ScriptLineActions from './scripts/ScriptLineActions.svelte';
   import ScriptReferenceModal from './scripts/ScriptReferenceModal.svelte';
+  import WorkspaceLineActions from './workspace/WorkspaceLineActions.svelte';
   import { scriptWorkspace } from '../lib/scripts/workspace.svelte';
   import { scriptApi, scriptErrorMessage } from '../lib/scripts/api';
   import { collectScriptFiles } from '../lib/scripts/tree';
@@ -23,6 +24,13 @@
     type ScriptLocation,
     type ScriptRange,
   } from '../lib/scripts/editor-actions';
+  import {
+    findWorkspaceLine,
+    parseWorkspaceBinding,
+    defaultWorkspacePath,
+    type WorkspaceBinding,
+  } from '../lib/workspace-binding';
+  import { createWorkspaceAndBind } from '../lib/workspace-create';
 
   self.MonacoEnvironment = {
     getWorker: () => new EditorWorker(),
@@ -39,6 +47,8 @@
 
   const ACTION_RIGHT_GAP = 12;
 
+  type WorkspaceBindingKind = 'non-file' | 'none' | 'valid';
+
   let container = $state<HTMLDivElement>();
   let editor = $state<monaco.editor.IStandaloneCodeEditor | null>(null);
   let modalRequest = $state<ModalRequest | null>(null);
@@ -46,6 +56,8 @@
   let ignoreChanges = false;
   let decorationIds: string[] = [];
   let actionWidgets: MountedActionWidget[] = [];
+  let workspaceWidget: MountedActionWidget | null = null;
+  let workspaceWidgetKey = '';
   let updateScriptActionContext = () => {};
 
   let agentCount = $derived(countAgents(store.editorContent));
@@ -161,6 +173,129 @@
     } catch (error) {
       store.addToast('内联失败：' + scriptMessage(error), 'error');
     }
+  }
+
+  // Workspace providers that intentionally don't use the file panel - git/http
+  // pull content from remote sources, so we don't prompt the user to switch.
+  // Only unknown/unsupported providers (e.g. a typo'd 'local') get the warning.
+  const KNOWN_NON_FILE_PROVIDERS = new Set(['git', 'http']);
+
+  function bindingKind(binding: WorkspaceBinding | null): WorkspaceBindingKind | null {
+    if (!binding) return null;
+    if (binding.provider && binding.provider !== 'file') {
+      if (KNOWN_NON_FILE_PROVIDERS.has(binding.provider)) return null;
+      return 'non-file';
+    }
+    if (binding.path === '') return 'none';
+    return 'valid';
+  }
+
+  const currentProject = $derived(store.projects.find(p => p.summary.projectId === store.activeProjectId));
+  const projectSourcePath = $derived(currentProject?.summary.sourcePath ?? '');
+
+  async function bindWorkspace(force: boolean): Promise<void> {
+    const sourcePath = projectSourcePath;
+    try {
+      const result = await createWorkspaceAndBind(store.editorContent, sourcePath, { force });
+      store.commitEditorContent(result.yaml);
+      scriptWorkspace.openWorkspaceTab();
+      store.addToast(
+        sourcePath
+          ? `已绑定 workspace（path=${result.workspacePath}）`
+          : `已配置 workspace path，保存项目后即可上传文件`,
+        'success',
+      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      store.addToast(`${force ? '切换' : '绑定'}失败：${msg}`, 'error');
+    }
+  }
+
+  function clearWorkspaceWidget(target: monaco.editor.IStandaloneCodeEditor): void {
+    if (!workspaceWidget) return;
+    target.removeContentWidget(workspaceWidget.widget);
+    void unmount(workspaceWidget.component);
+    workspaceWidget = null;
+    workspaceWidgetKey = '';
+  }
+
+  function addWorkspaceWidget(
+    target: monaco.editor.IStandaloneCodeEditor,
+    line: number,
+    kind: WorkspaceBindingKind,
+    provider?: string,
+  ): MountedActionWidget {
+    const node = document.createElement('div');
+    const component = mount(WorkspaceLineActions, {
+      target: node,
+      props: {
+        kind,
+        provider,
+        onConvert: () => void bindWorkspace(true),
+        onConfigure: () => void bindWorkspace(false),
+        onOpen: () => scriptWorkspace.openWorkspaceTab(),
+      },
+    });
+    const widget: monaco.editor.IContentWidget = {
+      allowEditorOverflow: false,
+      suppressMouseDown: true,
+      getId: () => `workspace-line-actions:${line}`,
+      getDomNode: () => node,
+      getPosition: () => {
+        const model = target.getModel();
+        if (!model || line > model.getLineCount()) return null;
+        return {
+          position: { lineNumber: line, column: 1 },
+          preference: [monaco.editor.ContentWidgetPositionPreference.EXACT],
+        };
+      },
+      afterRender: (position) => {
+        if (position === null) return;
+        const layout = target.getLayoutInfo();
+        const viewportRight = layout.width - layout.verticalScrollbarWidth - ACTION_RIGHT_GAP;
+        const availableWidth = Math.max(0, viewportRight - layout.contentLeft);
+        node.style.maxWidth = `${availableWidth}px`;
+        const widgetWidth = Math.min(node.offsetWidth, availableWidth);
+        const targetLeft = Math.max(0, availableWidth - widgetWidth);
+        node.style.transform = `translateX(${targetLeft}px)`;
+      },
+    };
+    target.addContentWidget(widget);
+    return { widget, component };
+  }
+
+  function refreshWorkspacePresentation(target: monaco.editor.IStandaloneCodeEditor): void {
+    const yaml = store.editorContent;
+    const line = findWorkspaceLine(yaml);
+    if (line === null) {
+      clearWorkspaceWidget(target);
+      return;
+    }
+
+    const binding = parseWorkspaceBinding(yaml);
+    // bindingKind returns null for two distinct cases:
+    //   - binding itself is null (YAML incomplete while user is typing)
+    //   - binding parsed but provider is git/http (intentional remote source)
+    // Only the first case falls back to 'none' so the user still has an entry
+    // point; the second case hides the button entirely.
+    let kind: WorkspaceBindingKind;
+    if (binding === null) {
+      kind = 'none';
+    } else {
+      const parsed = bindingKind(binding);
+      if (parsed === null) {
+        clearWorkspaceWidget(target);
+        return;
+      }
+      kind = parsed;
+    }
+
+    const key = `${line}:${kind}`;
+    if (key === workspaceWidgetKey && workspaceWidget) return;
+
+    clearWorkspaceWidget(target);
+    workspaceWidget = addWorkspaceWidget(target, line, kind, binding?.provider ?? undefined);
+    workspaceWidgetKey = key;
   }
 
   function clearActionWidgets(target: monaco.editor.IStandaloneCodeEditor): void {
@@ -354,6 +489,7 @@
 
     const relayoutActionWidgets = () => {
       for (const entry of actionWidgets) e.layoutContentWidget(entry.widget);
+      if (workspaceWidget) e.layoutContentWidget(workspaceWidget.widget);
     };
     const scrollDisposable = e.onDidScrollChange(relayoutActionWidgets);
     const layoutDisposable = e.onDidLayoutChange(relayoutActionWidgets);
@@ -362,6 +498,7 @@
     untrack(() => {
       updateScriptActionContext();
       refreshScriptPresentation(e);
+      refreshWorkspacePresentation(e);
     });
 
     return () => {
@@ -374,6 +511,7 @@
       scrollDisposable.dispose();
       layoutDisposable.dispose();
       clearActionWidgets(e);
+      clearWorkspaceWidget(e);
       decorationIds = e.deltaDecorations(decorationIds, []);
       e.dispose();
       editor = null;
@@ -398,6 +536,7 @@
     }
     updateScriptActionContext();
     refreshScriptPresentation(editor);
+    refreshWorkspacePresentation(editor);
   });
 </script>
 
@@ -414,7 +553,7 @@
   </div>
   <div class="editor-stack">
     <div class="yaml-editor-body" bind:this={container}></div>
-    <ScriptPanel workspace={scriptWorkspace} />
+    <ResourcePanel workspace={scriptWorkspace} />
     {#if modalRequest}
       <ScriptReferenceModal
         mode={modalRequest.mode}

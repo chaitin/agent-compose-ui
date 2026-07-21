@@ -11,11 +11,11 @@ import {
 describe('parseWorkspaceArtifactRecords', () => {
   test('keeps only files modified inside the inclusive Run window', () => {
     const raw = [
-      '1784604600.0000000000\t/workspace/before.md\0',
-      '1784604637.2570000000\t/workspace/with space.md\0',
-      '1784604690.0000000000\t/workspace/line\nbreak.md\0',
-      '1784604751.3040000000\t/workspace/final.md\0',
-      '1784604800.0000000000\t/workspace/after.md\0',
+      '1784604600.0000000000\t/workspace/before.md\n',
+      '1784604637.2570000000\t/workspace/with space.md\n',
+      '1784604690.0000000000\t/workspace/mid.md\n',
+      '1784604751.3040000000\t/workspace/final.md\n',
+      '1784604800.0000000000\t/workspace/after.md\n',
     ].join('');
     expect(parseWorkspaceArtifactRecords(raw, {
       startedAt: '2026-07-21T03:30:37.257Z',
@@ -23,16 +23,16 @@ describe('parseWorkspaceArtifactRecords', () => {
       limit: 5000,
     }).files.map(file => file.path)).toEqual([
       '/workspace/with space.md',
-      '/workspace/line\nbreak.md',
+      '/workspace/mid.md',
       '/workspace/final.md',
     ]);
   });
 
   test('deduplicates paths by their final record and sorts equal mtimes by path', () => {
     const raw = [
-      '1784604640\t/workspace/z.md\0',
-      '1784604640\t/workspace/a.md\0',
-      '1784604641\t/workspace/z.md\0',
+      '1784604640\t/workspace/z.md\n',
+      '1784604640\t/workspace/a.md\n',
+      '1784604641\t/workspace/z.md\n',
     ].join('');
     const result = parseWorkspaceArtifactRecords(raw, {
       startedAt: '2026-07-21T03:30:37Z',
@@ -57,7 +57,7 @@ describe('discoverWorkspaceArtifacts', () => {
       getSandbox: async () => ({ sandbox: { status: 'RUNNING' } }),
       execStream: async function* (request) {
         requests.push(request);
-        yield new ExecStreamResponse({ eventType: ExecStreamEventType.OUTPUT, stream: StdioStream.STDOUT, chunk: '1784604640\t/workspace/report.md\0' });
+        yield new ExecStreamResponse({ eventType: ExecStreamEventType.OUTPUT, stream: StdioStream.STDOUT, chunk: '1784604640\t/workspace/report.md\n' });
       },
     });
     expect(result.status).toBe('ready');
@@ -69,7 +69,7 @@ describe('discoverWorkspaceArtifacts', () => {
       timeoutMs: 30_000,
       command: {
         command: '/usr/bin/find',
-        args: ['/workspace', '-type', 'f', '-printf', '%T@\\t%p\\0'],
+        args: ['/workspace', '-type', 'f', '-printf', '%T@\\t%p\\n'],
       },
     });
   });
@@ -113,7 +113,7 @@ describe('discoverWorkspaceArtifacts', () => {
       sandboxId: 'sandbox-1', startedAt: '2026-07-21T03:30:37Z', completedAt: '', now: () => new Date('2026-07-21T03:30:40Z'),
       getSandbox: async () => ({ sandbox: { status: 'RUNNING' } }),
       execStream: async function* () {
-        yield new ExecStreamResponse({ eventType: ExecStreamEventType.OUTPUT, stream: StdioStream.STDOUT, chunk: '1784604640\t/workspace/at-now.md\0' });
+        yield new ExecStreamResponse({ eventType: ExecStreamEventType.OUTPUT, stream: StdioStream.STDOUT, chunk: '1784604640\t/workspace/at-now.md\n' });
       },
     });
     expect(result.files.map(file => file.path)).toEqual(['/workspace/at-now.md']);
@@ -121,7 +121,7 @@ describe('discoverWorkspaceArtifacts', () => {
 
   test('bounds output bytes and returned file count', async () => {
     const records = Array.from({ length: MAX_WORKSPACE_ARTIFACT_FILES + 1 }, (_, index) =>
-      `1784604640\t/workspace/${String(index).padStart(4, '0')}.md\0`).join('');
+      `1784604640\t/workspace/${String(index).padStart(4, '0')}.md\n`).join('');
     const oversized = records + 'x'.repeat(WORKSPACE_ARTIFACT_OUTPUT_BYTES);
     const result = await discoverWorkspaceArtifacts({
       sandboxId: 'sandbox-1', startedAt: '2026-07-21T03:30:37Z', completedAt: '2026-07-21T03:32:31Z', now: () => new Date(),

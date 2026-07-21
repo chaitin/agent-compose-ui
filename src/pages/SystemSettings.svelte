@@ -76,7 +76,7 @@
         </div>
       {:else if activeModule === 'webhooks'}
         <div id="system-panel-webhooks" role="tabpanel" aria-labelledby="system-tab-webhooks" class="module-content webhook-module">
-          <div class="module-heading"><p>注册外部事件入口，绑定 topic 前缀和访问 token</p></div>
+          <div class="module-heading"><p>注册外部系统向 daemon 推送事件的入口。每个源绑定一个 topic 前缀和访问 token，YAML 里的 <code>scheduler.on("webhook.siem.alert", ...)</code> 通过 topic 匹配这些源。</p></div>
           <div class="webhook-panel-wrapper"><WebhookPanel /></div>
         </div>
       {:else}

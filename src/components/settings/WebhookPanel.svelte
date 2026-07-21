@@ -4,7 +4,6 @@
   import { webhookApi, WebhookApiError } from '../../lib/webhook/api';
   import WebhookSourceTable from './WebhookSourceTable.svelte';
   import WebhookRegisterModal from './WebhookRegisterModal.svelte';
-  import WebhookCurlPreview from './WebhookCurlPreview.svelte';
   import type { TestState } from '../../lib/webhook/types';
 
   let testStates = $state<Map<string, TestState>>(new Map());
@@ -14,15 +13,15 @@
   let regenTarget = $state<{ id: string; name: string } | null>(null);
   let regenPending = $state(false);
   let regenNewToken = $state<string | null>(null);
+  let regenError = $state<string | null>(null);
 
   const testTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
-  let selectedSource = $derived(webhookStore.sources.find(s => s.id === webhookStore.selectedSourceId) ?? null);
-  let selectedToken = $derived(selectedSource ? webhookStore.sessionTokens.get(selectedSource.id) ?? null : null);
 
   function sessionTokenIds(): Set<string> {
     return new Set(webhookStore.sessionTokens.keys());
   }
+
+  let sessionTokensSnapshot = $derived(new Map(webhookStore.sessionTokens));
 
   onMount(() => {
     webhookStore.loadSources();
@@ -105,35 +104,18 @@
     testTimers.set(id, timer);
   }
 
-  async function handleCopyCurl(id: string): Promise<void> {
-    const source = webhookStore.sources.find(s => s.id === id);
-    if (!source) return;
-    const token = webhookStore.sessionTokens.get(id) ?? null;
-    const topic = source.topic_prefix.replace(/\.+$/, '');
-    const auth = token ?? '<your-token>';
-    const cmd = [
-      `curl -X POST 'http://127.0.0.1:7410/api/webhooks/${topic}' \\`,
-      `  -H 'Content-Type: application/json' \\`,
-      `  -H 'Authorization: Bearer ${auth}' \\`,
-      `  --data '{"alert_type":"Webshell上传","src_ip":"192.168.1.50"}'`,
-    ].join('\n');
-    try {
-      await navigator.clipboard.writeText(cmd);
-    } catch {
-      // ignore
-    }
-  }
-
   function handleRegenRequest(id: string): void {
     const source = webhookStore.sources.find(s => s.id === id);
     if (!source) return;
     regenTarget = { id, name: source.name };
     regenNewToken = null;
+    regenError = null;
   }
 
   function handleRegenCancel(): void {
     regenTarget = null;
     regenNewToken = null;
+    regenError = null;
   }
 
   async function handleRegenConfirm(): Promise<void> {
@@ -155,7 +137,7 @@
       });
       regenNewToken = newToken;
     } catch (error) {
-      console.error('regen failed', error);
+      regenError = error instanceof WebhookApiError ? error.message : '操作失败';
     } finally {
       regenPending = false;
     }
@@ -177,11 +159,6 @@
 </script>
 
 <div class="webhook-panel">
-  <header class="page-heading">
-    <h2>Webhook 源</h2>
-    <p>注册外部系统向 daemon 推送事件的入口。每个源绑定一个 topic 前缀和访问 token，YAML 里的 <code>scheduler.on("webhook.siem.alert", ...)</code> 通过 topic 匹配这些源。</p>
-  </header>
-
   <section class="section-card">
     <header class="section-card-header">
       <div>
@@ -202,21 +179,17 @@
       <WebhookSourceTable
         sources={webhookStore.sources}
         sessionTokenIds={sessionTokenIds()}
+        sessionTokens={sessionTokensSnapshot}
         selectedSourceId={webhookStore.selectedSourceId}
         {testStates}
         onselect={(id) => webhookStore.selectSource(id)}
         ontoggle={handleToggle}
         ondelete={handleDeleteRequest}
-        oncopycurl={handleCopyCurl}
         ontest={handleTest}
         onregen={handleRegenRequest}
       />
     {/if}
   </section>
-
-  {#if webhookStore.sources.length > 0}
-    <WebhookCurlPreview source={selectedSource} token={selectedToken} />
-  {/if}
 </div>
 
 <WebhookRegisterModal open={registerOpen} onclose={() => registerOpen = false} />
@@ -260,6 +233,9 @@
           <li>新 token 仅在本次会话显示，关闭后不再可见</li>
           <li>历史事件不受影响，仍可通过原 event_id 查询</li>
         </ul>
+        {#if regenError}
+          <div class="alert-banner danger">{regenError}</div>
+        {/if}
       </div>
       <footer class="modal-footer">
         <button type="button" class="btn" onclick={handleRegenCancel} disabled={regenPending}>取消</button>
@@ -299,9 +275,6 @@
 
 <style>
   .webhook-panel { display: flex; flex-direction: column; gap: 16px; }
-  .page-heading h2 { margin: 0 0 4px; font-size: var(--font-size-3xl); font-weight: 600; }
-  .page-heading p { margin: 0; color: var(--text-secondary); font-size: var(--font-size-sm); max-width: 820px; line-height: 1.6; }
-  .page-heading code { font-family: var(--font-mono); color: var(--accent-blue); background: color-mix(in srgb, var(--accent-blue) 10%, transparent); padding: 1px 5px; border-radius: 3px; font-size: 12px; }
 
   .section-card { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; }
   .section-card-header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); background: var(--bg-tertiary); }
@@ -350,6 +323,7 @@
 
   .alert-banner { padding: 10px 12px; border-radius: 4px; margin-bottom: 14px; display: flex; gap: 8px; align-items: flex-start; font-size: var(--font-size-sm); line-height: 1.5; }
   .alert-banner.warn { background: color-mix(in srgb, var(--accent-yellow) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent-yellow) 35%, transparent); color: var(--accent-yellow); }
+  .alert-banner.danger { background: color-mix(in srgb, var(--accent-red) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent-red) 35%, transparent); color: var(--accent-red); }
   .alert-banner .icon { flex-shrink: 0; font-size: 14px; margin-top: 1px; }
 
   .field { margin-bottom: 14px; }

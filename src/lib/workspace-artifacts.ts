@@ -32,9 +32,8 @@ export function parseWorkspaceArtifactRecords(
   const end = Date.parse(options.endedAt);
   if (Number.isNaN(start) || Number.isNaN(end) || end < start) return { files: [], truncated: false };
 
-  const records = raw.split('\0');
+  const records = raw.split('\n');
   if (records.at(-1) === '') records.pop();
-  else records.pop();
 
   const byPath = new Map<string, WorkspaceArtifactFile>();
   for (const record of records) {
@@ -101,7 +100,7 @@ export async function discoverWorkspaceArtifacts(
 
   const request = new ExecRequest({
     target: { case: 'sandboxId', value: options.sandboxId },
-    command: new ExecCommand({ command: '/usr/bin/find', args: ['/workspace', '-type', 'f', '-printf', '%T@\\t%p\\0'] }),
+    command: new ExecCommand({ command: '/usr/bin/find', args: ['/workspace', '-type', 'f', '-printf', '%T@\\t%p\\n'] }),
     cwd: '/workspace',
     maxOutputBytes: WORKSPACE_ARTIFACT_OUTPUT_BYTES,
     timeoutMs: 30_000,

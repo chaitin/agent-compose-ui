@@ -4,12 +4,12 @@
   interface Props {
     sources: WebhookSource[];
     sessionTokenIds: Set<string>;
+    sessionTokens: Map<string, string>;
     selectedSourceId: string | null;
     testStates: Map<string, TestState>;
     onselect: (id: string) => void;
     ontoggle: (id: string) => void;
     ondelete: (id: string) => void;
-    oncopycurl: (id: string) => void;
     ontest: (id: string) => void;
     onregen: (id: string) => void;
   }
@@ -17,15 +17,39 @@
   let {
     sources,
     sessionTokenIds,
+    sessionTokens,
     selectedSourceId,
     testStates,
     onselect,
     ontoggle,
     ondelete,
-    oncopycurl,
     ontest,
     onregen,
   }: Props = $props();
+
+  let expandedId = $state<string | null>(null);
+
+  function buildCurlCommand(src: WebhookSource, tok: string | null): string {
+    const topic = src.topic_prefix.replace(/\.+$/, '');
+    const auth = tok ?? '<your-token>';
+    return [
+      `curl -X POST 'http://127.0.0.1:7410/api/webhooks/${topic}' \\`,
+      `  -H 'Content-Type: application/json' \\`,
+      `  -H 'Authorization: Bearer ${auth}' \\`,
+      `  --data '{`,
+      `    "alert_type": "Webshell上传",`,
+      `    "src_ip": "192.168.1.50"`,
+      `  }'`,
+    ].join('\n');
+  }
+
+  async function copyCurl(src: WebhookSource, tok: string | null): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(buildCurlCommand(src, tok));
+    } catch {
+      // ignore
+    }
+  }
 </script>
 
 <div class="table-wrap">
@@ -79,7 +103,8 @@
             </td>
             <td>
               <div class="row-actions">
-                <button type="button" onclick={(e) => { e.stopPropagation(); oncopycurl(source.id); }}>📋 curl</button>
+                <button type="button" class:active={expandedId === source.id}
+                  onclick={(e) => { e.stopPropagation(); expandedId = expandedId === source.id ? null : source.id; }}>{expandedId === source.id ? '▾' : '▸'} curl 示例</button>
                 <button type="button"
                   disabled={!sessionTokenIds.has(source.id) || !source.enabled || testStates.get(source.id)?.phase === 'sending'}
                   title={!sessionTokenIds.has(source.id) ? '需重新生成 token 才能测试' : !source.enabled ? '源已停用，请先启用' : ''}
@@ -118,6 +143,24 @@
                       <span class="prefix">&lt;</span>
                       <span class="status">{testState.status ?? ''} {testState.message ?? '错误'}</span>
                     </div>
+                  {/if}
+                </div>
+              </td>
+            </tr>
+          {/if}
+          {#if expandedId === source.id}
+            {@const token = sessionTokens.get(source.id) ?? null}
+            <tr class="curl-row">
+              <td colspan="5">
+                <div class="curl-bar">
+                  <div class="curl-cmd-line">
+                    <pre class="curl-cmd">{buildCurlCommand(source, token)}</pre>
+                    <button type="button" class="copy-btn" onclick={(e) => { e.stopPropagation(); void copyCurl(source, token); }}>📋 复制</button>
+                  </div>
+                  {#if token}
+                    <div class="curl-warning">⚠ 包含明文 token，仅您当前会话可见。关闭页面后需重新生成 token 才能再次获取。</div>
+                  {:else}
+                    <div class="curl-warning muted">⚠ 替换 &lt;your-token&gt; 为您的源 token。如需新 token，点击表格中"↻ 重生成"。</div>
                   {/if}
                 </div>
               </td>
@@ -185,6 +228,7 @@
   .row-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
   .row-actions button:not(:disabled):hover { color: var(--accent-blue); border-color: var(--accent-blue); }
   .row-actions button.danger:not(:disabled):hover { color: var(--accent-red); border-color: var(--accent-red); }
+  .row-actions button.active { color: var(--accent-blue); border-color: var(--accent-blue); }
 
   .empty-state { padding: 48px 24px; text-align: center; color: var(--text-muted); }
   .empty-state .icon { font-size: 28px; opacity: 0.4; margin-bottom: 8px; }
@@ -217,4 +261,13 @@
     border-radius: 50%; animation: spin 0.8s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  .curl-row > td { padding: 0 16px 8px !important; border-bottom: 1px solid var(--border-color) !important; }
+  .curl-bar { background: var(--bg-primary); border-radius: 0 0 4px 4px; padding: 10px 12px; border-left: 2px solid var(--accent-blue); }
+  .curl-cmd-line { display: flex; gap: 8px; align-items: flex-start; }
+  .curl-cmd { flex: 1; margin: 0; font-family: var(--font-mono); font-size: 11px; line-height: 1.6; color: var(--text-secondary); white-space: pre-wrap; word-break: break-all; }
+  .copy-btn { padding: 4px 10px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--bg-tertiary); color: var(--text-secondary); font-size: var(--font-size-xs); flex-shrink: 0; cursor: pointer; }
+  .copy-btn:hover { color: var(--accent-blue); border-color: var(--accent-blue); }
+  .curl-warning { margin-top: 6px; font-size: 11px; color: var(--accent-yellow); display: flex; align-items: center; gap: 4px; }
+  .curl-warning.muted { color: var(--text-muted); }
 </style>

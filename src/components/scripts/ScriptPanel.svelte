@@ -14,7 +14,6 @@
 
   let createMode = $state<'file' | null>(null);
   let treeWidth = $state(220);
-  let panelHeight = $state(240);
   let resizing = false;
 
   const dirtyPaths = $derived(
@@ -93,142 +92,35 @@
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   }
-
-  function startVerticalResize(event: MouseEvent) {
-    event.preventDefault();
-    const startY = event.clientY;
-    const startHeight = panelHeight;
-    const maxHeight = Math.max(120, window.innerHeight - 200);
-    const onMove = (e: MouseEvent) => {
-      // 向上拖（clientY 减小）-> 面板变高
-      panelHeight = Math.max(120, Math.min(maxHeight, startHeight + (startY - e.clientY)));
-    };
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      document.body.style.userSelect = '';
-      document.body.style.cursor = '';
-    };
-    document.body.style.userSelect = 'none';
-    document.body.style.cursor = 'row-resize';
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }
 </script>
 
-<section
-  class="script-panel"
-  class:open={workspace.panelOpen}
-  style:height={workspace.panelOpen ? `${panelHeight}px` : undefined}
->
-  {#if workspace.panelOpen}
-    <button
-      class="panel-resizer"
-      type="button"
-      aria-label="调整脚本面板高度"
-      onmousedown={startVerticalResize}
-    ></button>
-  {/if}
-  <button class="panel-header" onclick={() => (workspace.panelOpen = !workspace.panelOpen)}>
-    <span class="header-chevron">{workspace.panelOpen ? '⌄' : '›'}</span>
-    <span class="header-title">脚本文件</span>
-    <span class="header-count">{fileCount}</span>
-    {#if !workspace.serviceAvailable}
-      <span class="header-status" title="脚本服务不可用">●</span>
-    {/if}
-  </button>
+<div class="script-tab-content">
+  <div class="tree-pane" style="width:{treeWidth}px">
+    <ScriptTree
+      tree={workspace.tree}
+      activePath={workspace.activePath}
+      {dirtyPaths}
+      onOpen={handleOpen}
+      onDeleteFile={handleDeleteFile}
+      onDeleteFolder={handleDeleteFolder}
+    />
+  </div>
+  <button class="resizer" aria-label="调整脚本目录宽度" onmousedown={startResize}></button>
+  <ScriptEditor {workspace} onCreateFile={() => (createMode = 'file')} />
+</div>
 
-  {#if workspace.panelOpen}
-    <div class="panel-body">
-      <div class="tree-pane" style="width:{treeWidth}px">
-        <ScriptTree
-          tree={workspace.tree}
-          activePath={workspace.activePath}
-          {dirtyPaths}
-          onOpen={handleOpen}
-          onDeleteFile={handleDeleteFile}
-          onDeleteFolder={handleDeleteFolder}
-        />
-      </div>
-      <button class="resizer" aria-label="调整脚本目录宽度" onmousedown={startResize}></button>
-      <ScriptEditor {workspace} onCreateFile={() => (createMode = 'file')} />
-    </div>
-
-    {#if createMode}
-      <ScriptCreateModal
-        mode={createMode}
-        defaultDir={workspace.projectName}
-        directories={directories}
-        onCreate={handleCreateFile}
-        onCancel={() => (createMode = null)}
-      />
-    {/if}
-  {/if}
-</section>
+{#if createMode}
+  <ScriptCreateModal
+    mode={createMode}
+    defaultDir={workspace.projectName}
+    {directories}
+    onCreate={handleCreateFile}
+    onCancel={() => (createMode = null)}
+  />
+{/if}
 
 <style>
-  .script-panel {
-    display: flex;
-    flex-direction: column;
-    border-top: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    flex-shrink: 0;
-    position: relative;
-  }
-  .script-panel:not(.open) {
-    height: 32px;
-  }
-  .script-panel.open {
-    min-height: 120px;
-    /* height 由 panelHeight 状态通过 inline style 控制 */
-  }
-  .panel-resizer {
-    height: 4px;
-    width: 100%;
-    padding: 0;
-    border: 0;
-    background: var(--border-color);
-    cursor: row-resize;
-    flex-shrink: 0;
-    transition: background 0.1s;
-  }
-  .panel-resizer:hover,
-  .panel-resizer:active {
-    background: var(--accent-blue);
-  }
-  .panel-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 12px;
-    background: var(--bg-tertiary);
-    border: none;
-    border-bottom: 1px solid var(--border-color);
-    color: var(--text-secondary);
-    font-size: var(--font-size-md);
-    cursor: pointer;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    height: 32px;
-    flex-shrink: 0;
-  }
-  .panel-header:hover { color: var(--text-primary); }
-  .header-chevron { font-size: 10px; }
-  .header-title { font-weight: 600; }
-  .header-count {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 0 8px;
-    font-size: var(--font-size-sm);
-    color: var(--text-secondary);
-  }
-  .header-status {
-    color: var(--accent-red);
-    font-size: var(--font-size-xs);
-    margin-left: auto;
-  }
-  .panel-body {
+  .script-tab-content {
     display: flex;
     flex: 1;
     min-height: 0;

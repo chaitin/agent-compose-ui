@@ -11,6 +11,7 @@ import (
 
 	"agent-compose-ui/internal/auth"
 	"agent-compose-ui/internal/config"
+	"agent-compose-ui/internal/localfs"
 	"agent-compose-ui/internal/projectenv"
 	"agent-compose-ui/internal/proxy"
 )
@@ -57,6 +58,7 @@ func newHandler(cfg config.Config) (http.Handler, func() error, error) {
 }
 
 func routeHandler(authHandler, scriptProxy, daemonProxy http.Handler) http.Handler {
+	localWsHandler := localfs.New()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
@@ -64,6 +66,8 @@ func routeHandler(authHandler, scriptProxy, daemonProxy http.Handler) http.Handl
 			authHandler.ServeHTTP(w, r)
 		case strings.HasPrefix(path, "/script-api/"):
 			scriptProxy.ServeHTTP(w, r)
+		case strings.HasPrefix(path, "/api/local-workspace/"):
+			localWsHandler.ServeHTTP(w, r)
 		case isDaemonPath(path):
 			daemonProxy.ServeHTTP(w, r)
 		default:

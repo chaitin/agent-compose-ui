@@ -128,7 +128,7 @@
   <div class="main-area">
     {#if store.currentPage === 'dashboard'}
       <Dashboard />
-    {:else if store.currentPage === 'settings' || store.currentPage === 'images' || store.currentPage === 'environment'}
+    {:else if store.currentPage === 'settings' || store.currentPage === 'images' || store.currentPage === 'environment' || store.currentPage === 'webhooks'}
       <SystemSettings />
     {:else if store.currentPage === 'caches'}
       <CacheListView />

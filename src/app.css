@@ -11,6 +11,7 @@
   --accent-red: #f85149;
   --accent-yellow: #d2991d;
   --accent-orange: #db6d28;
+  --accent-purple: #bc8cff;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
   --font-sans: system-ui, -apple-system, sans-serif;
   /* Typographic scale — every text size in the app uses one of these tokens. */

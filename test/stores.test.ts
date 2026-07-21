@@ -195,6 +195,7 @@ describe('parseHash ↔ buildHash 往返', () => {
     '#/system/capabilities',
     '#/system/environment',
     '#/system/images',
+    '#/system/webhooks',
     '#/resources/caches',
     '#/resources/volumes',
     '#/project/new',

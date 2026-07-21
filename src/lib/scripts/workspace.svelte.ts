@@ -29,6 +29,7 @@ export class ScriptWorkspace {
   projectId = $state('');
   projectName = $state('');
   panelOpen = $state(false);
+  activeTab = $state<'scripts' | 'workspace'>('scripts');
   loading = $state(false);
   serviceAvailable = $state(true);
   contextRevision = $state(0);
@@ -43,6 +44,16 @@ export class ScriptWorkspace {
 
   get activeFile(): EditableScriptFile | null {
     return this.files.get(this.activePath) ?? null;
+  }
+
+  openWorkspaceTab(): void {
+    this.activeTab = 'workspace';
+    this.panelOpen = true;
+  }
+
+  openScriptsTab(): void {
+    this.activeTab = 'scripts';
+    this.panelOpen = true;
   }
 
   getContent(path: string): string | undefined {
