@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { ProjectChangeAction, RunSource, RunStatus, SchedulerRunStatus, StartRunRequest } from '../gen/agentcompose/v2/agentcompose_pb';
 import {
+  cascadeDeleteProject,
   deleteProject,
   getAppliedProjectId,
   runProjectAgents,
@@ -767,6 +768,88 @@ describe('deleteProject', () => {
 
     expect(requests).toHaveLength(1);
     expect(requests[0].stopRunningSandboxes).toBe(false);
+  });
+});
+
+describe('cascadeDeleteProject', () => {
+  test('removes every related sandbox before removing project history', async () => {
+    const calls = [];
+    const result = await cascadeDeleteProject('project-1', {
+      listSandboxes: async ({ cursor }) => cursor === ''
+        ? { sandboxes: [
+            { sandboxId: 'direct', projectId: 'project-1', tags: [] },
+            { sandboxId: 'other', projectId: 'project-2', tags: [] },
+          ], nextCursor: 'page-2' }
+        : { sandboxes: [
+            { sandboxId: 'tagged', projectId: '', tags: [{ name: 'project', value: 'project-1' }] },
+          ], nextCursor: '' },
+      removeSandbox: async (request) => {
+        calls.push(['sandbox', request.sandboxId, request.force]);
+        return { sandboxId: request.sandboxId, removed: true };
+      },
+      removeProject: async (request) => {
+        calls.push(['project', request.removeHistory, request.stopRunningSandboxes]);
+        return {};
+      },
+    });
+    expect(calls).toEqual([
+      ['sandbox', 'direct', true],
+      ['sandbox', 'tagged', true],
+      ['project', true, true],
+    ]);
+    expect(result).toEqual({ removedSandboxes: 2 });
+  });
+
+  test.each([
+    ['missing id', { sandboxId: '', projectId: 'project-1' }],
+    ['removed false', { sandboxId: 's1', projectId: 'project-1' }],
+  ])('%s aborts before project removal', async (name, sandbox) => {
+    let projectCalls = 0;
+    await expect(cascadeDeleteProject('project-1', {
+      listSandboxes: async () => ({ sandboxes: [sandbox], nextCursor: '' }),
+      removeSandbox: async ({ sandboxId }) => ({ sandboxId, removed: name !== 'removed false' }),
+      removeProject: async () => { projectCalls += 1; return {}; },
+    })).rejects.toThrow();
+    expect(projectCalls).toBe(0);
+  });
+
+  test('removeSandbox failure aborts before project removal', async () => {
+    let projectCalls = 0;
+    await expect(cascadeDeleteProject('project-1', {
+      listSandboxes: async () => ({ sandboxes: [{ sandboxId: 's1', projectId: 'project-1' }], nextCursor: '' }),
+      removeSandbox: async () => { throw new Error('sandbox cleanup failed'); },
+      removeProject: async () => { projectCalls += 1; return {}; },
+    })).rejects.toThrow('sandbox cleanup failed');
+    expect(projectCalls).toBe(0);
+  });
+
+  test('repeated list cursor aborts before project removal', async () => {
+    let projectCalls = 0;
+    await expect(cascadeDeleteProject('project-1', {
+      listSandboxes: async () => ({ sandboxes: [], nextCursor: 'same-page' }),
+      removeSandbox: async () => ({ removed: true }),
+      removeProject: async () => { projectCalls += 1; return {}; },
+    })).rejects.toThrow('ListSandboxes returned repeated cursor: same-page');
+    expect(projectCalls).toBe(0);
+  });
+
+  test('matches legacy sha256 project IDs', async () => {
+    const removed = [];
+    await cascadeDeleteProject('project-1', {
+      listSandboxes: async () => ({
+        sandboxes: [
+          { sandboxId: 'legacy-direct', projectId: 'sha256:project-1' },
+          { sandboxId: 'legacy-tag', projectId: '', tags: [{ name: 'project', value: 'sha256:project-1' }] },
+        ],
+        nextCursor: '',
+      }),
+      removeSandbox: async (request) => {
+        removed.push(request.sandboxId);
+        return { sandboxId: request.sandboxId, removed: true };
+      },
+      removeProject: async () => ({}),
+    });
+    expect(removed).toEqual(['legacy-direct', 'legacy-tag']);
   });
 });
 

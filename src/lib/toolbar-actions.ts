@@ -31,6 +31,8 @@ import {
   type SetSchedulerEnabledResponse,
   ListSandboxesRequest,
   type ListSandboxesResponse,
+  RemoveSandboxRequest,
+  type RemoveSandboxResponse,
   StopSandboxRequest,
 } from '../gen/agentcompose/v2/agentcompose_pb';
 import { yamlToSpec } from './yaml';
@@ -295,6 +297,11 @@ export interface DeleteProjectClient {
   removeProject(request: RemoveProjectRequest): Promise<RemoveProjectResponse | unknown>;
 }
 
+export interface CascadeDeleteProjectClient extends DeleteProjectClient {
+  listSandboxes(request: ListSandboxesRequest): Promise<ListSandboxesResponse>;
+  removeSandbox(request: RemoveSandboxRequest): Promise<RemoveSandboxResponse>;
+}
+
 interface ProjectNameEntry {
   summary: {
     projectId: string;
@@ -476,6 +483,44 @@ export async function deleteProject(
     removeHistory: false,
     stopRunningSandboxes: options.stopRunningSessions ?? true,
   }));
+}
+
+function sandboxBelongsToProjectForDeletion(
+  sandbox: { projectId?: string; tags?: Array<{ name: string; value: string }> },
+  projectId: string,
+): boolean {
+  if (isSameProjectId(sandbox.projectId ?? '', projectId)) return true;
+  const tag = (sandbox.tags ?? []).find((item) => item.name === 'project');
+  return !!tag && isSameProjectId(tag.value, projectId);
+}
+
+export async function cascadeDeleteProject(projectId: string, client: CascadeDeleteProjectClient) {
+  const related: string[] = [];
+  const seen = new Set<string>();
+  let cursor = '';
+  while (true) {
+    const response = await client.listSandboxes(new ListSandboxesRequest({ limit: 500, cursor }));
+    for (const sandbox of response.sandboxes ?? []) {
+      if (!sandboxBelongsToProjectForDeletion(sandbox, projectId)) continue;
+      if (!sandbox.sandboxId) throw new Error('关联 Sandbox 缺少 ID，项目未删除');
+      related.push(sandbox.sandboxId);
+    }
+    const next = response.nextCursor?.trim() ?? '';
+    if (!next) break;
+    if (seen.has(next)) throw new Error(`ListSandboxes returned repeated cursor: ${next}`);
+    seen.add(next);
+    cursor = next;
+  }
+  for (const sandboxId of related) {
+    const response = await client.removeSandbox(new RemoveSandboxRequest({ sandboxId, force: true }));
+    if (!response.removed) throw new Error(`Sandbox ${sandboxId} 未能删除，项目未删除`);
+  }
+  await client.removeProject(new RemoveProjectRequest({
+    project: new ProjectRef({ projectId }),
+    removeHistory: true,
+    stopRunningSandboxes: true,
+  }));
+  return { removedSandboxes: related.length };
 }
 
 export async function stopProjectRuns(options: {
