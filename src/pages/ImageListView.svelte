@@ -7,6 +7,7 @@
     InspectImageRequest,
     ListImagesRequest,
     type Image,
+    type ImagePlatform,
     type InspectImageResponse,
     type ImageStoreStatus,
   } from '../gen/agentcompose/v2/agentcompose_pb';
@@ -34,6 +35,7 @@
   let inspectingKey = $state('');
   let inspectError = $state('');
   let inspected: InspectImageResponse | undefined = $state();
+  let inspectedPlatforms: Record<string, ImagePlatform> = $state({});
   let showPull = $state(false);
   let removeTargets: Image[] = $state([]);
 
@@ -128,7 +130,10 @@
       const response = await imageService.inspectImage(new InspectImageRequest({
         imageRef: imageDisplayRef(image), store: image.store, includeCacheStatus: true,
       }));
-      if (expandedKey === key) inspected = response;
+      if (expandedKey === key) {
+        inspected = response;
+        if (response.image?.platform) inspectedPlatforms[key] = response.image.platform;
+      }
     } catch (cause: any) {
       if (expandedKey === key) inspectError = cause?.message || '检查镜像失败';
     } finally {
@@ -190,7 +195,7 @@
             <span><b class="type-pill" class:intermediate={image.dangling}>{image.dangling ? '中间层' : '成品镜像'}</b></span>
             <span>{imageStoreLabel(image.store)}</span>
             <span class:error-text={imageAvailabilityLabel(image.availabilityStatus) === '错误'}>{imageAvailabilityLabel(image.availabilityStatus)}</span>
-            <span>{formatImagePlatform(image.platform)}</span><span>{formatImageBytes(image.sizeBytes)}</span><span>{formatCreated(image.createdAt)}</span>
+            <span>{formatImagePlatform(inspectedPlatforms[key] ?? image.platform)}</span><span>{formatImageBytes(image.sizeBytes)}</span><span>{formatCreated(image.createdAt)}</span>
           </button>
         </div>
         {#if expandedKey === key}

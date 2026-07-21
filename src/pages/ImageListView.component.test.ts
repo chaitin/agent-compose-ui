@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { Image, ImageStoreKind, InspectImageResponse } from '../gen/agentcompose/v2/agentcompose_pb';
+import { Image, ImagePlatform, ImageStoreKind, InspectImageResponse } from '../gen/agentcompose/v2/agentcompose_pb';
 import ImageListView from './ImageListView.svelte';
 
 const mocks = vi.hoisted(() => ({ listImages: vi.fn(), inspectImage: vi.fn(), addToast: vi.fn() }));
@@ -19,7 +19,7 @@ beforeEach(() => {
     .mockResolvedValueOnce({ images: [finalImage, intermediateImage], hasMore: true, nextOffset: 2 })
     .mockResolvedValueOnce({ images: [appendedImage], hasMore: false, nextOffset: 3 });
   mocks.inspectImage.mockResolvedValue(new InspectImageResponse({
-    image: new Image({ ...finalImage, containerCount: 2n, labels: { purpose: 'test' } }),
+    image: new Image({ ...finalImage, platform: new ImagePlatform({ os: 'linux', architecture: 'amd64' }), containerCount: 2n, labels: { purpose: 'test' } }),
     storeStatus: { endpoint: '/var/run/docker.sock' },
   }));
 });
@@ -57,12 +57,14 @@ test('labels image types and expands inspected details directly below the select
   expect(await screen.findByText('中间层')).toBeInTheDocument();
   expect(screen.getByText('成品镜像')).toBeInTheDocument();
   const trigger = screen.getByRole('button', { name: '展开镜像 final:dev' });
+  expect(trigger.querySelectorAll(':scope > span')[4]).toHaveTextContent('后端未提供');
   await fireEvent.click(trigger);
 
   const detail = await screen.findByTestId('image-detail-final:dev');
   expect(detail.previousElementSibling).toContainElement(screen.getByRole('button', { name: '收起镜像 final:dev' }));
   expect(within(detail).getByText('容器数')).toBeInTheDocument();
   expect(within(detail).getByText('2')).toBeInTheDocument();
+  expect(await within(trigger).findByText('linux/amd64')).toBeInTheDocument();
   expect(detail.querySelector('.inspect-size')).toBeInTheDocument();
   expect(detail.querySelector('.inspect-size')).not.toBeVisible();
 
