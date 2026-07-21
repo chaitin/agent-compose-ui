@@ -7,7 +7,6 @@
     InspectImageRequest,
     ListImagesRequest,
     type Image,
-    type ImagePlatform,
     type InspectImageResponse,
     type ImageStoreStatus,
   } from '../gen/agentcompose/v2/agentcompose_pb';
@@ -35,7 +34,6 @@
   let inspectingKey = $state('');
   let inspectError = $state('');
   let inspected: InspectImageResponse | undefined = $state();
-  let inspectedPlatforms: Record<string, ImagePlatform> = $state({});
   let showPull = $state(false);
   let removeTargets: Image[] = $state([]);
 
@@ -132,7 +130,6 @@
       }));
       if (expandedKey === key) {
         inspected = response;
-        if (response.image?.platform) inspectedPlatforms[key] = response.image.platform;
       }
     } catch (cause: any) {
       if (expandedKey === key) inspectError = cause?.message || '检查镜像失败';
@@ -183,7 +180,7 @@
     <div class="table-shell"><div class="table">
       <div class="row head">
         <span class="select-cell"><input type="checkbox" aria-label="选择当前已加载镜像" checked={allLoadedSelected} indeterminate={someLoadedSelected && !allLoadedSelected} onchange={toggleAllLoaded} /></span>
-        <span>镜像引用 / ID</span><span>类型</span><span>存储</span><span>状态</span><span>平台</span><span>大小</span><span>创建时间</span>
+        <span>镜像引用 / ID</span><span>类型</span><span>存储</span><span>状态</span><span>大小</span><span>创建时间</span>
       </div>
       {#each images as image (imageSelectionKey(image))}
         {@const ref = imageDisplayRef(image)}
@@ -195,7 +192,7 @@
             <span><b class="type-pill" class:intermediate={image.dangling}>{image.dangling ? '中间层' : '成品镜像'}</b></span>
             <span>{imageStoreLabel(image.store)}</span>
             <span class:error-text={imageAvailabilityLabel(image.availabilityStatus) === '错误'}>{imageAvailabilityLabel(image.availabilityStatus)}</span>
-            <span>{formatImagePlatform(inspectedPlatforms[key] ?? image.platform)}</span><span>{formatImageBytes(image.sizeBytes)}</span><span>{formatCreated(image.createdAt)}</span>
+            <span>{formatImageBytes(image.sizeBytes)}</span><span>{formatCreated(image.createdAt)}</span>
           </button>
         </div>
         {#if expandedKey === key}
@@ -224,8 +221,8 @@
   header{display:flex;align-items:end;justify-content:space-between;border-bottom:1px solid var(--border-color);padding-bottom:14px}.scope{color:var(--accent-blue);font:var(--font-size-xs) var(--font-mono);letter-spacing:.04em}h1{margin:5px 0 0;color:var(--text-primary);font-size:var(--font-size-3xl)}p{margin:5px 0 0;color:var(--text-muted);font-size:var(--font-size-sm)}
   button,select,input{border:1px solid var(--border-color);border-radius:4px;background:var(--bg-tertiary);color:var(--text-secondary);padding:6px 8px;font-size:var(--font-size-sm)}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent-blue);outline-offset:2px}.header-actions{display:flex;gap:7px}.primary{background:var(--accent-blue);color:white}.filters{display:flex;align-items:center;gap:8px;padding:12px 0}.filters>input{min-width:260px}.filters label{display:flex;align-items:center;gap:5px;font-size:var(--font-size-xs)}.filters label input,.select-cell input{accent-color:var(--accent-blue)}.filter-spacer{flex:1}.selection-count{color:var(--text-muted);font:var(--font-size-xs) var(--font-mono)}.bulk-danger,.danger{color:var(--accent-red);border-color:rgba(248,81,73,.55);background:rgba(248,81,73,.06)}
   .notice,.state{border:1px solid var(--border-color);padding:12px;font-size:var(--font-size-sm)}.state{text-align:center;padding:36px}.state button{margin-left:8px}.error{color:var(--accent-red)}
-  .table-shell{overflow-x:auto;border:1px solid var(--border-color);border-radius:6px}.table{min-width:980px}.row{display:grid;grid-template-columns:34px minmax(230px,2fr) 92px .8fr .65fr .8fr .65fr 1fr;gap:10px;align-items:center}.head{padding:8px 10px;background:var(--bg-tertiary);color:var(--text-muted);font-size:var(--font-size-xs);border-bottom:1px solid var(--border-color)}.select-cell{display:grid;place-items:center}.select-cell input{width:14px;height:14px;margin:0;padding:0}
-  .image-row{display:grid;grid-template-columns:34px 1fr;align-items:stretch;padding-left:10px;border-bottom:1px solid var(--border-color);background:transparent}.image-row.expanded{background:rgba(88,166,255,.055);box-shadow:inset 2px 0 var(--accent-blue)}.row-trigger{display:grid;grid-template-columns:minmax(230px,2fr) 92px .8fr .65fr .8fr .65fr 1fr;gap:10px;align-items:center;width:100%;padding:9px 10px;border:0;border-radius:0;background:transparent;text-align:left}.row-trigger:hover{background:var(--bg-secondary)}.ref{min-width:0}.ref strong,.ref small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ref strong{color:var(--text-primary);font:var(--font-size-sm) var(--font-mono)}.ref small{margin-top:3px;color:var(--text-muted);font:var(--font-size-xs) var(--font-mono)}.error-text{color:var(--accent-red)}
+  .table-shell{overflow-x:auto;border:1px solid var(--border-color);border-radius:6px}.table{min-width:900px}.row{display:grid;grid-template-columns:34px minmax(230px,2fr) 92px .8fr .65fr .65fr 1fr;gap:10px;align-items:center}.head{padding:8px 10px;background:var(--bg-tertiary);color:var(--text-muted);font-size:var(--font-size-xs);border-bottom:1px solid var(--border-color)}.select-cell{display:grid;place-items:center}.select-cell input{width:14px;height:14px;margin:0;padding:0}
+  .image-row{display:grid;grid-template-columns:34px 1fr;align-items:stretch;padding-left:10px;border-bottom:1px solid var(--border-color);background:transparent}.image-row.expanded{background:rgba(88,166,255,.055);box-shadow:inset 2px 0 var(--accent-blue)}.row-trigger{display:grid;grid-template-columns:minmax(230px,2fr) 92px .8fr .65fr .65fr 1fr;gap:10px;align-items:center;width:100%;padding:9px 10px;border:0;border-radius:0;background:transparent;text-align:left}.row-trigger:hover{background:var(--bg-secondary)}.ref{min-width:0}.ref strong,.ref small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ref strong{color:var(--text-primary);font:var(--font-size-sm) var(--font-mono)}.ref small{margin-top:3px;color:var(--text-muted);font:var(--font-size-xs) var(--font-mono)}.error-text{color:var(--accent-red)}
   .type-pill{display:inline-block;padding:2px 7px;border:1px solid rgba(63,185,80,.4);border-radius:10px;color:var(--accent-green);background:rgba(63,185,80,.08);font-size:var(--font-size-xs);font-weight:600}.type-pill.intermediate{color:var(--accent-yellow);border-color:rgba(210,153,34,.45);background:rgba(210,153,34,.08)}
   .detail-row{position:relative;padding:16px 18px 17px 54px;border-bottom:1px solid var(--border-color);background:linear-gradient(90deg,rgba(88,166,255,.07),transparent 42%),#0b0f14}.detail-row::before{content:'';position:absolute;left:26px;top:0;bottom:0;width:1px;background:rgba(88,166,255,.35)}.detail-title{display:flex;justify-content:space-between;align-items:start;margin-bottom:12px}.detail-title h2{margin:3px 0 0;color:var(--text-primary);font:var(--font-size-md) var(--font-mono)}.detail-state{padding:12px;color:var(--text-muted);font-size:var(--font-size-sm)}.detail-state.error{color:var(--accent-red)}dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0}dl>div{min-width:0;padding:9px 10px;border:1px solid rgba(48,54,61,.75);background:rgba(13,17,23,.55)}dl>.inspect-size{display:none}dt{margin-bottom:4px;color:var(--text-muted);font-size:var(--font-size-xs);text-transform:uppercase}dd{margin:0;overflow-wrap:anywhere;color:var(--text-secondary);font:var(--font-size-xs) var(--font-mono)}.labels{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:10px;font-size:var(--font-size-xs)}.labels strong{margin-right:4px;color:var(--text-muted)}.labels code{padding:3px 6px;background:var(--bg-tertiary);color:var(--text-secondary)}.labels span{color:var(--text-muted)}.more{display:block;margin:10px auto}
   @media(max-width:720px){.root{padding:14px 12px}.filters{flex-wrap:wrap}.filters>input{min-width:100%}.filter-spacer{display:none}dl{grid-template-columns:1fr}.detail-row{padding-left:42px}}

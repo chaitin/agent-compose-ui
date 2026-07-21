@@ -56,15 +56,16 @@ test('labels image types and expands inspected details directly below the select
   await fireEvent.click(screen.getByRole('checkbox', { name: '显示中间层' }));
   expect(await screen.findByText('中间层')).toBeInTheDocument();
   expect(screen.getByText('成品镜像')).toBeInTheDocument();
+  expect(screen.queryByText('平台')).toBeNull();
   const trigger = screen.getByRole('button', { name: '展开镜像 final:dev' });
-  expect(trigger.querySelectorAll(':scope > span')[4]).toHaveTextContent('后端未提供');
   await fireEvent.click(trigger);
 
   const detail = await screen.findByTestId('image-detail-final:dev');
   expect(detail.previousElementSibling).toContainElement(screen.getByRole('button', { name: '收起镜像 final:dev' }));
   expect(within(detail).getByText('容器数')).toBeInTheDocument();
   expect(within(detail).getByText('2')).toBeInTheDocument();
-  expect(await within(trigger).findByText('linux/amd64')).toBeInTheDocument();
+  expect(within(detail).getByText('平台')).toBeInTheDocument();
+  expect(within(detail).getByText('linux/amd64')).toBeInTheDocument();
   expect(detail.querySelector('.inspect-size')).toBeInTheDocument();
   expect(detail.querySelector('.inspect-size')).not.toBeVisible();
 
