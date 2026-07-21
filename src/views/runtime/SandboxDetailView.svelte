@@ -214,6 +214,9 @@
     const value = new URLSearchParams(window.location.search).get('sandboxTab');
     return sandboxTabs.includes(value as SandboxTab) ? value as SandboxTab : 'details';
   }
+  function sandboxPathFromUrl() {
+    return new URLSearchParams(window.location.search).get('sandboxPath') || '';
+  }
   function syncTabFromUrl() { activeTab = tabFromUrl(); }
   function selectTab(tab: SandboxTab) {
     activeTab = tab;
@@ -422,7 +425,7 @@
           </div>
         {:else}
           <div id="sandbox-panel-files" class="tab-panel tool-panel" role="tabpanel" aria-label="Files" aria-labelledby="sandbox-tab-files">
-            {#if lifecycle() === 'running'}{#key `${targetProjectId}:${snapshot.sandbox.sandboxId}:files`}<FileBrowser sandboxId={snapshot.sandbox.sandboxId} />{/key}
+            {#if lifecycle() === 'running'}{#key `${targetProjectId}:${snapshot.sandbox.sandboxId}:files:${sandboxPathFromUrl()}`}<FileBrowser sandboxId={snapshot.sandbox.sandboxId} initialFilePath={sandboxPathFromUrl()} />{/key}
             {:else}<div class="notice">Sandbox 未运行，Files 不可用。</div>{/if}
           </div>
         {/if}

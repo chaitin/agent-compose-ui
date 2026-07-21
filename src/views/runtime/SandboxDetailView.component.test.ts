@@ -238,6 +238,29 @@ test('does not expose Jupyter or mount live tools for a stopped sandbox', async 
   expect(screen.queryByLabelText('Sandbox command terminal')).toBeNull();
 });
 
+test('passes sandboxPath from the URL to the running Files browser', async () => {
+  history.replaceState(null, '', '/?sandboxTab=files&sandboxPath=%2Fworkspace%2F2026-07-21%2Freport.md#/project/project-1/sandbox/sandbox-1');
+  render(SandboxDetailView);
+
+  await screen.findByRole('tabpanel', { name: 'Files' });
+  await waitFor(() => expect(mocks.execService.execStream).toHaveBeenCalled());
+  expect(mocks.execService.execStream.mock.calls[0][0]).toMatchObject({
+    command: { command: '/usr/bin/find', args: ['/workspace/2026-07-21', '-mindepth', '1', '-maxdepth', '1', '-printf', '%y\t%f\n'] },
+  });
+});
+
+test('keeps Files unavailable without resuming a stopped sandbox with sandboxPath', async () => {
+  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: new Sandbox({
+    sandboxId: 'sandbox-1', projectId: 'project-1', status: 'STOPPED', title: 'Stopped sandbox',
+  }) });
+  history.replaceState(null, '', '/?sandboxTab=files&sandboxPath=%2Fworkspace%2F2026-07-21%2Freport.md#/project/project-1/sandbox/sandbox-1');
+  render(SandboxDetailView);
+
+  expect(await screen.findByText('Sandbox 未运行，Files 不可用。')).toBeTruthy();
+  expect(mocks.sandboxService.resumeSandbox).not.toHaveBeenCalled();
+  expect(mocks.execService.execStream).not.toHaveBeenCalled();
+});
+
 test('restores the selected tab on browser history navigation', async () => {
   render(SandboxDetailView);
   await screen.findByText(/agent response/);

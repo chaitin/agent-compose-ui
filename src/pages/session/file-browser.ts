@@ -21,6 +21,16 @@ export interface WritableFilePayload {
   remainingBytes: number;
 }
 
+export function resolveWorkspaceFileTarget(value: string) {
+  if (!value.startsWith('/workspace/') || value.endsWith('/') || value.includes('\0')) return null;
+  const segments = value.split('/');
+  if (segments.some(segment => segment === '.' || segment === '..')) return null;
+  const fileName = segments.at(-1) ?? '';
+  if (!fileName) return null;
+  const directory = segments.slice(0, -1).join('/') || '/';
+  return { directory, fileName, fullPath: value };
+}
+
 export function writableFileBytes(content: string): number {
   return new TextEncoder().encode(content).length;
 }

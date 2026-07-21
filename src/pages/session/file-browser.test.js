@@ -11,8 +11,22 @@ import {
   isAbortError,
   parseDirectoryListing,
   prepareWritableFile,
+  resolveWorkspaceFileTarget,
   writeBoundedFile,
 } from './file-browser';
+
+test('resolves only absolute files below workspace', () => {
+  expect(resolveWorkspaceFileTarget('/workspace/2026-07-21/report.md')).toEqual({
+    directory: '/workspace/2026-07-21',
+    fileName: 'report.md',
+    fullPath: '/workspace/2026-07-21/report.md',
+  });
+  expect(resolveWorkspaceFileTarget('/workspace/report with space.md')?.fileName).toBe('report with space.md');
+  expect(resolveWorkspaceFileTarget('/etc/passwd')).toBeNull();
+  expect(resolveWorkspaceFileTarget('/workspace/../etc/passwd')).toBeNull();
+  expect(resolveWorkspaceFileTarget('/workspace')).toBeNull();
+  expect(resolveWorkspaceFileTarget('/workspace/folder/')).toBeNull();
+});
 
 describe('file browser output limits', () => {
   test('caps accumulated output even when a stream exceeds its declared backend limit', () => {
