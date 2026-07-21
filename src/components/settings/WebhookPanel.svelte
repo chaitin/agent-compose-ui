@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { webhookStore } from '../../lib/webhook/store.svelte';
+  import { webhookApi, WebhookApiError } from '../../lib/webhook/api';
   import WebhookSourceTable from './WebhookSourceTable.svelte';
   import WebhookRegisterModal from './WebhookRegisterModal.svelte';
   import type { TestState } from '../../lib/webhook/types';
@@ -9,6 +10,8 @@
   let registerOpen = $state(false);
   let deleteTarget = $state<{ id: string; name: string; topic: string } | null>(null);
   let togglingId = $state<string | null>(null);
+
+  const testTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   function sessionTokenIds(): Set<string> {
     return new Set(webhookStore.sessionTokens.keys());
@@ -54,6 +57,46 @@
       deleteTarget = null;
     }
   }
+
+  async function handleTest(id: string): Promise<void> {
+    const source = webhookStore.sources.find(s => s.id === id);
+    if (!source) return;
+    const token = webhookStore.sessionTokens.get(id);
+    if (!token || !source.enabled) return;
+
+    const existingTimer = testTimers.get(id);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      testTimers.delete(id);
+    }
+
+    testStates.set(id, { phase: 'sending', at: Date.now() });
+    testStates = new Map(testStates);
+
+    const topic = source.topic_prefix.replace(/\.+$/, '');
+    try {
+      const result = await webhookApi.publishEvent(topic, token, { test: true, source: source.name, ts: Date.now() });
+      testStates.set(id, {
+        phase: 'success',
+        status: 202,
+        eventId: result.event_id,
+        sequence: result.sequence,
+        at: Date.now(),
+      });
+    } catch (error) {
+      const status = error instanceof WebhookApiError ? error.status : 0;
+      const message = error instanceof WebhookApiError ? error.message : '网络错误';
+      testStates.set(id, { phase: 'error', status, message, at: Date.now() });
+    }
+    testStates = new Map(testStates);
+
+    const timer = setTimeout(() => {
+      testStates.delete(id);
+      testStates = new Map(testStates);
+      testTimers.delete(id);
+    }, 30_000);
+    testTimers.set(id, timer);
+  }
 </script>
 
 <div class="webhook-panel">
@@ -88,7 +131,7 @@
         ontoggle={handleToggle}
         ondelete={handleDeleteRequest}
         oncopycurl={(id) => { /* Task 7 */ }}
-        ontest={(id) => { /* Task 6 */ }}
+        ontest={handleTest}
         onregen={(id) => { /* Task 8 */ }}
       />
     {/if}

@@ -80,12 +80,49 @@
             <td>
               <div class="row-actions">
                 <button type="button" onclick={(e) => { e.stopPropagation(); oncopycurl(source.id); }}>📋 curl</button>
-                <button type="button" disabled>⚡ 测试</button>
+                <button type="button"
+                  disabled={!sessionTokenIds.has(source.id) || !source.enabled || testStates.get(source.id)?.phase === 'sending'}
+                  title={!sessionTokenIds.has(source.id) ? '需重新生成 token 才能测试' : !source.enabled ? '源已停用，请先启用' : ''}
+                  onclick={(e) => { e.stopPropagation(); ontest(source.id); }}>⚡ 测试</button>
                 <button type="button" onclick={(e) => { e.stopPropagation(); onregen(source.id); }}>↻ 重生成</button>
                 <button type="button" class="danger" onclick={(e) => { e.stopPropagation(); ondelete(source.id); }}>✕</button>
               </div>
             </td>
           </tr>
+          {#if testStates.get(source.id)}
+            {@const testState = testStates.get(source.id)!}
+            <tr class="test-status-row">
+              <td colspan="5">
+                <div class="test-status-bar" class:success={testState.phase === 'success'} class:error={testState.phase === 'error'} class:sending={testState.phase === 'sending'}>
+                  <div class="line">
+                    <span class="prefix">&gt;</span>
+                    <span class="method">POST</span>
+                    <span class="path">/api/webhooks/{source.topic_prefix.replace(/\.+$/, '')}</span>
+                  </div>
+                  {#if testState.phase === 'sending'}
+                    <div class="line">
+                      <span class="prefix">&lt;</span>
+                      <span class="status"><span class="spinner"></span> 发送中...</span>
+                    </div>
+                  {:else if testState.phase === 'success'}
+                    <div class="line">
+                      <span class="prefix">&lt;</span>
+                      <span class="status">{testState.status} Accepted</span>
+                      <span class="sep">·</span>
+                      <span class="event-id">{testState.eventId}</span>
+                      <span class="sep">·</span>
+                      <span class="seq">sequence {testState.sequence}</span>
+                    </div>
+                  {:else}
+                    <div class="line">
+                      <span class="prefix">&lt;</span>
+                      <span class="status">{testState.status ?? ''} {testState.message ?? '错误'}</span>
+                    </div>
+                  {/if}
+                </div>
+              </td>
+            </tr>
+          {/if}
         {/each}
       {/if}
     </tbody>
@@ -153,4 +190,31 @@
   .empty-state .icon { font-size: 28px; opacity: 0.4; margin-bottom: 8px; }
   .empty-state .title { font-size: var(--font-size-md); color: var(--text-secondary); margin-bottom: 4px; }
   .empty-state .hint { font-size: var(--font-size-xs); }
+
+  .test-status-row > td { padding: 0 16px 8px !important; border-bottom: 1px solid var(--border-color) !important; }
+  .test-status-bar {
+    padding: 8px 12px; background: var(--bg-primary); border-radius: 0 0 4px 4px;
+    font-family: var(--font-mono); font-size: 11px; line-height: 1.7;
+    display: flex; flex-direction: column; gap: 1px;
+    border-left: 2px solid transparent;
+  }
+  .test-status-bar.success { border-left-color: var(--accent-green); }
+  .test-status-bar.error { border-left-color: var(--accent-red); }
+  .test-status-bar.sending { border-left-color: var(--accent-yellow); }
+  .test-status-bar .line { display: flex; align-items: center; gap: 6px; }
+  .test-status-bar .prefix { color: var(--text-muted); width: 8px; }
+  .test-status-bar .method { color: var(--accent-purple); font-weight: 600; }
+  .test-status-bar .path { color: var(--text-secondary); }
+  .test-status-bar .status { font-weight: 600; }
+  .test-status-bar.success .status { color: var(--accent-green); }
+  .test-status-bar.error .status { color: var(--accent-red); }
+  .test-status-bar.sending .status { color: var(--accent-yellow); display: flex; align-items: center; gap: 6px; }
+  .test-status-bar .sep { color: var(--text-muted); }
+  .test-status-bar .event-id, .test-status-bar .seq { color: var(--text-secondary); }
+  .spinner {
+    display: inline-block; width: 8px; height: 8px;
+    border: 1.5px solid var(--accent-yellow); border-top-color: transparent;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>

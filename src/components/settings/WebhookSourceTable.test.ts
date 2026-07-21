@@ -78,3 +78,63 @@ test('clicking toggle calls ontoggle with source id', async () => {
   await fireEvent.click(toggle);
   expect(ontoggle).toHaveBeenCalledWith('a');
 });
+
+test('renders test status bar when testStates has entry for source', () => {
+  const testStates = new Map<string, import('../../lib/webhook/types').TestState>([
+    ['a', { phase: 'success', status: 202, eventId: 'evt_abc', sequence: 5, at: Date.now() }],
+  ]);
+  render(WebhookSourceTable, {
+    props: {
+      sources: [baseSource],
+      sessionTokenIds: new Set<string>(['a']),
+      selectedSourceId: 'a',
+      testStates,
+      ...noopCallbacks,
+    },
+  });
+  expect(screen.getByText('202 Accepted')).toBeInTheDocument();
+  expect(screen.getByText('evt_abc')).toBeInTheDocument();
+});
+
+test('test button is enabled when session has token and source is enabled', () => {
+  render(WebhookSourceTable, {
+    props: {
+      sources: [baseSource],
+      sessionTokenIds: new Set<string>(['a']),
+      selectedSourceId: 'a',
+      testStates: new Map(),
+      ...noopCallbacks,
+    },
+  });
+  expect(screen.getByRole('button', { name: /⚡ 测试/ })).not.toBeDisabled();
+});
+
+test('test button is disabled when session has no token', () => {
+  render(WebhookSourceTable, {
+    props: {
+      sources: [baseSource],
+      sessionTokenIds: new Set<string>(),
+      selectedSourceId: null,
+      testStates: new Map(),
+      ...noopCallbacks,
+    },
+  });
+  const btn = screen.getByRole('button', { name: /⚡ 测试/ });
+  expect(btn).toBeDisabled();
+  expect(btn.getAttribute('title')).toContain('需重新生成 token');
+});
+
+test('test button is disabled when source is disabled', () => {
+  render(WebhookSourceTable, {
+    props: {
+      sources: [{ ...baseSource, enabled: false }],
+      sessionTokenIds: new Set<string>(['a']),
+      selectedSourceId: null,
+      testStates: new Map(),
+      ...noopCallbacks,
+    },
+  });
+  const btn = screen.getByRole('button', { name: /⚡ 测试/ });
+  expect(btn).toBeDisabled();
+  expect(btn.getAttribute('title')).toContain('源已停用');
+});
