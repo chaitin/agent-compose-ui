@@ -2,9 +2,11 @@
   import { onMount } from 'svelte';
   import { webhookStore } from '../../lib/webhook/store.svelte';
   import WebhookSourceTable from './WebhookSourceTable.svelte';
+  import WebhookRegisterModal from './WebhookRegisterModal.svelte';
   import type { TestState } from '../../lib/webhook/types';
 
   let testStates = $state<Map<string, TestState>>(new Map());
+  let registerOpen = $state(false);
 
   function sessionTokenIds(): Set<string> {
     return new Set(webhookStore.sessionTokens.keys());
@@ -28,7 +30,7 @@
         <span class="desc">{webhookStore.sources.length} 个源 · {webhookStore.sources.filter(s => s.enabled).length} 启用</span>
       </div>
       <div class="spacer"></div>
-      <button type="button" class="btn primary" disabled>+ 注册源</button>
+      <button type="button" class="btn primary" onclick={() => registerOpen = true}>+ 注册源</button>
     </header>
     {#if webhookStore.loading}
       <div class="loading">加载中...</div>
@@ -47,6 +49,8 @@
     {/if}
   </section>
 </div>
+
+<WebhookRegisterModal open={registerOpen} onclose={() => registerOpen = false} />
 
 <style>
   .webhook-panel { display: flex; flex-direction: column; gap: 16px; }
