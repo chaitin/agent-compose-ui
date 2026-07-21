@@ -2,6 +2,7 @@
   import CapabilityGatewayPanel from '../components/settings/CapabilityGatewayPanel.svelte';
   import CapabilityCatalogPanel from '../components/settings/CapabilityCatalogPanel.svelte';
   import GlobalEnvPanel from '../components/settings/GlobalEnvPanel.svelte';
+  import WebhookPanel from '../components/settings/WebhookPanel.svelte';
   import ImageListView from './ImageListView.svelte';
   import { store, type Page } from '../lib/stores.svelte';
 
@@ -9,11 +10,14 @@
   let catalogRefreshRevision = $state(0);
   let activeModule = $derived(store.currentPage === 'environment'
     ? 'environment'
-    : store.currentPage === 'settings' ? 'capabilities' : 'images');
+    : store.currentPage === 'settings' ? 'capabilities'
+    : store.currentPage === 'webhooks' ? 'webhooks'
+    : 'images');
 
-  const modules: Array<{ id: 'images' | 'environment' | 'capabilities'; label: string; page: Page }> = [
+  const modules: Array<{ id: 'images' | 'environment' | 'capabilities' | 'webhooks'; label: string; page: Page }> = [
     { id: 'images', label: '镜像', page: 'images' },
     { id: 'environment', label: '环境变量', page: 'environment' },
+    { id: 'webhooks', label: 'Webhooks', page: 'webhooks' },
     { id: 'capabilities', label: '能力服务', page: 'settings' },
   ];
 
@@ -70,6 +74,11 @@
           <div class="module-heading"><p>管理 YAML 应用前解析的 daemon 全局变量</p></div>
           <div class="environment-panel"><GlobalEnvPanel /></div>
         </div>
+      {:else if activeModule === 'webhooks'}
+        <div id="system-panel-webhooks" role="tabpanel" aria-labelledby="system-tab-webhooks" class="module-content webhook-module">
+          <div class="module-heading"><p>注册外部事件入口，绑定 topic 前缀和访问 token</p></div>
+          <div class="webhook-panel-wrapper"><WebhookPanel /></div>
+        </div>
       {:else}
         <div id="system-panel-capabilities" role="tabpanel" aria-labelledby="system-tab-capabilities" class="module-content capability-module">
           <div class="module-heading"><p>网关连接决定 daemon 能发现和注入哪些外部能力</p></div>
@@ -94,10 +103,11 @@
   .page-header{display:grid;grid-template-columns:minmax(240px,1fr) auto;align-items:center;gap:24px;min-height:46px;padding:0 clamp(18px,2.5vw,38px);border-bottom:1px solid var(--border-color);box-sizing:border-box}
   .page-header h1{margin:0;font-size:var(--font-size-3xl);line-height:1.1;letter-spacing:-.03em}.daemon-state{display:grid;grid-template-columns:auto auto;align-items:center;gap:2px 7px;color:var(--text-secondary);font-size:var(--font-size-xs)}.daemon-state i{grid-row:1/3;width:7px;height:7px;border-radius:50%;background:var(--accent-green);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent-green) 12%,transparent)}.daemon-state code{color:var(--text-muted);font:var(--font-size-xs) var(--font-mono)}
   .route-tabs{position:relative;display:flex;min-width:0;padding:0 clamp(18px,2.5vw,38px);overflow-x:auto;border-bottom:1px solid var(--border-color);background:var(--bg-secondary);scrollbar-width:thin}.route-tabs::after{content:'ROUTE-BACKED';align-self:center;margin-left:auto;padding-left:30px;color:var(--text-muted);font:var(--font-size-xs) var(--font-mono);letter-spacing:.13em;white-space:nowrap}.route-tabs button{position:relative;display:grid;flex:0 0 auto;align-content:center;min-width:146px;min-height:47px;padding:0 18px;border:0;background:transparent;color:var(--text-secondary);text-align:center}.route-tabs button::after{content:'';position:absolute;right:18px;bottom:-1px;left:18px;height:2px;background:transparent;transform:scaleX(.35);transition:background .14s ease,transform .14s ease}.route-tabs button:hover{background:var(--bg-tertiary);color:var(--text-primary)}.route-tabs button.active{color:var(--text-primary)}.route-tabs button.active::after{background:var(--accent-blue);transform:scaleX(1)}.tab-label{font-size:var(--font-size-md);font-weight:600}
-  .module-stage{min-width:0;overflow:auto}.module-content{min-height:100%;animation:module-in .15s ease-out}.environment-module,.capability-module{padding:26px clamp(18px,2.6vw,38px) 38px}.module-heading{margin-bottom:18px;padding-bottom:15px;border-bottom:1px solid var(--border-color)}.module-heading p{margin:0;color:var(--text-secondary);font-size:var(--font-size-sm)}.image-module :global(.root){height:auto;min-height:100%;overflow:visible;padding:22px clamp(18px,2.6vw,38px) 38px}
+  .module-stage{min-width:0;overflow:auto}.module-content{min-height:100%;animation:module-in .15s ease-out}.environment-module,.capability-module,.webhook-module{padding:26px clamp(18px,2.6vw,38px) 38px}.module-heading{margin-bottom:18px;padding-bottom:15px;border-bottom:1px solid var(--border-color)}.module-heading p{margin:0;color:var(--text-secondary);font-size:var(--font-size-sm)}.image-module :global(.root){height:auto;min-height:100%;overflow:visible;padding:22px clamp(18px,2.6vw,38px) 38px}
   .environment-panel{width:100%}.environment-module :global(.panel){border-radius:7px}
+  .webhook-panel-wrapper{width:100%}.webhook-module :global(.webhook-panel){border-radius:7px}
   .capability-stack{display:grid;gap:16px}.gateway-node,.catalog-node{display:flex;min-width:0}.gateway-node :global(.panel),.catalog-node :global(.panel){width:100%;border-radius:7px}
   @keyframes module-in{from{opacity:0;transform:translateX(5px)}to{opacity:1;transform:none}}
-  @media(max-width:720px){.page-header{min-height:46px;padding:0 13px}.daemon-state{display:none}.route-tabs{position:sticky;top:0;z-index:4;padding:0 8px}.route-tabs::after{display:none}.route-tabs button{min-width:auto;min-height:47px;padding:0 14px;text-align:center}.route-tabs button::after{right:14px;left:14px}.environment-module,.capability-module{padding:18px 12px 30px}}
+  @media(max-width:720px){.page-header{min-height:46px;padding:0 13px}.daemon-state{display:none}.route-tabs{position:sticky;top:0;z-index:4;padding:0 8px}.route-tabs::after{display:none}.route-tabs button{min-width:auto;min-height:47px;padding:0 14px;text-align:center}.route-tabs button::after{right:14px;left:14px}.environment-module,.capability-module,.webhook-module{padding:18px 12px 30px}}
   @media(prefers-reduced-motion:reduce){.module-content{animation:none}}
 </style>
