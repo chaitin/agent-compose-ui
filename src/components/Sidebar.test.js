@@ -12,7 +12,10 @@ test('deletes a project from a separate button without selecting it', () => {
   assert.match(source, /<svg[^>]*class="delete-icon"[\s\S]*<path/);
   assert.doesNotMatch(source, /\? '…' : '×'/);
   assert.match(source, /event\.stopPropagation\(\)/);
-  assert.match(source, /await deleteProject\(projectId, projectService\)/);
+  assert.match(source, /await cascadeDeleteProject\(projectId, cascadeDeleteClient\)/);
+  assert.match(source, /项目定义、运行历史、关联 Sandbox 与脚本目录/);
+  assert.match(source, /Sandbox 清理失败时项目不会被删除/);
+  assert.match(source, /运行历史[\s\S]*removedSandboxes[\s\S]*Sandbox/);
 });
 
 test('confirms deletion with both project name and source path', () => {

@@ -1,8 +1,8 @@
 <script lang="ts">
   import { store } from '../lib/stores.svelte';
-  import { projectService } from '../lib/rpc';
+  import { projectService, sandboxService } from '../lib/rpc';
   import { specToYaml, EMPTY_YAML_TEMPLATE, yamlToSpec } from '../lib/yaml';
-  import { deleteProject } from '../lib/toolbar-actions';
+  import { cascadeDeleteProject } from '../lib/toolbar-actions';
   import {
     ListProjectsRequest,
     GetProjectRequest,
@@ -17,6 +17,12 @@
   import { restoreProjectScripts } from '../lib/scripts/project-lifecycle';
 
   let deletingProjectId = $state('');
+
+  const cascadeDeleteClient = {
+    listSandboxes: sandboxService.listSandboxes.bind(sandboxService),
+    removeSandbox: sandboxService.removeSandbox.bind(sandboxService),
+    removeProject: projectService.removeProject.bind(projectService),
+  };
 
   const PAGE_SIZE = 10;
   let filterText = $state('');
@@ -177,14 +183,15 @@
 
     const sourcePath = project.summary.sourcePath || '未知来源路径';
     const confirmed = window.confirm(
-      `确定删除智能体应用 "${project.summary.name}" 吗？\n\n来源：${sourcePath}\n\n正在运行的会话会停止，Agent 与运行历史将保留，关联脚本目录会被永久删除。`,
+      `确定删除智能体应用 "${project.summary.name}" 吗？\n\n来源：${sourcePath}\n\n此操作会永久删除项目定义、运行历史、关联 Sandbox 与脚本目录。Sandbox 清理失败时项目不会被删除。`,
     );
     if (!confirmed) return;
 
     const projectId = project.summary.projectId;
     deletingProjectId = projectId;
     try {
-      await deleteProject(projectId, projectService);
+      const { removedSandboxes } =
+        await cascadeDeleteProject(projectId, cascadeDeleteClient);
       let scriptCleanupError = '';
       try {
         await scriptApi.deleteProject(projectId);
@@ -204,7 +211,10 @@
       }
       await loadProjects(true);
       if (scriptCleanupError) store.addToast(`智能体应用已删除，但脚本目录清理失败：${scriptCleanupError}`, 'error');
-      else store.addToast(`智能体应用 "${project.summary.name}" 及关联脚本目录已删除`, 'success');
+      else store.addToast(
+        `智能体应用 "${project.summary.name}" 的项目定义、运行历史及 ${removedSandboxes} 个关联 Sandbox 与脚本目录已删除`,
+        'success',
+      );
     } catch (e: any) {
       store.addToast(`删除智能体应用失败: ${e.message}`, 'error');
     } finally {

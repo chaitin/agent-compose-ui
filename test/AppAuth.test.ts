@@ -3,7 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App.svelte';
 import { getAuthStatus, login, requireLogin } from '../src/lib/auth';
 
-const rpcMocks = vi.hoisted(() => ({ listProjects: vi.fn() }));
+const rpcMocks = vi.hoisted(() => ({
+  listProjects: vi.fn(),
+  removeProject: vi.fn(),
+  listSandboxes: vi.fn(),
+  removeSandbox: vi.fn(),
+}));
 
 vi.mock('../src/lib/auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/lib/auth')>();
@@ -11,8 +16,16 @@ vi.mock('../src/lib/auth', async (importOriginal) => {
 });
 
 vi.mock('../src/lib/rpc', () => ({
-  projectService: { listProjects: rpcMocks.listProjects },
-  runService: {}, execService: {}, sandboxService: {}, sessionService: {}, kernelService: {},
+  projectService: {
+    listProjects: rpcMocks.listProjects,
+    removeProject: rpcMocks.removeProject,
+  },
+  runService: {}, execService: {},
+  sandboxService: {
+    listSandboxes: rpcMocks.listSandboxes,
+    removeSandbox: rpcMocks.removeSandbox,
+  },
+  sessionService: {}, kernelService: {},
   agentService: {}, loaderService: {}, dashboardService: {}, configService: {},
 }));
 

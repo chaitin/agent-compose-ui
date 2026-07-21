@@ -14,6 +14,10 @@ const rpcMocks = vi.hoisted(() => ({
     applyProject: vi.fn(),
     validateProject: vi.fn(),
   },
+  sandboxService: {
+    listSandboxes: vi.fn(),
+    removeSandbox: vi.fn(),
+  },
 }));
 const scriptMocks = vi.hoisted(() => ({
   deleteProject: vi.fn(),
@@ -23,7 +27,7 @@ vi.mock('../../src/lib/rpc', () => ({
   projectService: rpcMocks.projectService,
   runService: {},
   execService: {},
-  sandboxService: {},
+  sandboxService: rpcMocks.sandboxService,
   sessionService: {},
   kernelService: {},
   agentService: {},
@@ -56,6 +60,13 @@ beforeEach(() => {
   rpcMocks.projectService.listProjects.mockReset();
   rpcMocks.projectService.removeProject.mockReset();
   rpcMocks.projectService.getProject.mockReset();
+  rpcMocks.sandboxService.listSandboxes.mockReset();
+  rpcMocks.sandboxService.listSandboxes.mockResolvedValue({
+    sandboxes: [],
+    nextCursor: '',
+  });
+  rpcMocks.sandboxService.removeSandbox.mockReset();
+  rpcMocks.sandboxService.removeSandbox.mockResolvedValue({ removed: true });
   scriptMocks.deleteProject.mockReset();
   scriptMocks.deleteProject.mockResolvedValue(undefined);
   store.projects = [];
@@ -167,7 +178,7 @@ describe('Sidebar', () => {
     );
   });
 
-  it('确认删除后调用 removeProject 并刷新列表', async () => {
+  it('确认永久级联删除后调用 Sandbox 与项目删除并刷新列表', async () => {
     rpcMocks.projectService.listProjects.mockResolvedValue({ projects: [makeProject('p1', '项目一')] });
     rpcMocks.projectService.removeProject.mockResolvedValue({});
     render(Sidebar);
@@ -177,8 +188,11 @@ describe('Sidebar', () => {
     const delBtn = document.querySelector('.project-delete') as HTMLButtonElement;
     await fireEvent.click(delBtn);
     await waitFor(() => expect(rpcMocks.projectService.removeProject).toHaveBeenCalledTimes(1));
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Agent 与运行历史将保留'));
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('关联脚本目录会被永久删除'));
+    expect(rpcMocks.sandboxService.listSandboxes).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 500, cursor: '' }),
+    );
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('永久删除项目定义、运行历史、关联 Sandbox 与脚本目录'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Sandbox 清理失败时项目不会被删除'));
     expect(scriptMocks.deleteProject).toHaveBeenCalledWith('p1');
     expect(rpcMocks.projectService.listProjects).toHaveBeenCalledTimes(2);
   });
@@ -212,7 +226,10 @@ describe('Sidebar', () => {
     vi.stubGlobal('confirm', () => true);
     await fireEvent.click(document.querySelector('.project-delete') as HTMLButtonElement);
 
-    await waitFor(() => expect(toast).toHaveBeenCalledWith('智能体应用 "项目一" 及关联脚本目录已删除', 'success'));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith(
+      '智能体应用 "项目一" 的项目定义、运行历史及 0 个关联 Sandbox 与脚本目录已删除',
+      'success',
+    ));
     expect(toast).not.toHaveBeenCalledWith(expect.stringContaining('脚本目录清理失败'), 'error');
   });
 
