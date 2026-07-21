@@ -179,6 +179,18 @@ test('stops a running Sandbox through the direct lifecycle RPC', async () => {
   expect(mocks.runService.startRun).not.toHaveBeenCalled();
 });
 
+test('keeps Stop available while Sandbox stats are pending', async () => {
+  const pendingStats = deferred<{ stats: SandboxStats }>();
+  mocks.sandboxService.getSandboxStats.mockReturnValueOnce(pendingStats.promise);
+  render(SandboxListView);
+  await fireEvent.click(await screen.findByRole('button', { name: 'Stats' }));
+
+  const stopButton = screen.getByRole('button', { name: '停止' });
+  expect(stopButton).not.toBeDisabled();
+  await fireEvent.click(stopButton);
+  expect(mocks.sandboxService.stopSandbox).toHaveBeenCalled();
+});
+
 test('does not stop a running Sandbox when confirmation is canceled', async () => {
   (window.confirm as ReturnType<typeof vi.fn>).mockReturnValue(false);
   render(SandboxListView);

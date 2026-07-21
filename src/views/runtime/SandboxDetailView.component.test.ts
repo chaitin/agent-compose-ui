@@ -420,14 +420,14 @@ test('keeps metadata and sandbox history when structured run events fail', async
 test('uses direct lifecycle RPCs and never creates control runs', async () => {
   const view = render(SandboxDetailView);
   await fireEvent.click(await screen.findByRole('button', { name: '停止' }));
-  expect(mocks.sandboxService.stopSandbox).toHaveBeenCalledWith(expect.objectContaining({ sandboxId: 'sandbox-1' }));
+  expect(mocks.sandboxService.stopSandbox).toHaveBeenCalledWith(expect.objectContaining({ sandboxId: 'sandbox-1' }), expect.anything());
   expect(mocks.runService.startRun).not.toHaveBeenCalled();
 
   view.unmount();
   mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: new Sandbox({ sandboxId: 'sandbox-1', projectId: 'project-1', status: 'STOPPED' }) });
   render(SandboxDetailView);
   await fireEvent.click(await screen.findByRole('button', { name: '恢复' }));
-  expect(mocks.sandboxService.resumeSandbox).toHaveBeenCalledWith(expect.objectContaining({ sandboxId: 'sandbox-1' }));
+  expect(mocks.sandboxService.resumeSandbox).toHaveBeenCalledWith(expect.objectContaining({ sandboxId: 'sandbox-1' }), expect.anything());
   expect(mocks.runService.startRun).not.toHaveBeenCalled();
 });
 
@@ -503,7 +503,7 @@ test('runs Agent in the current sandbox and refreshes associated runs', async ()
   expect(mocks.runService.runAgent).toHaveBeenCalledWith(expect.objectContaining<Partial<RunAgentRequest>>({
     projectId: 'project-1', agentName: 'reviewer', sandboxId: 'sandbox-1', prompt: 'investigate this',
     source: RunSource.MANUAL, cleanupPolicy: RunSandboxCleanupPolicy.KEEP_RUNNING,
-  }));
+  }), expect.anything());
   expect(await screen.findByText('Agent final answer')).toBeTruthy();
   expect(mocks.runService.listRuns).toHaveBeenCalledTimes(2);
   expect(mocks.execService.exec).not.toHaveBeenCalledWith(expect.objectContaining({ command: expect.objectContaining({ command: '/bin/sh' }) }));
@@ -534,9 +534,9 @@ test('keeps JavaScript and Python execution through ExecService', async () => {
   await fireEvent.click(screen.getByRole('button', { name: 'Python' }));
   expect(mocks.execService.exec).toHaveBeenCalledWith(expect.objectContaining({
     target: { case: 'sandboxId', value: 'sandbox-1' }, command: expect.objectContaining({ command: 'python3' }),
-  }));
+  }), expect.anything());
   await fireEvent.click(screen.getByRole('button', { name: 'JavaScript' }));
-  expect(mocks.execService.exec).toHaveBeenCalledWith(expect.objectContaining({ command: expect.objectContaining({ command: 'node' }) }));
+  expect(mocks.execService.exec).toHaveBeenCalledWith(expect.objectContaining({ command: expect.objectContaining({ command: 'node' }) }), expect.anything());
 });
 
 test('disables Agent execution when the sandbox has no associated agent', async () => {
@@ -572,7 +572,7 @@ test('recovers the Agent association from Sandbox runs when direct metadata is e
   await fireEvent.click(agentButton);
   expect(mocks.runService.runAgent).toHaveBeenCalledWith(expect.objectContaining<Partial<RunAgentRequest>>({
     projectId: 'project-1', agentName: 'script-agent', sandboxId: 'sandbox-1', prompt: 'continue this conversation',
-  }));
+  }), expect.anything());
 });
 
 test('shows Agent errors in the quick execution output', async () => {
@@ -584,6 +584,31 @@ test('shows Agent errors in the quick execution output', async () => {
   await fireEvent.click(screen.getByRole('button', { name: 'Agent' }));
 
   expect(await screen.findByText('agent unavailable')).toBeTruthy();
+});
+
+test('keeps Stop available during a pending Agent reply and cancels the reply before stopping', async () => {
+  const pending = deferred<{ run: RunDetail }>();
+  let replySignal: AbortSignal | undefined;
+  mocks.runService.runAgent.mockImplementation((_request, options) => {
+    replySignal = options?.signal;
+    return pending.promise;
+  });
+  render(SandboxDetailView);
+  await screen.findByText(/agent response/);
+  await fireEvent.click(screen.getByRole('tab', { name: '快速执行' }));
+  await fireEvent.input(screen.getByLabelText('执行代码'), { target: { value: 'long reply' } });
+  await fireEvent.click(screen.getByRole('button', { name: 'Agent' }));
+  await screen.findByText('回复中…');
+
+  const stopButton = screen.getByRole('button', { name: '停止' });
+  expect(stopButton).not.toBeDisabled();
+  await fireEvent.click(stopButton);
+
+  expect(replySignal?.aborted).toBe(true);
+  expect(mocks.sandboxService.stopSandbox).toHaveBeenCalledWith(
+    expect.objectContaining({ sandboxId: 'sandbox-1' }),
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
 });
 
 test('ignores an Agent result after navigating to another sandbox', async () => {

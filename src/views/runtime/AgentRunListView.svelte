@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { projectService, runService } from '../../lib/rpc';
+  import { projectService, runService, runtimeProjectService } from '../../lib/rpc';
   import { store } from '../../lib/stores.svelte';
   import RuntimeBreadcrumb from './RuntimeBreadcrumb.svelte';
   import { GetProjectRequest, ListRunsRequest, ListSchedulerEventsRequest, RunSource, RunStatus, type RunSummary, type SchedulerEvent } from '../../gen/agentcompose/v2/agentcompose_pb';
@@ -28,6 +28,7 @@
   let applied = $state({ status: RunStatus.UNSPECIFIED, source: RunSource.UNSPECIFIED, startedFrom: '', startedTo: '', sandboxId: '' });
   let currentTime = $state(Date.now());
   let clock: ReturnType<typeof setInterval> | undefined;
+  let requestController: AbortController | undefined;
   let agentSystemPrompt = $state('');
   let manualRunOpen = $state(false);
 
@@ -38,7 +39,10 @@
     const requestedAgent = agentName;
     const filters = applied;
     const generation = ++requestGeneration;
+    requestController?.abort();
     if (!projectId || !requestedAgent) { projectRuns = []; schedulerEvents = []; executions = []; loading = false; hasMore = false; return; }
+    const controller = new AbortController();
+    requestController = controller;
     loading = true;
     loadingMore = false;
     projectRuns = [];
@@ -55,15 +59,15 @@
           agentName: requestedAgent,
           status: filters.status, source: filters.source,
           ...range, sandboxId: filters.sandboxId.trim(), offset: 0, limit: PAGE_SIZE + 1,
-        }));
+        }), { signal: controller.signal });
         })(),
         (async () => {
-          const project = await projectService.getProject(new GetProjectRequest({ project: { projectId }, includeSpec: true }));
+          const project = await runtimeProjectService.getProject(new GetProjectRequest({ project: { projectId }, includeSpec: true }), { signal: controller.signal, timeoutMs: 30_000 });
           const configuredAgent = project.project?.spec?.agents.find((agent) => agent.name === requestedAgent);
           if (generation === requestGeneration) agentSystemPrompt = configuredAgent?.systemPrompt ?? '';
           const hasScheduler = !!configuredAgent?.scheduler;
           return hasScheduler
-            ? projectService.listSchedulerEvents(new ListSchedulerEventsRequest({ project: { projectId }, agentName: requestedAgent, limit: 500 }))
+            ? projectService.listSchedulerEvents(new ListSchedulerEventsRequest({ project: { projectId }, agentName: requestedAgent, limit: 500 }), { signal: controller.signal })
             : undefined;
         })(),
       ]);
@@ -85,6 +89,10 @@
       hasMore = projectHasMore || Boolean(schedulerCursor);
       if (generation === requestGeneration) loading = false;
     })();
+    return () => {
+      controller.abort();
+      if (requestController === controller) requestController = undefined;
+    };
   });
 
   $effect(() => {
@@ -100,6 +108,9 @@
 
   onDestroy(() => {
     if (clock) clearInterval(clock);
+    requestGeneration++;
+    requestController?.abort();
+    requestController = undefined;
   });
 
   function applyFilters() { requestGeneration++; applied = { status: Number(status), source: Number(source), startedFrom, startedTo, sandboxId }; queryVersion++; }

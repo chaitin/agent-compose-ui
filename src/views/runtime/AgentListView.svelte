@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { projectService, runService } from '../../lib/rpc';
+  import { projectService, runService, runtimeProjectService } from '../../lib/rpc';
   import { store } from '../../lib/stores.svelte';
   import RuntimeBreadcrumb from './RuntimeBreadcrumb.svelte';
   import { GetProjectRequest, GetSchedulerRequest, ListRunsRequest, ListSchedulerEventsRequest, type RunSummary, type SchedulerEvent } from '../../gen/agentcompose/v2/agentcompose_pb';
@@ -23,6 +23,7 @@
 
   let agents: AgentInfo[] = $state([]);
   let loading = $state(true);
+  let loadError = $state('');
   let generation = 0;
 
   function requestIsCurrent(current: number, signal: AbortSignal) {
@@ -37,15 +38,19 @@
     if (!projectId) { agents = []; loading = false; return; }
     (async () => {
       loading = true;
+      loadError = '';
       try {
         const req = new GetProjectRequest({
           project: { projectId },
           includeSpec: true,
         });
-        const resp: any = await projectService.getProject(req, { signal: controller.signal });
+        const resp: any = await runtimeProjectService.getProject(req, { signal: controller.signal, timeoutMs: 30_000 });
         if (!requestIsCurrent(current, controller.signal)) return;
         const projectAgents = resp.project?.agents || [];
         const specAgents = resp.project?.spec?.agents || [];
+        if (projectAgents.length === 0 && specAgents.length > 0) {
+          throw new Error(`项目运行态 Agent 数据异常：配置包含 ${specAgents.length} 个 Agent，但运行态返回 0 个`);
+        }
         const specMap: Record<string, any> = {};
         for (const s of specAgents) specMap[s.name] = s;
 
@@ -69,7 +74,10 @@
           fetchOperationalStats(a, projectId);
         }
       } catch (e: any) {
-        if (requestIsCurrent(current, controller.signal)) store.addToast(e.message || '加载智能体列表失败', 'error');
+        if (requestIsCurrent(current, controller.signal)) {
+          loadError = e.message || '加载智能体列表失败';
+          store.addToast(loadError, 'error');
+        }
       } finally {
         if (requestIsCurrent(current, controller.signal)) loading = false;
       }
@@ -188,6 +196,8 @@
 
   {#if loading}
     <div class="loading">加载中...</div>
+  {:else if loadError}
+    <div class="empty error" role="alert">{loadError}<button type="button" onclick={() => store.triggerRuntimeRefresh()}>重试</button></div>
   {:else if agents.length === 0}
     <div class="empty">暂无智能体。请启用一个项目来查看。</div>
   {:else}
@@ -227,6 +237,8 @@
     text-align: center;
     flex: 1;
   }
+  .empty.error { color: var(--accent-red); }
+  .empty.error button { margin-left: 10px; }
 
   .agent-list {
     flex: 1;

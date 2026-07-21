@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   runService: { listRuns: vi.fn() },
   batches: { peek: vi.fn() },
 }));
-vi.mock('../../lib/rpc', () => ({ projectService: mocks.projectService, runService: mocks.runService }));
+vi.mock('../../lib/rpc', () => ({ projectService: mocks.projectService, runtimeProjectService: mocks.projectService, runService: mocks.runService }));
 vi.mock('../../lib/yaml-run-batch.svelte', () => ({ yamlRunBatches: mocks.batches }));
 vi.mock('./RunExecutionProcess.svelte', async () => ({ default: (await import('../../../test/fixtures/RunExecutionProcessStub.svelte')).default }));
 

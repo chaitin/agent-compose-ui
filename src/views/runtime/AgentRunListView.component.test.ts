@@ -6,7 +6,7 @@ import { store } from '../../lib/stores.svelte';
 import { stableProjectRunId } from '../../lib/run-scheduler-evidence';
 
 const mocks = vi.hoisted(() => ({ runService: { listRuns: vi.fn() }, projectService: { getProject: vi.fn(), listSchedulerEvents: vi.fn() }, sandboxService: { listSandboxes: vi.fn() } }));
-vi.mock('../../lib/rpc', () => ({ runService: mocks.runService, projectService: mocks.projectService, sandboxService: mocks.sandboxService }));
+vi.mock('../../lib/rpc', () => ({ runService: mocks.runService, projectService: mocks.projectService, runtimeProjectService: mocks.projectService, sandboxService: mocks.sandboxService }));
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; };
 
 beforeEach(() => {
@@ -120,13 +120,34 @@ test('isolates late list responses when the Agent changes', async () => {
   const old = deferred<{ runs: RunSummary[] }>();
   mocks.runService.listRuns.mockReturnValueOnce(old.promise).mockResolvedValueOnce({ runs: [new RunSummary({ runId: 'new-run', agentName: 'new-agent' })] });
   render(AgentRunListView);
-  await waitFor(() => expect(mocks.runService.listRuns).toHaveBeenCalledWith(expect.objectContaining({ agentName: 'old-agent', offset: 0, limit: 51 })));
+  await waitFor(() => expect(mocks.runService.listRuns).toHaveBeenCalledWith(expect.objectContaining({ agentName: 'old-agent', offset: 0, limit: 51 }), expect.anything()));
   store.runtimeView = { level: 'agent-detail', agentName: 'new-agent', runId: '', sessionId: '' };
   expect(await screen.findByText('new-run')).toBeTruthy();
   old.resolve({ runs: [new RunSummary({ runId: 'old-run' })] });
   await old.promise;
   await Promise.resolve();
   expect(screen.queryByText('old-run')).toBeNull();
+});
+
+test('aborts run and project requests when the execution list unmounts', async () => {
+  const pendingRuns = deferred<{ runs: RunSummary[] }>();
+  const pendingProject = deferred<{ project: Project }>();
+  mocks.runService.listRuns.mockReturnValueOnce(pendingRuns.promise);
+  mocks.projectService.getProject.mockReturnValueOnce(pendingProject.promise);
+
+  const view = render(AgentRunListView);
+  await waitFor(() => {
+    expect(mocks.runService.listRuns).toHaveBeenCalled();
+    expect(mocks.projectService.getProject).toHaveBeenCalled();
+  });
+  const runSignal = mocks.runService.listRuns.mock.calls[0][1]?.signal as AbortSignal | undefined;
+  const projectSignal = mocks.projectService.getProject.mock.calls[0][1]?.signal as AbortSignal | undefined;
+
+  expect(runSignal).toBeInstanceOf(AbortSignal);
+  expect(projectSignal).toBeInstanceOf(AbortSignal);
+  view.unmount();
+  expect(runSignal?.aborted).toBe(true);
+  expect(projectSignal?.aborted).toBe(true);
 });
 
 test('retains the Sandbox history action in hidden DOM state', async () => {

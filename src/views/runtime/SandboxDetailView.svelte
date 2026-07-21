@@ -35,13 +35,17 @@
   let stats: SandboxStats | undefined = $state();
   let statsLoading = $state(false);
   let statsError = $state('');
-  let busy = $state(false);
+  let activityBusy = $state(false);
+  let lifecycleBusy = $state(false);
   let agentReplying = $state(false);
   let command = $state('');
   let output = $state('');
   let generation = 0;
   let destroyed = false;
   let watchController: AbortController | undefined;
+  let watchRetryTimer: number | undefined;
+  let activityController: AbortController | undefined;
+  let lifecycleController: AbortController | undefined;
   type SandboxTab = 'details' | 'exec' | 'terminal' | 'files';
   const sandboxTabs: readonly SandboxTab[] = ['details', 'exec', 'terminal', 'files'];
   const tabOptions: readonly { id: SandboxTab; label: string }[] = [
@@ -150,7 +154,10 @@
     const sandboxId = targetSandboxId;
     const current = ++generation;
     stopWatch();
-    loading = true; loadError = ''; removed = false; snapshot = undefined; runs = []; runsError = ''; historyError = ''; runEventsError = ''; busy = false; agentReplying = false;
+    stopActivity();
+    lifecycleController?.abort();
+    lifecycleController = undefined;
+    loading = true; loadError = ''; removed = false; snapshot = undefined; runs = []; runsError = ''; historyError = ''; runEventsError = ''; activityBusy = false; lifecycleBusy = false; agentReplying = false;
     visibleTimelineCount = timelinePageSize;
     stats = undefined; statsError = ''; output = '';
     if (!projectId || !sandboxId) { loading = false; return; }
@@ -186,6 +193,17 @@
   function stopWatch() {
     watchController?.abort();
     watchController = undefined;
+    if (watchRetryTimer !== undefined) {
+      window.clearTimeout(watchRetryTimer);
+      watchRetryTimer = undefined;
+    }
+  }
+
+  function stopActivity() {
+    activityController?.abort();
+    activityController = undefined;
+    activityBusy = false;
+    agentReplying = false;
   }
 
   function startWatch(current: number, projectId: string, sandboxId: string) {
@@ -202,7 +220,8 @@
       } catch {}
       if (watchController === controller) watchController = undefined;
       if (controller.signal.aborted || document.visibilityState !== 'visible' || !targetIsCurrent(projectId, sandboxId, current)) return;
-      window.setTimeout(() => {
+      watchRetryTimer = window.setTimeout(() => {
+        watchRetryTimer = undefined;
         if (!controller.signal.aborted && document.visibilityState === 'visible' && targetIsCurrent(projectId, sandboxId, current)) startWatch(current, projectId, sandboxId);
       }, 1000);
     })();
@@ -264,6 +283,9 @@
     destroyed = true;
     generation++;
     stopWatch();
+    stopActivity();
+    lifecycleController?.abort();
+    lifecycleController = undefined;
   });
 
   async function execute(runtime: 'javascript' | 'python') {
@@ -275,13 +297,16 @@
       javascript: new ExecCommand({ command: 'node', args: ['-e', source] }),
       python: new ExecCommand({ command: 'python3', args: ['-c', source] }),
     };
-    busy = true;
+    stopActivity();
+    const controller = new AbortController();
+    activityController = controller;
+    activityBusy = true;
     try {
-      const response = await execService.exec(new ExecRequest({ target: { case: 'sandboxId', value: sandboxId }, command: commands[runtime] }));
+      const response = await execService.exec(new ExecRequest({ target: { case: 'sandboxId', value: sandboxId }, command: commands[runtime] }), { signal: controller.signal });
       if (current === generation && sandboxId === snapshot?.sandbox.sandboxId) output = response.result?.output || response.result?.stdout || response.result?.stderr || response.result?.error || '命令已完成（无输出）';
     } catch (error: any) {
       if (current === generation) output = errorMessage(error, '执行失败');
-    } finally { if (current === generation) busy = false; }
+    } finally { if (current === generation && activityController === controller) { activityBusy = false; activityController = undefined; } }
   }
 
   async function executeAgent() {
@@ -291,21 +316,24 @@
     const prompt = command.trim();
     if (!projectId || !sandboxId || !agentName || !prompt || lifecycle() !== 'running') return;
     const current = generation;
-    busy = true;
+    stopActivity();
+    const controller = new AbortController();
+    activityController = controller;
+    activityBusy = true;
     agentReplying = true;
     try {
       const response = await runService.runAgent(new RunAgentRequest({
         projectId, agentName, sandboxId, prompt,
         source: RunSource.MANUAL,
         cleanupPolicy: RunSandboxCleanupPolicy.KEEP_RUNNING,
-      }));
+      }), { signal: controller.signal });
       if (!targetIsCurrent(projectId, sandboxId, current)) return;
       output = response.run?.output || response.run?.resultJson || response.run?.summary?.error || 'Agent 已完成（无输出）';
       await loadRuns(projectId, sandboxId, current);
     } catch (error: any) {
       if (targetIsCurrent(projectId, sandboxId, current)) output = errorMessage(error, 'Agent 执行失败');
     } finally {
-      if (targetIsCurrent(projectId, sandboxId, current)) { busy = false; agentReplying = false; }
+      if (targetIsCurrent(projectId, sandboxId, current) && activityController === controller) { activityBusy = false; agentReplying = false; activityController = undefined; }
     }
   }
 
@@ -314,38 +342,49 @@
     const projectId = targetProjectId;
     const sandboxId = snapshot.sandbox.sandboxId;
     const current = generation;
-    busy = true;
+    lifecycleController?.abort();
+    const controller = new AbortController();
+    lifecycleController = controller;
+    lifecycleBusy = true;
     try {
-      const response = await sandboxService.resumeSandbox(new ResumeSandboxRequest({ sandboxId }));
+      const response = await sandboxService.resumeSandbox(new ResumeSandboxRequest({ sandboxId }), { signal: controller.signal });
       if (!targetIsCurrent(projectId, sandboxId, current)) return false;
       if (response.sandbox) snapshot = { ...snapshot, sandbox: response.sandbox };
       store.addToast('Sandbox 已恢复', 'success');
       return true;
     } catch (error: unknown) { if (targetIsCurrent(projectId, sandboxId, current)) store.addToast(sandboxResumeErrorMessage(error), 'error'); return false; }
-    finally { if (targetIsCurrent(projectId, sandboxId, current)) busy = false; }
+    finally { if (targetIsCurrent(projectId, sandboxId, current) && lifecycleController === controller) { lifecycleBusy = false; lifecycleController = undefined; } }
   }
   async function stop() {
     if (!snapshot || lifecycle() !== 'running' || !window.confirm(`停止 Sandbox ${snapshot.sandbox.sandboxId}？`)) return;
     const projectId = targetProjectId;
     const sandboxId = snapshot.sandbox.sandboxId;
     const current = generation;
-    busy = true;
+    stopActivity();
+    lifecycleController?.abort();
+    const controller = new AbortController();
+    lifecycleController = controller;
+    lifecycleBusy = true;
     try {
-      const response = await sandboxService.stopSandbox(new StopSandboxRequest({ sandboxId }));
+      const response = await sandboxService.stopSandbox(new StopSandboxRequest({ sandboxId }), { signal: controller.signal });
       if (!targetIsCurrent(projectId, sandboxId, current)) return;
       if (response.sandbox) snapshot = { ...snapshot, sandbox: response.sandbox };
       store.addToast('Sandbox 已停止', 'success');
     } catch (error: any) { if (targetIsCurrent(projectId, sandboxId, current)) store.addToast(errorMessage(error, '停止 Sandbox 失败'), 'error'); }
-    finally { if (targetIsCurrent(projectId, sandboxId, current)) busy = false; }
+    finally { if (targetIsCurrent(projectId, sandboxId, current) && lifecycleController === controller) { lifecycleBusy = false; lifecycleController = undefined; } }
   }
   async function remove() {
     if (!snapshot || !['running', 'stopped'].includes(lifecycle())) return;
     const force = lifecycle() === 'running';
     if (!window.confirm(`${force ? '强制删除' : '删除'} Sandbox ${snapshot.sandbox.sandboxId}？此操作不可撤销。`)) return;
-    busy = true;
-    try { await sandboxService.removeSandbox(new RemoveSandboxRequest({ sandboxId: snapshot.sandbox.sandboxId, force })); store.addToast('Sandbox 已移除', 'success'); await load(); }
+    stopActivity();
+    lifecycleController?.abort();
+    const controller = new AbortController();
+    lifecycleController = controller;
+    lifecycleBusy = true;
+    try { await sandboxService.removeSandbox(new RemoveSandboxRequest({ sandboxId: snapshot.sandbox.sandboxId, force }), { signal: controller.signal }); store.addToast('Sandbox 已移除', 'success'); await load(); }
     catch (error: any) { store.addToast(errorMessage(error, '移除 Sandbox 失败'), 'error'); }
-    finally { busy = false; }
+    finally { if (!destroyed && lifecycleController === controller) { lifecycleBusy = false; lifecycleController = undefined; } }
   }
   function navigateBack() {
     if (store.sandboxReturnView) store.navigateBack();
@@ -410,8 +449,8 @@
         <section class="status-actions" aria-label="Sandbox 状态与操作">
           <div class="primary-metrics"><span>CPU <strong title={cpuSummary.message}>{cpuSummary.text}</strong></span><span>内存 <strong title={memorySummary.message}>{memorySummary.text}</strong></span><span>Driver <strong>{stats?.driver || snapshot.sandbox.driver || '-'}</strong></span><span>Uptime <strong title={uptimeSummary.message}>{uptimeSummary.text}</strong></span></div>
           {#if lifecycle() === 'running'}<button class="refresh-metrics" aria-label="刷新指标" title="刷新指标" onclick={() => probe()} disabled={statsLoading}>↻</button>{/if}
-          <div class="sandbox-actions">{#if lifecycle() === 'running'}<button onclick={stop} disabled={busy}>停止</button><button class="danger" onclick={remove} disabled={busy}>强制删除</button>
-          {:else if lifecycle() === 'stopped'}<button onclick={resume} disabled={busy}>恢复</button><button class="danger" onclick={remove} disabled={busy}>删除 Sandbox</button>{/if}</div>
+          <div class="sandbox-actions">{#if lifecycle() === 'running'}<button onclick={stop} disabled={lifecycleBusy}>停止</button><button class="danger" onclick={remove} disabled={lifecycleBusy}>强制删除</button>
+          {:else if lifecycle() === 'stopped'}<button onclick={resume} disabled={lifecycleBusy}>恢复</button><button class="danger" onclick={remove} disabled={lifecycleBusy}>删除 Sandbox</button>{/if}</div>
           {#if stats?.sampledAt}<div class="supplemental-metrics">
             {#if stats?.sampledAt}<span>采样 <strong title={stats.sampledAt}>{sampledAtText(stats.sampledAt)}</strong></span>{/if}
           </div>{/if}
@@ -450,7 +489,7 @@
           </div>
         {:else if activeTab === 'exec'}
           <div id="sandbox-panel-exec" class="tab-panel" role="tabpanel" aria-label="快速执行" aria-labelledby="sandbox-tab-exec">
-            {#if lifecycle() === 'running'}<section class="quick-exec" aria-label="快速执行命令"><h3>快速执行</h3><label><span>执行代码</span><input aria-label="执行代码" bind:value={command} placeholder="输入 Agent 提示词、JavaScript 或 Python" /></label><div><button onclick={executeAgent} disabled={busy || !command.trim() || !associatedAgentName}>Agent</button><button onclick={() => execute('javascript')} disabled={busy || !command.trim()}>JavaScript</button><button onclick={() => execute('python')} disabled={busy || !command.trim()}>Python</button></div>{#if !associatedAgentName}<div class="notice">该 Sandbox 未关联 Agent</div>{/if}{#if agentReplying}<div class="agent-replying" role="status"><span aria-hidden="true"></span>回复中…</div>{/if}{#if output}<pre>{output}</pre>{/if}</section>
+            {#if lifecycle() === 'running'}<section class="quick-exec" aria-label="快速执行命令"><h3>快速执行</h3><label><span>执行代码</span><input aria-label="执行代码" bind:value={command} placeholder="输入 Agent 提示词、JavaScript 或 Python" /></label><div><button onclick={executeAgent} disabled={activityBusy || !command.trim() || !associatedAgentName}>Agent</button><button onclick={() => execute('javascript')} disabled={activityBusy || !command.trim()}>JavaScript</button><button onclick={() => execute('python')} disabled={activityBusy || !command.trim()}>Python</button></div>{#if !associatedAgentName}<div class="notice">该 Sandbox 未关联 Agent</div>{/if}{#if agentReplying}<div class="agent-replying" role="status"><span aria-hidden="true"></span>回复中…</div>{/if}{#if output}<pre>{output}</pre>{/if}</section>
             {:else}<div class="notice">Sandbox 未运行，快速执行不可用。</div>{/if}
           </div>
         {:else if activeTab === 'terminal'}

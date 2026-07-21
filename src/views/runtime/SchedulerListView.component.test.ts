@@ -8,7 +8,7 @@ import { store } from '../../lib/stores.svelte';
 const mocks = vi.hoisted(() => ({
   projectService: { getProject: vi.fn(), getScheduler: vi.fn(), listSchedulerEvents: vi.fn(), setSchedulerEnabled: vi.fn(), setSchedulerTriggerEnabled: vi.fn() }, runService: { runAgent: vi.fn(), startRun: vi.fn(), listRuns: vi.fn() },
 }));
-vi.mock('../../lib/rpc', () => ({ projectService: mocks.projectService, runService: mocks.runService }));
+vi.mock('../../lib/rpc', () => ({ projectService: mocks.projectService, runtimeProjectService: mocks.projectService, runService: mocks.runService }));
 
 function project(projectId = 'project-1') {
   return { project: new Project({
@@ -112,7 +112,10 @@ test('suppresses a stale load-more page after the active project changes', async
   await screen.findByText('current page');
   await fireEvent.click(screen.getByRole('button', { name: '加载更多 worker Scheduler 事件' }));
   store.activeProjectId = 'project-2';
-  await waitFor(() => expect(mocks.projectService.getProject).toHaveBeenCalledWith(expect.objectContaining({ project: expect.objectContaining({ projectId: 'project-2' }) })));
+  await waitFor(() => expect(mocks.projectService.getProject).toHaveBeenCalledWith(
+    expect.objectContaining({ project: expect.objectContaining({ projectId: 'project-2' }) }),
+    expect.objectContaining({ timeoutMs: 30_000 }),
+  ));
   nextPage.resolve({ events: [new SchedulerEvent({ id: 'old-page', message: 'stale next page' })], nextCursor: '' });
   await nextPage.promise; await Promise.resolve();
   expect(screen.queryByText('stale next page')).not.toBeInTheDocument();
@@ -166,7 +169,10 @@ test('suppresses stale event and control responses after the active project chan
   render(SchedulerListView);
   await fireEvent.click(await screen.findByRole('button', { name: '禁用 Scheduler worker' }));
   store.activeProjectId = 'project-2';
-  await waitFor(() => expect(mocks.projectService.getProject).toHaveBeenCalledWith(expect.objectContaining({ project: expect.objectContaining({ projectId: 'project-2' }) })));
+  await waitFor(() => expect(mocks.projectService.getProject).toHaveBeenCalledWith(
+    expect.objectContaining({ project: expect.objectContaining({ projectId: 'project-2' }) }),
+    expect.objectContaining({ timeoutMs: 30_000 }),
+  ));
   events.resolve({ events: [new SchedulerEvent({ id: 'old-event', message: 'old project event' })] });
   control.resolve({ scheduler: new ProjectScheduler({ projectId: 'project-1', agentName: 'worker', schedulerId: 'scheduler-1', enabled: false }) });
   await Promise.all([events.promise, control.promise]); await Promise.resolve();
@@ -205,7 +211,10 @@ test('ignores a detached response after switching projects', async () => {
   execution.value = 'detached'; await fireEvent.change(execution);
   await fireEvent.click(screen.getByRole('button', { name: '手动运行 nightly' }));
   store.activeProjectId = 'project-2';
-  await waitFor(() => expect(mocks.projectService.getProject).toHaveBeenCalledWith(expect.objectContaining({ project: expect.objectContaining({ projectId: 'project-2' }) })));
+  await waitFor(() => expect(mocks.projectService.getProject).toHaveBeenCalledWith(
+    expect.objectContaining({ project: expect.objectContaining({ projectId: 'project-2' }) }),
+    expect.objectContaining({ timeoutMs: 30_000 }),
+  ));
   pending.resolve({ run: new RunSummary({ runId: 'old-detached' }) });
   await pending.promise; await Promise.resolve();
   expect(store.navigateTo).not.toHaveBeenCalled();
@@ -248,7 +257,10 @@ test('submits collapsed one-off Run overrides without changing scheduler YAML', 
 test('reads scheduler definitions and manually runs scheduler context then observes the ordinary run', async () => {
   render(SchedulerListView);
   await screen.findByText('nightly');
-  expect(mocks.projectService.getProject).toHaveBeenCalledWith(expect.objectContaining({ includeSpec: true }));
+  expect(mocks.projectService.getProject).toHaveBeenCalledWith(
+    expect.objectContaining({ includeSpec: true }),
+    expect.objectContaining({ timeoutMs: 30_000 }),
+  );
   await fireEvent.input(screen.getByLabelText('nightly Payload JSON'), { target: { value: '{"date":"2026-07-14"}' } });
   await fireEvent.click(screen.getByRole('button', { name: '手动运行 nightly' }));
   const request = mocks.runService.runAgent.mock.calls[0][0];
@@ -267,7 +279,10 @@ test('binds a pending manual run to its loaded project and ignores its response 
   expect(mocks.runService.runAgent.mock.calls[0][0]).toMatchObject({ projectId: 'project-1', payloadJson: '{"project":1}' });
 
   store.activeProjectId = 'project-2';
-  await waitFor(() => expect(mocks.projectService.getProject).toHaveBeenCalledWith(expect.objectContaining({ project: expect.objectContaining({ projectId: 'project-2' }) })));
+  await waitFor(() => expect(mocks.projectService.getProject).toHaveBeenCalledWith(
+    expect.objectContaining({ project: expect.objectContaining({ projectId: 'project-2' }) }),
+    expect.objectContaining({ timeoutMs: 30_000 }),
+  ));
   expect(await screen.findByLabelText('nightly Payload JSON')).toHaveValue('');
   expect(screen.getByRole('button', { name: '手动运行 nightly' })).toBeEnabled();
 

@@ -1,7 +1,7 @@
 import { createConnectTransport } from '@connectrpc/connect-web';
 import { createClient } from '@connectrpc/connect';
 import type { Transport } from '@connectrpc/connect';
-import { authFetch } from './auth-fetch';
+import { transportFetch } from './rpc-fetch';
 
 // Generated service descriptors
 import {
@@ -17,8 +17,6 @@ import {
   VolumeService,
 } from '../gen/agentcompose/v2/agentcompose_connect';
 
-const RPC_TIMEOUT_MS = 120_000; // 2 min — covers slow Docker pulls, gives user feedback sooner
-
 const transport: Transport = createConnectTransport({
   baseUrl: window.location.origin,
   // Vite proxy forwards agentcompose v2 RPCs to the daemon at 127.0.0.1:7410.
@@ -31,25 +29,17 @@ const projectTransport: Transport = createConnectTransport({
   fetch: transportFetch,
 });
 
-function transportFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const controller = new AbortController();
-  const sourceSignal = init?.signal;
-  let sourceAbortListener: (() => void) | undefined;
-  if (sourceSignal) {
-    if (sourceSignal.aborted) controller.abort(sourceSignal.reason);
-    else {
-      sourceAbortListener = () => controller.abort(sourceSignal.reason);
-      sourceSignal.addEventListener('abort', sourceAbortListener, { once: true });
-    }
-  }
-  const timeout = setTimeout(() => controller.abort(new DOMException('RPC timeout', 'TimeoutError')), RPC_TIMEOUT_MS);
-  return authFetch(input, { ...init, signal: controller.signal }).finally(() => {
-    clearTimeout(timeout);
-    if (sourceSignal && sourceAbortListener) sourceSignal.removeEventListener('abort', sourceAbortListener);
-  });
-}
+// Runtime reads do not need the gateway's JSON spec-rewrite path. Keeping
+// these calls binary routes them through the daemon proxy without coupling
+// operational screens to project environment resolution.
+const runtimeProjectTransport: Transport = createConnectTransport({
+  baseUrl: window.location.origin,
+  useBinaryFormat: true,
+  fetch: transportFetch,
+});
 
 export const projectService = createClient(ProjectService, projectTransport);
+export const runtimeProjectService = createClient(ProjectService, runtimeProjectTransport);
 export const runService = createClient(RunService, transport);
 export const execService = createClient(ExecService, transport);
 export const sandboxService = createClient(SandboxService, transport);

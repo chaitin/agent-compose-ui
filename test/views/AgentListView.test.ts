@@ -20,6 +20,7 @@ const rpcMocks = vi.hoisted(() => ({
 
 vi.mock('../../src/lib/rpc', () => ({
   projectService: rpcMocks.projectService,
+  runtimeProjectService: rpcMocks.projectService,
   runService: rpcMocks.runService,
   execService: {},
   sandboxService: {},
@@ -160,6 +161,20 @@ describe('AgentListView', () => {
     rpcMocks.projectService.getProject.mockResolvedValue({ project: { spec: { name: 'demo', agents: [] } } });
     render(AgentListView);
     expect(await screen.findByText('暂无智能体。请启用一个项目来查看。')).toBeInTheDocument();
+  });
+
+  it('reports inconsistent runtime agents instead of treating configured Agents as empty', async () => {
+    store.activeProjectId = 'p1';
+    store.projects = [makeProjectEntry('p1', '项目一')];
+    rpcMocks.projectService.getProject.mockResolvedValue({
+      project: { agents: [], spec: { agents: [{ name: 'configured-agent' }] } },
+    });
+
+    render(AgentListView);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('项目运行态 Agent 数据异常');
+    expect(screen.queryByText('暂无智能体。请启用一个项目来查看。')).toBeNull();
+    expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument();
   });
 
   it('renders one operational card without repeating YAML configuration', async () => {

@@ -18,7 +18,8 @@
   let statsRefresh: Record<string, StatsRefresh | undefined> = $state({});
   let commands: Record<string, string> = $state({});
   let outputs: Record<string, string> = $state({});
-  let busy: Record<string, boolean> = $state({});
+  let activityBusy: Record<string, boolean> = $state({});
+  let lifecycleBusy: Record<string, boolean> = $state({});
   let lifecycle: Record<string, SandboxLifecycle | undefined> = $state({});
   let loadError = $state('');
   let inventoryGeneration = 0;
@@ -77,7 +78,7 @@
       loadedProjectId = projectId;
       inventoryGeneration += 1;
       inventory = [];
-      stats = {}; statsRefresh = {}; commands = {}; outputs = {}; busy = {}; lifecycle = {};
+      stats = {}; statsRefresh = {}; commands = {}; outputs = {}; activityBusy = {}; lifecycleBusy = {}; lifecycle = {};
       closeTool();
     }
     if (!projectId) { inventory = []; loading = false; return; }
@@ -108,7 +109,7 @@
     const projectId = store.activeProjectId;
     const generation = inventoryGeneration;
     statsRefresh[item.sandboxId] = { loading: true, error: '', stale: Boolean(stats[item.sandboxId]) };
-    busy[item.sandboxId] = true;
+    activityBusy[item.sandboxId] = true;
     try {
       const response = await sandboxService.getSandboxStats(new GetSandboxStatsRequest({ sandboxId: item.sandboxId }));
       if (projectId !== store.activeProjectId || generation !== inventoryGeneration || !inventory.some((entry) => entry.sandboxId === item.sandboxId)) return;
@@ -121,43 +122,43 @@
         store.addToast(message, 'error');
       }
     }
-    finally { if (projectId === store.activeProjectId && generation === inventoryGeneration) busy[item.sandboxId] = false; }
+    finally { if (projectId === store.activeProjectId && generation === inventoryGeneration) activityBusy[item.sandboxId] = false; }
   }
 
   async function execute(item: Sandbox) {
     const command = commands[item.sandboxId]?.trim();
     if (!command) return;
-    busy[item.sandboxId] = true;
+    activityBusy[item.sandboxId] = true;
     try {
       const response = await execService.exec(new ExecRequest({ target: { case: 'sandboxId', value: item.sandboxId }, command: new ExecCommand({ command: '/bin/sh', args: ['-lc', command] }) }));
       outputs[item.sandboxId] = response.result?.output || response.result?.stdout || response.result?.stderr || response.result?.error || '命令已完成（无输出）';
     } catch (error: any) { outputs[item.sandboxId] = error?.message || '执行失败'; }
-    finally { busy[item.sandboxId] = false; }
+    finally { activityBusy[item.sandboxId] = false; }
   }
 
   async function resume(item: Sandbox) {
     if (!store.activeProjectId) return;
     if (!window.confirm(`恢复 Sandbox ${item.sandboxId}？`)) return;
-    busy[item.sandboxId] = true;
+    lifecycleBusy[item.sandboxId] = true;
     try {
       await sandboxService.resumeSandbox(new ResumeSandboxRequest({ sandboxId: item.sandboxId }));
       store.addToast('Sandbox 已恢复', 'success');
       store.triggerRuntimeRefresh();
     } catch (error: unknown) { store.addToast(sandboxResumeErrorMessage(error), 'error'); }
-    finally { busy[item.sandboxId] = false; }
+    finally { lifecycleBusy[item.sandboxId] = false; }
   }
 
   async function stop(item: Sandbox) {
     if (!store.activeProjectId || lifecycle[item.sandboxId] !== 'running') return;
     if (!window.confirm(`停止 Sandbox ${item.sandboxId}？Sandbox 数据将保留，可再次恢复。`)) return;
-    busy[item.sandboxId] = true;
+    lifecycleBusy[item.sandboxId] = true;
     try {
       await sandboxService.stopSandbox(new StopSandboxRequest({ sandboxId: item.sandboxId }));
       store.addToast('Sandbox 已停止', 'success');
       store.triggerRuntimeRefresh();
       await load();
     } catch (error: any) { store.addToast(error?.message || '停止 Sandbox 失败', 'error'); }
-    finally { busy[item.sandboxId] = false; }
+    finally { lifecycleBusy[item.sandboxId] = false; }
   }
 
   function openJupyter(item: Sandbox) {
@@ -169,13 +170,13 @@
     if (state !== 'running' && state !== 'stopped') return;
     const force = state === 'running';
     if (!window.confirm(`${force ? '强制删除' : '删除'} Sandbox ${item.sandboxId}？此操作不可撤销。`)) return;
-    busy[item.sandboxId] = true;
+    lifecycleBusy[item.sandboxId] = true;
     try {
       await sandboxService.removeSandbox(new RemoveSandboxRequest({ sandboxId: item.sandboxId, force }));
       store.addToast('Sandbox 已移除', 'success');
       await load();
     } catch (error: any) { store.addToast(error?.message || '移除 Sandbox 失败', 'error'); }
-    finally { busy[item.sandboxId] = false; }
+    finally { lifecycleBusy[item.sandboxId] = false; }
   }
 
   const lifecycleLabels: Record<SandboxLifecycle, string> = {
@@ -200,11 +201,11 @@
         <div class="actions">
           <button aria-label={`查看 ${item.sandboxId} 详情`} onclick={() => store.navigateTo('sandbox-detail', { sandboxId: item.sandboxId })}>查看详情</button>
           {#if state === 'running'}
-            <button onclick={() => openTool('terminal', item.sandboxId)}>Terminal</button><button onclick={() => openTool('files', item.sandboxId)}>Files</button><button onclick={() => openJupyter(item)}>Jupyter</button><button onclick={() => loadStats(item)} disabled={busy[item.sandboxId]}>Stats</button><input aria-label={`执行命令 ${item.sandboxId}`} bind:value={commands[item.sandboxId]} placeholder="输入 shell 命令"/><button onclick={() => execute(item)} disabled={busy[item.sandboxId]}>Exec</button><button onclick={() => stop(item)} disabled={busy[item.sandboxId]}>{busy[item.sandboxId] ? '停止中' : '停止'}</button><button class="danger" onclick={() => remove(item)} disabled={busy[item.sandboxId]}>强制删除</button>
+            <button onclick={() => openTool('terminal', item.sandboxId)}>Terminal</button><button onclick={() => openTool('files', item.sandboxId)}>Files</button><button onclick={() => openJupyter(item)}>Jupyter</button><button onclick={() => loadStats(item)} disabled={activityBusy[item.sandboxId]}>Stats</button><input aria-label={`执行命令 ${item.sandboxId}`} bind:value={commands[item.sandboxId]} placeholder="输入 shell 命令"/><button onclick={() => execute(item)} disabled={activityBusy[item.sandboxId]}>Exec</button><button onclick={() => stop(item)} disabled={lifecycleBusy[item.sandboxId]}>{lifecycleBusy[item.sandboxId] ? '停止中' : '停止'}</button><button class="danger" onclick={() => remove(item)} disabled={lifecycleBusy[item.sandboxId]}>强制删除</button>
           {:else if state === 'stopped'}
-            <button onclick={() => resume(item)} disabled={busy[item.sandboxId]}>恢复</button><button class="danger" onclick={() => remove(item)} disabled={busy[item.sandboxId]}>删除 Sandbox</button>
+            <button onclick={() => resume(item)} disabled={lifecycleBusy[item.sandboxId]}>恢复</button><button class="danger" onclick={() => remove(item)} disabled={lifecycleBusy[item.sandboxId]}>删除 Sandbox</button>
           {:else if state === 'unknown'}
-            <button onclick={() => loadStats(item)} disabled={busy[item.sandboxId]}>重新检测</button>
+            <button onclick={() => loadStats(item)} disabled={activityBusy[item.sandboxId]}>重新检测</button>
           {/if}
         </div>
         {#if statsRefresh[item.sandboxId]?.loading}<div class="stats-status">指标加载中{statsRefresh[item.sandboxId]?.stale ? '，当前显示旧样本' : ''}</div>{:else if statsRefresh[item.sandboxId]?.error}<div class="stats-status error">指标加载失败：{statsRefresh[item.sandboxId]?.error}{statsRefresh[item.sandboxId]?.stale ? '；当前显示旧样本' : ''}</div>{/if}

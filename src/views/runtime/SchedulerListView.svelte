@@ -1,6 +1,6 @@
 <script lang="ts">
   import { GetProjectRequest, GetSchedulerRequest, ListRunsRequest, ListSchedulerEventsRequest, RunAgentRequest, RunJupyterSpec, RunSandboxCleanupPolicy, RunSource, SetSchedulerEnabledRequest, SetSchedulerTriggerEnabledRequest, StartRunRequest, type ProjectScheduler, type ResolvedTrigger, type SchedulerEvent, type TriggerSpec } from '../../gen/agentcompose/v2/agentcompose_pb';
-  import { projectService, runService } from '../../lib/rpc';
+  import { projectService, runService, runtimeProjectService } from '../../lib/rpc';
   import { store } from '../../lib/stores.svelte';
   import RuntimeBreadcrumb from './RuntimeBreadcrumb.svelte';
 
@@ -30,7 +30,7 @@
     loading = true;
     try {
       const [response, runResponse] = await Promise.all([
-        projectService.getProject(new GetProjectRequest({ project: { projectId }, includeSpec: true })),
+        runtimeProjectService.getProject(new GetProjectRequest({ project: { projectId }, includeSpec: true }), { timeoutMs: 30_000 }),
         runService.listRuns(new ListRunsRequest({ projectId, limit: 1000 })),
       ]);
       if (generation !== loadGeneration || projectId !== store.activeProjectId) return;
