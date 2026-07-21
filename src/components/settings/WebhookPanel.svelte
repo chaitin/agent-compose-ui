@@ -11,6 +11,9 @@
   let registerOpen = $state(false);
   let deleteTarget = $state<{ id: string; name: string; topic: string } | null>(null);
   let togglingId = $state<string | null>(null);
+  let regenTarget = $state<{ id: string; name: string } | null>(null);
+  let regenPending = $state(false);
+  let regenNewToken = $state<string | null>(null);
 
   const testTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -120,6 +123,57 @@
       // ignore
     }
   }
+
+  function handleRegenRequest(id: string): void {
+    const source = webhookStore.sources.find(s => s.id === id);
+    if (!source) return;
+    regenTarget = { id, name: source.name };
+    regenNewToken = null;
+  }
+
+  function handleRegenCancel(): void {
+    regenTarget = null;
+    regenNewToken = null;
+  }
+
+  async function handleRegenConfirm(): Promise<void> {
+    const target = regenTarget;
+    if (!target) return;
+    const source = webhookStore.sources.find((s) => s.id === target.id);
+    if (!source) return;
+    const newToken = 'tok_' + crypto.randomUUID().replace(/-/g, '').slice(0, 24);
+    regenPending = true;
+    try {
+      await webhookStore.upsert({
+        id: source.id,
+        name: source.name,
+        enabled: source.enabled,
+        provider: source.provider,
+        topic_prefix: source.topic_prefix,
+        token: newToken,
+        signature_type: source.signature_type ?? 'none',
+      });
+      regenNewToken = newToken;
+    } catch (error) {
+      console.error('regen failed', error);
+    } finally {
+      regenPending = false;
+    }
+  }
+
+  function handleRegenDone(): void {
+    regenTarget = null;
+    regenNewToken = null;
+  }
+
+  async function copyRegenToken(): Promise<void> {
+    if (!regenNewToken) return;
+    try {
+      await navigator.clipboard.writeText(regenNewToken);
+    } catch {
+      // ignore
+    }
+  }
 </script>
 
 <div class="webhook-panel">
@@ -155,7 +209,7 @@
         ondelete={handleDeleteRequest}
         oncopycurl={handleCopyCurl}
         ontest={handleTest}
-        onregen={(id) => { /* Task 8 */ }}
+        onregen={handleRegenRequest}
       />
     {/if}
   </section>
@@ -186,6 +240,58 @@
       <footer class="modal-footer">
         <button type="button" class="btn" onclick={() => deleteTarget = null}>取消</button>
         <button type="button" class="btn danger" onclick={handleDeleteConfirm}>删除</button>
+      </footer>
+    </div>
+  </div>
+{/if}
+
+{#if regenTarget && !regenNewToken}
+  <div class="modal-backdrop" role="presentation" onclick={(e) => { if (e.target === e.currentTarget && !regenPending) handleRegenCancel(); }}>
+    <div class="modal" role="dialog" aria-modal="true">
+      <header class="modal-header">
+        <span class="icon warn">↻</span>
+        <div class="title">重新生成 Token</div>
+        <button type="button" class="close" onclick={handleRegenCancel} disabled={regenPending}>×</button>
+      </header>
+      <div class="modal-body">
+        <p>重新生成 <code>{regenTarget.name}</code> 的 token 会使旧 token 立即失效。</p>
+        <ul class="impact-list">
+          <li>所有使用旧 token 的调用方将收到 401，需要更新配置</li>
+          <li>新 token 仅在本次会话显示，关闭后不再可见</li>
+          <li>历史事件不受影响，仍可通过原 event_id 查询</li>
+        </ul>
+      </div>
+      <footer class="modal-footer">
+        <button type="button" class="btn" onclick={handleRegenCancel} disabled={regenPending}>取消</button>
+        <button type="button" class="btn primary" onclick={handleRegenConfirm} disabled={regenPending}>
+          {#if regenPending}重新生成中...{:else}重新生成{/if}
+        </button>
+      </footer>
+    </div>
+  </div>
+{:else if regenTarget && regenNewToken}
+  <div class="modal-backdrop" role="presentation">
+    <div class="modal" role="dialog" aria-modal="true">
+      <header class="modal-header">
+        <span class="icon success">✓</span>
+        <div class="title">新 token 已生成</div>
+        <button type="button" class="close" onclick={handleRegenDone}>×</button>
+      </header>
+      <div class="modal-body">
+        <div class="alert-banner warn">
+          <span class="icon">⚠</span>
+          <span>这是您最后一次能看到此 token。旧 token 已立即失效。</span>
+        </div>
+        <div class="field">
+          <span class="label-text">访问 Token</span>
+          <div class="token-display">
+            <span class="value">{regenNewToken}</span>
+            <button type="button" onclick={copyRegenToken}>📋 复制</button>
+          </div>
+        </div>
+      </div>
+      <footer class="modal-footer">
+        <button type="button" class="btn primary" onclick={handleRegenDone}>我已保存，关闭</button>
       </footer>
     </div>
   </div>
@@ -222,6 +328,8 @@
   .modal-header { display: flex; align-items: center; gap: 8px; padding: 14px 18px; border-bottom: 1px solid var(--border-color); }
   .modal-header .title { font-size: var(--font-size-xl); font-weight: 600; }
   .modal-header .icon.danger { color: var(--accent-red); font-size: 18px; }
+  .modal-header .icon.warn { color: var(--accent-yellow); font-size: 18px; }
+  .modal-header .icon.success { color: var(--accent-green); font-size: 18px; }
   .modal-header .close { margin-left: auto; color: var(--text-muted); font-size: 18px; padding: 4px; }
   .modal-header .close:hover { color: var(--text-primary); }
   .modal-body { padding: 16px 18px; }
@@ -236,4 +344,18 @@
   .modal-footer .btn:hover:not(:disabled) { border-color: var(--accent-blue); }
   .modal-footer .btn.danger { background: var(--accent-red); color: #fff; border-color: var(--accent-red); font-weight: 600; }
   .modal-footer .btn.danger:hover { opacity: 0.9; }
+  .modal-footer .btn.primary { background: var(--accent-green); color: #0d1117; border-color: var(--accent-green); font-weight: 600; }
+  .modal-footer .btn.primary:hover:not(:disabled) { opacity: 0.9; }
+  .modal-footer .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .alert-banner { padding: 10px 12px; border-radius: 4px; margin-bottom: 14px; display: flex; gap: 8px; align-items: flex-start; font-size: var(--font-size-sm); line-height: 1.5; }
+  .alert-banner.warn { background: color-mix(in srgb, var(--accent-yellow) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent-yellow) 35%, transparent); color: var(--accent-yellow); }
+  .alert-banner .icon { flex-shrink: 0; font-size: 14px; margin-top: 1px; }
+
+  .field { margin-bottom: 14px; }
+  .field .label-text { display: block; font-size: var(--font-size-xs); color: var(--text-secondary); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
+  .token-display { background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 10px 12px; display: flex; align-items: center; gap: 8px; }
+  .token-display .value { flex: 1; font-family: var(--font-mono); font-size: var(--font-size-xs); color: var(--accent-green); word-break: break-all; }
+  .token-display button { padding: 4px 10px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--bg-tertiary); color: var(--text-secondary); font-size: var(--font-size-xs); }
+  .token-display button:hover { color: var(--accent-blue); border-color: var(--accent-blue); }
 </style>
