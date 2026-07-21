@@ -18,6 +18,12 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>(done => { resolve = done; });
+  return { promise, resolve };
+}
+
 test('lists the parent directory and previews an initial workspace file', async () => {
   const execRequests: ExecRequest[] = [];
   mocks.execService.execStream.mockImplementation(async function* (request: ExecRequest) {
@@ -43,4 +49,25 @@ test('lists the parent directory and previews an initial workspace file', async 
     command: { command: '/bin/cat', args: ['--', '/workspace/2026-07-21/report.md'] },
   });
   expect(await screen.findByDisplayValue('report body')).toBeTruthy();
+});
+
+test('does not preview the initial file after unmounting during its directory listing', async () => {
+  const listing = deferred();
+  const execRequests: ExecRequest[] = [];
+  mocks.execService.execStream.mockImplementation(async function* (request: ExecRequest) {
+    execRequests.push(request);
+    if (execRequests.length === 1) await listing.promise;
+  });
+
+  const view = render(FileBrowser, {
+    sandboxId: 'sandbox-1',
+    initialFilePath: '/workspace/2026-07-21/report.md',
+  });
+  await waitFor(() => expect(execRequests).toHaveLength(1));
+
+  view.unmount();
+  listing.resolve();
+  await listing.promise;
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(execRequests).toHaveLength(1);
 });

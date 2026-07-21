@@ -6,7 +6,7 @@
   let { sandboxId, initialFilePath = '' }: { sandboxId: string; initialFilePath?: string } = $props();
   type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'failed';
   let currentPath = $state('/workspace'); let entries: FileBrowserEntry[] = $state([]); let selectedPath = $state(''); let content = $state('');
-  let loading = $state(false); let truncated = $state(false); let error = $state(''); let active: AbortController | undefined;
+  let loading = $state(false); let truncated = $state(false); let error = $state(''); let active: AbortController | undefined; let disposed = false;
   let saveState: SaveState = $state('idle'); let savedAt = $state('');
   let writeBytes = $derived(writableFileBytes(content));
   function request(command: string, args: string[], maxOutputBytes: number, cwd = '') { return new ExecRequest({ target: { case: 'sandboxId', value: sandboxId }, command: new ExecCommand({ command, args }), cwd, maxOutputBytes, timeoutMs: 30_000 }); }
@@ -20,14 +20,16 @@
     return stdout;
   }
   async function list(path: string) {
+    if (disposed) return;
     loading = true; error = '';
-    try { const output = await stream('/usr/bin/find', [path, '-mindepth', '1', '-maxdepth', '1', '-printf', '%y\t%f\n'], DIRECTORY_LIST_BYTES); const parsed = parseDirectoryListing(output.value, path); currentPath = path; entries = parsed.slice(0, MAX_DIRECTORY_ENTRIES); truncated = output.truncated || parsed.length > MAX_DIRECTORY_ENTRIES; }
-    catch (cause) { if (!isAbortError(cause)) error = cause instanceof Error ? cause.message : String(cause); } finally { loading = false; }
+    try { const output = await stream('/usr/bin/find', [path, '-mindepth', '1', '-maxdepth', '1', '-printf', '%y\t%f\n'], DIRECTORY_LIST_BYTES); if (disposed) return; const parsed = parseDirectoryListing(output.value, path); currentPath = path; entries = parsed.slice(0, MAX_DIRECTORY_ENTRIES); truncated = output.truncated || parsed.length > MAX_DIRECTORY_ENTRIES; }
+    catch (cause) { if (!disposed && !isAbortError(cause)) error = cause instanceof Error ? cause.message : String(cause); } finally { if (!disposed) loading = false; }
   }
   async function open(entry: FileBrowserEntry) {
+    if (disposed) return;
     if (entry.isDir) { await list(entry.fullPath); return; } loading = true; error = ''; selectedPath = entry.fullPath; saveState = 'idle'; savedAt = '';
-    try { const output = await stream('/bin/cat', ['--', entry.fullPath], FILE_PREVIEW_BYTES); content = output.value; truncated = output.truncated; }
-    catch (cause) { if (!isAbortError(cause)) error = cause instanceof Error ? cause.message : String(cause); } finally { loading = false; }
+    try { const output = await stream('/bin/cat', ['--', entry.fullPath], FILE_PREVIEW_BYTES); if (disposed) return; content = output.value; truncated = output.truncated; }
+    catch (cause) { if (!disposed && !isAbortError(cause)) error = cause instanceof Error ? cause.message : String(cause); } finally { if (!disposed) loading = false; }
   }
   async function save() {
     if (!selectedPath) return; loading = true; error = ''; saveState = 'saving';
@@ -38,13 +40,15 @@
   function saveStatusText() { return writeBytes > MAX_WRITABLE_FILE_BYTES ? '无法保存' : saveState === 'saving' ? '保存中…' : saveState === 'saved' ? `已保存 · ${savedAt}` : saveState === 'failed' ? '保存失败' : saveState === 'dirty' ? '未保存' : ''; }
   function parent() { if (currentPath === '/') return '/'; return currentPath.replace(/\/?[^/]+$/, '') || '/'; }
   onMount(() => {
+    disposed = false;
     const target = resolveWorkspaceFileTarget(initialFilePath);
     void (async () => {
       if (!target) { await list('/workspace'); return; }
       await list(target.directory);
+      if (disposed) return;
       await open({ name: target.fileName, isDir: false, fullPath: target.fullPath });
     })();
-    return () => active?.abort();
+    return () => { disposed = true; active?.abort(); };
   });
 </script>
 <section class="browser"><header><button onclick={() => list(parent())} disabled={loading || currentPath === '/'}>↑</button><code>{currentPath}</code><button onclick={() => list(currentPath)} disabled={loading}>刷新</button></header>{#if error}<div class="error">{error}</div>{/if}{#if truncated}<div class="warning">输出达到安全上限，仅显示完整的已接收内容。</div>{/if}<div class="body"><nav>{#each entries as entry (entry.fullPath)}<button class:directory={entry.isDir} onclick={() => open(entry)}>{entry.isDir ? '📁' : '📄'} {entry.name}</button>{/each}{#if !loading && entries.length === 0}<p>空目录</p>{/if}</nav><main>{#if selectedPath}<div class="editor-head"><code>{selectedPath}</code><span class:failed={writeBytes > MAX_WRITABLE_FILE_BYTES}>{writeBytes <= MAX_WRITABLE_FILE_BYTES ? `剩余 ${MAX_WRITABLE_FILE_BYTES - writeBytes} bytes` : `超过写入上限 ${writeBytes - MAX_WRITABLE_FILE_BYTES} bytes`}</span>{#if saveStatusText()}<span class:failed={saveState === 'failed' || writeBytes > MAX_WRITABLE_FILE_BYTES} class:saved={saveState === 'saved'}>{saveStatusText()}</span>{/if}<button onclick={save} disabled={loading || truncated || writeBytes > MAX_WRITABLE_FILE_BYTES}>{saveState === 'saving' ? '保存中…' : '保存'}</button></div><textarea bind:value={content} oninput={markDirty} readonly={truncated}></textarea>{:else}<p>选择文件以预览</p>{/if}</main></div></section>
