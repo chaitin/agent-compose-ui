@@ -48,9 +48,10 @@ describe('SystemSettings v2 boundary', () => {
     expect(systemHeading).toBeInTheDocument();
     const tablist = screen.getByRole('tablist', { name: '系统管理模块' });
     const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(3);
+    expect(tabs).toHaveLength(4);
     expect(tablist).toHaveTextContent('镜像');
     expect(tablist).toHaveTextContent('环境变量');
+    expect(tablist).toHaveTextContent('Webhooks');
     expect(tablist).toHaveTextContent('能力服务');
     expect(tablist).not.toHaveTextContent('缓存');
     expect(tablist).not.toHaveTextContent('存储卷');
