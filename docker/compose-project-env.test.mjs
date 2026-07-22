@@ -22,4 +22,13 @@ describe('server-side project environment deployment', () => {
   test('gateway build copies the module checksum before downloading dependencies', () => {
     expect(dockerfile).toMatch(/COPY go\.mod go\.sum \.\//);
   });
+
+  test('both stacks persist tokens and expose the fixed container API port', () => {
+	for (const compose of [full, external]) {
+	  expect(compose).toContain('TOKEN_DB_PATH: /data/api/tokens.db');
+	  expect(compose).toContain('${TOKEN_RBAC_API_PORT:-8081}:8081');
+	  expect(compose).toContain('api-token-data:/data/api');
+	}
+	expect(dockerfile).toContain('EXPOSE 80 8081');
+  });
 });

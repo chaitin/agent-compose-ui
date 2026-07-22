@@ -41,5 +41,5 @@ COPY --from=gateway-build /out/agent-compose-ui-server /usr/local/bin/agent-comp
 COPY docker/nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY docker/web-entrypoint.sh /usr/local/bin/web-entrypoint.sh
 
-EXPOSE 80
+EXPOSE 80 8081
 ENTRYPOINT ["/usr/local/bin/web-entrypoint.sh"]

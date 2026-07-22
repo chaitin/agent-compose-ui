@@ -51,6 +51,11 @@ describe('parseHash', () => {
     expect(parseHash('#/resources/volumes')?.page).toBe('volumes');
   });
 
+  it('system tokens', () => {
+	  expect(parseHash('#/system/tokens')?.page).toBe('tokens');
+	  expect(buildHash('tokens', '', idle)).toBe('#/system/tokens');
+  });
+
   it('project/new', () => {
     const r = parseHash('#/project/new')!;
     expect(r.page).toBe('project');
@@ -196,6 +201,7 @@ describe('parseHash ↔ buildHash 往返', () => {
     '#/system/environment',
     '#/system/images',
     '#/system/webhooks',
+    '#/system/tokens',
     '#/resources/caches',
     '#/resources/volumes',
     '#/project/new',
