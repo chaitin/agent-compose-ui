@@ -164,6 +164,7 @@ test('clicking curl toggle expands curl section with command and token placehold
   await fireEvent.click(screen.getByRole('button', { name: /▸ curl 示例/ }));
   expect(screen.getByText(/curl -X POST/)).toBeInTheDocument();
   expect(screen.getByText(/替换 <your-token>/)).toBeInTheDocument();
+  expect(screen.getByText(/http:\/\/127\.0\.0\.1:8080\/api\/webhooks\//)).toBeInTheDocument();
 });
 
 test('expanded curl section shows real token when session has it', async () => {

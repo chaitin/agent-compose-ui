@@ -33,6 +33,9 @@ services:
     volumes:
       # Read daemon variables server-side; never expose this mount to nginx or the browser.
       - ${AGENT_COMPOSE_DATA_DIR:-./data}:/data/agent-compose:ro
+      # The UI file gateway and daemon must resolve project-local workspace paths
+      # against the same filesystem. Keep the mount scoped to the daemon work dir.
+      - ${AGENT_COMPOSE_DATA_DIR:-./data}/work:/data/work
       # Reference-only project shadows and pending-sync state.
       - ui-state:/data/ui
     depends_on:

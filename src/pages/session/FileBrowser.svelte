@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { ExecCommand, ExecRequest, ExecStreamEventType, StdioStream } from '../../gen/agentcompose/v2/agentcompose_pb';
   import { execService } from '../../lib/rpc';
-  import { DIRECTORY_LIST_BYTES, FILE_PREVIEW_BYTES, MAX_DIRECTORY_ENTRIES, MAX_WRITABLE_FILE_BYTES, appendLimitedOutput, createLimitedOutput, formatExecError, isAbortError, parseDirectoryListing, resolveWorkspaceFileTarget, writableFileBytes, writeBoundedFile, type FileBrowserEntry } from './file-browser';
+  import { BASE64_PREVIEW_BYTES, DIRECTORY_LIST_BYTES, FILE_PREVIEW_BEGIN, FILE_PREVIEW_BYTES, FILE_PREVIEW_END, MAX_DIRECTORY_ENTRIES, MAX_WRITABLE_FILE_BYTES, createLimitedOutput, decodeBase64Preview, extractFramedPreview, formatExecError, isAbortError, mergeLimitedOutput, parseDirectoryListing, resolveWorkspaceFileTarget, writableFileBytes, writeBoundedFile, type FileBrowserEntry } from './file-browser';
   let { sandboxId, initialFilePath = '' }: { sandboxId: string; initialFilePath?: string } = $props();
   type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'failed';
   let currentPath = $state('/workspace'); let entries: FileBrowserEntry[] = $state([]); let selectedPath = $state(''); let content = $state('');
@@ -13,7 +13,7 @@
   async function stream(command: string, args: string[], cap: number, cwd = '') {
     active?.abort(); active = new AbortController(); let stdout = createLimitedOutput(); let stderr = createLimitedOutput(); let resultError = '';
     for await (const event of execService.execStream(request(command, args, cap, cwd), { signal: active.signal })) {
-      if (event.eventType === ExecStreamEventType.OUTPUT) { if (event.stream === StdioStream.STDERR) stderr = appendLimitedOutput(stderr, event.chunk, cap); else stdout = appendLimitedOutput(stdout, event.chunk, cap); }
+      if (event.eventType === ExecStreamEventType.OUTPUT) { if (event.stream === StdioStream.STDERR) stderr = mergeLimitedOutput(stderr, event.chunk, cap); else stdout = mergeLimitedOutput(stdout, event.chunk, cap); }
       if (event.result) resultError = event.result.error || '';
     }
     if (resultError || stderr.value) throw new Error(formatExecError(stderr.value, resultError));
@@ -28,7 +28,7 @@
   async function open(entry: FileBrowserEntry) {
     if (disposed) return;
     if (entry.isDir) { await list(entry.fullPath); return; } loading = true; error = ''; selectedPath = entry.fullPath; saveState = 'idle'; savedAt = '';
-    try { const output = await stream('/bin/cat', ['--', entry.fullPath], FILE_PREVIEW_BYTES); if (disposed) return; content = output.value; truncated = output.truncated; }
+    try { const output = await stream('/bin/sh', ['-c', `printf %s '${FILE_PREVIEW_BEGIN}'; head -c "$1" -- "$2" | base64 -w 0; printf %s '${FILE_PREVIEW_END}'`, 'file-preview', String(FILE_PREVIEW_BYTES + 1), entry.fullPath], BASE64_PREVIEW_BYTES); if (disposed) return; const decoded = decodeBase64Preview(extractFramedPreview(output.value)); content = decoded.value; truncated = decoded.truncated; }
     catch (cause) { if (!disposed && !isAbortError(cause)) error = cause instanceof Error ? cause.message : String(cause); } finally { if (!disposed) loading = false; }
   }
   async function save() {

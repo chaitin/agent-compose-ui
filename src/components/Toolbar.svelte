@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { store } from '../lib/stores.svelte';
-  import { capabilityService, imageService, projectService, runService, sandboxService } from '../lib/rpc';
+  import { capabilityService, imageService, projectService, runService, sandboxService, settingsService } from '../lib/rpc';
   import { yamlToSpec } from '../lib/yaml';
   import {
     getAppliedProjectId,
@@ -17,6 +17,7 @@
   } from '../lib/toolbar-actions';
   import {
     ValidateProjectRequest,
+    GetGlobalEnvRequest,
     GetProjectRequest,
     ProjectRef,
     ProjectSource,
@@ -42,6 +43,7 @@
     type ProjectImageBuildRunResult,
   } from '../lib/project-image-build';
   import { checkProjectDependencies } from '../lib/project-dependency-preflight';
+  import { llmConfigWarning } from '../lib/llm-config-preflight';
 
   let specHash = $state('');
   let synced = $state(false);
@@ -228,6 +230,7 @@
         return;
       }
       const source = new ProjectSource({ composePath: 'agent-compose.yml' });
+      void warnAboutMissingLLMConfig(spec);
       const req = new ValidateProjectRequest({ spec, source });
       const resp = await projectService.validateProject(req) as ValidateProjectResponse;
       if (resp.valid) {
@@ -240,6 +243,16 @@
       store.addToast(`校验失败: ${scriptMessage(e)}`, 'error');
     } finally {
       validating = false;
+    }
+  }
+
+  async function warnAboutMissingLLMConfig(spec: ReturnType<typeof yamlToSpec>['spec']) {
+    try {
+      const response = await settingsService.getGlobalEnv(new GetGlobalEnvRequest());
+      const warning = llmConfigWarning(spec, response.env);
+      if (warning) store.addToast(warning, 'info');
+    } catch {
+      // This is an advisory preflight; the daemon remains the source of truth.
     }
   }
 
@@ -289,6 +302,7 @@
       preflight: async (prepared) => {
         const parsed = yamlToSpec(prepared.yamlText);
         if (parsed.error) throw new Error(`YAML 解析错误: ${parsed.error}`);
+        void warnAboutMissingLLMConfig(parsed.spec);
         const result = await checkProjectDependencies({
           spec: parsed.spec,
           imageClient: imageService,

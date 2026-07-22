@@ -1,6 +1,7 @@
 import type { ScriptFile } from './types';
 import { expandScriptReferences } from './references';
 import { hashBrowserContent } from './project-lifecycle';
+import { migrateLegacyWorkspaceProviders } from '../workspace-binding';
 
 export interface ScriptRequestWorkspace {
   getContent(path: string): string | undefined;
@@ -17,7 +18,8 @@ export async function prepareScriptRequest(options: {
   if (options.mode !== 'validate') {
     await options.workspace.flushDirty();
   }
-  const expanded = await expandScriptReferences(options.editorYaml, async (path) => {
+  const requestYaml = migrateLegacyWorkspaceProviders(options.editorYaml);
+  const expanded = await expandScriptReferences(requestYaml, async (path) => {
     const inMemory = options.workspace.getContent(path);
     if (options.mode === 'validate' && inMemory !== undefined) {
       return {

@@ -28,12 +28,19 @@ test('lists the parent directory and previews an initial workspace file', async 
   const execRequests: ExecRequest[] = [];
   mocks.execService.execStream.mockImplementation(async function* (request: ExecRequest) {
     execRequests.push(request);
-    const chunk = execRequests.length === 1 ? 'f\treport.md\n' : 'report body';
+    const chunk = execRequests.length === 1 ? 'f\treport.md\n' : 'runtime-prefix__AC_FILE_B';
     yield new ExecStreamResponse({
       eventType: ExecStreamEventType.OUTPUT,
       stream: StdioStream.STDOUT,
       chunk,
     });
+    if (execRequests.length === 2) {
+      yield new ExecStreamResponse({
+        eventType: ExecStreamEventType.OUTPUT,
+        stream: StdioStream.STDOUT,
+        chunk: 'EGIN__cmVwb3J0IGJvZHk=__AC_FILE_END__runtime-result',
+      });
+    }
   });
 
   render(FileBrowser, {
@@ -46,7 +53,7 @@ test('lists the parent directory and previews an initial workspace file', async 
     command: { command: '/usr/bin/find', args: ['/workspace/2026-07-21', '-mindepth', '1', '-maxdepth', '1', '-printf', '%y\t%f\n'] },
   });
   expect(execRequests[1]).toMatchObject({
-    command: { command: '/bin/cat', args: ['--', '/workspace/2026-07-21/report.md'] },
+    command: { command: '/bin/sh', args: ['-c', "printf %s '__AC_FILE_BEGIN__'; head -c \"$1\" -- \"$2\" | base64 -w 0; printf %s '__AC_FILE_END__'", 'file-preview', String(512 * 1024 + 1), '/workspace/2026-07-21/report.md'] },
   });
   expect(await screen.findByDisplayValue('report body')).toBeTruthy();
 });

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { webhookStore } from '../../lib/webhook/store.svelte';
   import { WebhookApiError } from '../../lib/webhook/api';
+  import { createUUID } from '../../lib/uuid';
 
   interface Props {
     open: boolean;
@@ -20,7 +21,7 @@
   const TOPIC_RE = /^webhook\.[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)*\.$/;
 
   function generateToken(): string {
-    return 'tok_' + crypto.randomUUID().replace(/-/g, '').slice(0, 24);
+    return 'tok_' + createUUID().replace(/-/g, '').slice(0, 24);
   }
 
   // Initialize token when modal opens; reset on close
@@ -59,7 +60,7 @@
     if (!canSubmit) return;
     view = 'creating';
     submitError = null;
-    const sourceId = crypto.randomUUID();
+    const sourceId = createUUID();
     try {
       const source = await webhookStore.upsert({
         id: sourceId,
@@ -170,8 +171,9 @@
   .modal-header { display: flex; align-items: center; gap: 8px; padding: 14px 18px; border-bottom: 1px solid var(--border-color); }
   .modal-header .title { font-size: var(--font-size-xl); font-weight: 600; }
   .modal-header .icon.success { color: var(--accent-green); font-size: 18px; }
-  .modal-header .close { margin-left: auto; color: var(--text-muted); font-size: 18px; padding: 4px; }
-  .modal-header .close:hover { color: var(--text-primary); }
+  .modal-header .close { margin-left: auto; padding: 4px; border: 0; background: transparent; color: var(--text-muted); font-size: 18px; }
+  .modal-header .close:hover:not(:disabled) { color: var(--text-primary); }
+  .modal-header .close:disabled { cursor: not-allowed; opacity: 0.5; }
   .modal-body { padding: 16px 18px; }
   .field { margin-bottom: 14px; }
   .field label, .field .label-text { display: block; font-size: var(--font-size-xs); color: var(--text-secondary); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }

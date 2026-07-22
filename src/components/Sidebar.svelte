@@ -368,6 +368,14 @@
     >
       <span class="icon">&#9881;</span> 系统管理
     </button>
+    <a
+      class="nav-item"
+      href="https://devboard.chaitin.net/devboard/issues?product_id=6a5f3c14839f64bb543f172d"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      <span class="icon" aria-hidden="true">&#9993;</span> 反馈
+    </a>
   </div>
 </nav>
 
@@ -463,6 +471,7 @@
     background: transparent;
     color: var(--text-secondary);
     text-align: left;
+    text-decoration: none;
     font-size: var(--font-size-md);
     transition: background 0.1s;
     cursor: pointer;

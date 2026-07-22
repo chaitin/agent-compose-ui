@@ -13,7 +13,7 @@
 
   const status = $derived.by(() => {
     if (!binding) return { kind: 'none' as const };
-    if (binding.provider && binding.provider !== 'file') {
+    if (binding.provider && binding.provider !== 'local') {
       return { kind: 'non-file' as const, provider: binding.provider };
     }
     if (!binding.path) return { kind: 'none' as const };
@@ -67,7 +67,7 @@
     <span class="label">workspace 类型</span>
     <span class="path">{status.provider}</span>
     <span class="sep">·</span>
-    <span class="warn-text">非 file 类型，不支持文件管理</span>
+    <span class="warn-text">非 local 类型，不支持文件管理</span>
   </div>
 {:else}
   <div class="binding-bar empty">

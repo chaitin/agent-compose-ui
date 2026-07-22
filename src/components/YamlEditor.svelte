@@ -175,14 +175,14 @@
     }
   }
 
-  // Workspace providers that intentionally don't use the file panel - git/http
+  // Workspace providers that intentionally don't use the local file panel - git/http
   // pull content from remote sources, so we don't prompt the user to switch.
-  // Only unknown/unsupported providers (e.g. a typo'd 'local') get the warning.
+  // Only unknown or unsupported provider names get the warning.
   const KNOWN_NON_FILE_PROVIDERS = new Set(['git', 'http']);
 
   function bindingKind(binding: WorkspaceBinding | null): WorkspaceBindingKind | null {
     if (!binding) return null;
-    if (binding.provider && binding.provider !== 'file') {
+    if (binding.provider && binding.provider !== 'local') {
       if (KNOWN_NON_FILE_PROVIDERS.has(binding.provider)) return null;
       return 'non-file';
     }

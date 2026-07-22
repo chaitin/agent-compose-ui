@@ -112,3 +112,17 @@ test('keeps literal and ${VAR} values unchanged for server-side resolution', asy
   });
   expect(result.yamlText).toBe(yaml);
 });
+
+test('migrates legacy file workspaces before validate, save, and run requests', async () => {
+  const legacy = 'name: demo\nagents:\n  worker:\n    workspace:\n      provider: file\n      path: workspace\n';
+  for (const mode of ['validate', 'save', 'run']) {
+    const result = await prepareScriptRequest({
+      mode,
+      editorYaml: legacy,
+      workspace: { getContent: () => undefined, flushDirty: async () => {} },
+      readFile: async () => ({ content: '', sha256: '' }),
+    });
+    expect(result.yamlText).toContain('provider: local');
+    expect(result.yamlText).not.toContain('provider: file');
+  }
+});

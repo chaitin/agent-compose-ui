@@ -7,6 +7,9 @@ import {
   MAX_WRITABLE_FILE_BYTES,
   createLimitedOutput,
   appendLimitedOutput,
+  decodeBase64Preview,
+  extractFramedPreview,
+  mergeLimitedOutput,
   formatExecError,
   isAbortError,
   parseDirectoryListing,
@@ -36,6 +39,19 @@ describe('file browser output limits', () => {
     expect(new TextEncoder().encode(second.value)).toHaveLength(FILE_PREVIEW_BYTES);
     expect(second.value.endsWith('bc')).toBe(true);
     expect(second.truncated).toBe(true);
+  });
+
+  test('replaces cumulative stream snapshots instead of duplicating them', () => {
+    let output = mergeLimitedOutput(createLimitedOutput(), 'YWJj', 100);
+    output = mergeLimitedOutput(output, 'YWJjZGVm', 100);
+    expect(output.value).toBe('YWJjZGVm');
+    expect(output.bytes).toBe(8);
+  });
+
+  test('still appends ordinary incremental stream chunks', () => {
+    let output = mergeLimitedOutput(createLimitedOutput(), 'YWJj', 100);
+    output = mergeLimitedOutput(output, 'ZGVm', 100);
+    expect(output.value).toBe('YWJjZGVm');
   });
 
   test('caps multibyte text by UTF-8 bytes', () => {
@@ -84,6 +100,34 @@ describe('bounded file writes', () => {
   });
 });
 
+describe('binary-safe file previews', () => {
+  test('extracts only framed Base64 amid unrelated output', () => {
+    expect(extractFramedPreview('bootstrap\n__AC_FILE_BEGIN__5L2g5aW9Cg==__AC_FILE_END__{"result":true}'))
+      .toBe('5L2g5aW9Cg==');
+  });
+
+  test('extracts markers after stream chunks have been merged', () => {
+    let output = mergeLimitedOutput(createLimitedOutput(), 'noise__AC_FILE_B', 100);
+    output = mergeLimitedOutput(output, 'EGIN__YWJj__AC_FILE_', 100);
+    output = mergeLimitedOutput(output, 'END__tail', 100);
+    expect(extractFramedPreview(output.value)).toBe('YWJj');
+  });
+
+  test('rejects missing or incomplete preview frames', () => {
+    expect(() => extractFramedPreview('YWJj')).toThrow('响应不完整');
+    expect(() => extractFramedPreview('__AC_FILE_BEGIN__YWJj')).toThrow('响应不完整');
+  });
+
+  test('decodes UTF-8 text transported as base64', () => {
+    expect(decodeBase64Preview('5L2g5aW9Cg==\n')).toEqual({ value: '你好\n', truncated: false });
+  });
+
+  test('rejects binary and invalid UTF-8 content', () => {
+    expect(() => decodeBase64Preview('AAE=')).toThrow('二进制文件');
+    expect(() => decodeBase64Preview('/w==')).toThrow('UTF-8');
+  });
+});
+
 describe('parseDirectoryListing', () => {
   test('parses newline-delimited names without trimming whitespace', () => {
     expect(parseDirectoryListing('d\tdir\nf\t spaced file \n', '/workspace')).toEqual([
@@ -128,8 +172,9 @@ describe('v2 sandbox file browser requests', () => {
 
   test('passes paths as argv and never interpolates them into shell source', () => {
     expect(source).toContain("stream('/usr/bin/find', [path");
-    expect(source).toContain("stream('/bin/cat', ['--', entry.fullPath]");
-    expect(source).toContain("['--', entry.fullPath]");
+    expect(source).toContain("head -c \"$1\" -- \"$2\" | base64 -w 0");
+    expect(source).toContain('extractFramedPreview(output.value)');
+    expect(source).toContain("entry.fullPath], BASE64_PREVIEW_BYTES");
     expect(source).not.toMatch(/`[^`]*\$\{(?:path|currentPath|sandboxId)\}/);
   });
 

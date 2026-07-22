@@ -79,6 +79,13 @@ test('opens unified system management at daemon images', () => {
   assert.match(source, /store\.goTo\('images'\)/);
 });
 
+test('shows an external feedback entry below system management', () => {
+  assert.match(source, /系统管理[\s\S]*反馈/);
+  assert.match(source, /href="https:\/\/devboard\.chaitin\.net\/devboard\/issues\?product_id=6a5f3c14839f64bb543f172d"/);
+  assert.match(source, /target="_blank"/);
+  assert.match(source, /rel="noopener noreferrer"/);
+});
+
 test('uses the approved compact high-density dimensions', () => {
   assert.match(source, /\.brand\s*\{[\s\S]*?min-height:\s*46px/);
   assert.match(source, /\.section-header\s*\{[^}]*font-size:\s*var\(--font-size-md\)/);

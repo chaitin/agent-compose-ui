@@ -33,7 +33,7 @@
     const topic = src.topic_prefix.replace(/\.+$/, '');
     const auth = tok ?? '<your-token>';
     return [
-      `curl -X POST 'http://127.0.0.1:7410/api/webhooks/${topic}' \\`,
+      `curl -X POST 'http://127.0.0.1:8080/api/webhooks/${topic}' \\`,
       `  -H 'Content-Type: application/json' \\`,
       `  -H 'Authorization: Bearer ${auth}' \\`,
       `  --data '{`,

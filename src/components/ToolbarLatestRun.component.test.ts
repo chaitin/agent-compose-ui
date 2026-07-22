@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   changedBuildAgents: new Set<string>(),
   runProjectImageBuildPlans: vi.fn(),
   checkProjectDependencies: vi.fn(),
+  getGlobalEnv: vi.fn(),
   previewResponse: { changes: [] as Array<any>, issues: [] as Array<any>, unchanged: true },
   applyResponse: { applied: true, project: { summary: { projectId: 'p1' } }, changes: [] as Array<any> },
 }));
@@ -40,6 +41,7 @@ vi.mock('../lib/stores.svelte', () => ({ store: mocks.store }));
 vi.mock('../lib/rpc', () => ({
   projectService: { getProject: mocks.getProject, getScheduler: mocks.getScheduler, listSchedulers: mocks.listSchedulers, setSchedulerEnabled: mocks.setSchedulerEnabled, listSchedulerRuns: mocks.listSchedulerRuns, stopSchedulerRun: mocks.stopSchedulerRun }, imageService: {},
   capabilityService: {},
+  settingsService: { getGlobalEnv: mocks.getGlobalEnv },
   runService: { startRun: mocks.startRun, followRunLogs: vi.fn(), listRuns: mocks.listRuns, stopRun: mocks.stopRun },
   sandboxService: { listSandboxes: mocks.listSandboxes, stopSandbox: mocks.stopSandbox },
 }));
@@ -112,6 +114,7 @@ beforeEach(() => {
   mocks.changedBuildAgents = new Set();
   mocks.runProjectImageBuildPlans.mockResolvedValue([]);
   mocks.checkProjectDependencies.mockResolvedValue({ warnings: [] });
+  mocks.getGlobalEnv.mockResolvedValue({ env: [] });
   mocks.getProject.mockResolvedValue({ project: { spec: mocks.savedSpec } });
   mocks.previewResponse = { changes: [], issues: [], unchanged: true };
   mocks.applyResponse = { applied: true, project: { summary: { projectId: 'p1' } }, changes: [] };
@@ -136,6 +139,24 @@ test('does not render an operation rail in the confirmation dialog', async () =>
   await fireEvent.click(screen.getByRole('button', { name: '启用' }));
 
   expect(screen.queryByLabelText('执行顺序')).toBeNull();
+});
+
+test('warns before enable when scheduler.llm config is missing', async () => {
+  mocks.currentSpec = {
+    name: 'P1',
+    agents: [{ name: 'curator', scheduler: { script: 'scheduler.llm("summarize")' } }],
+  } as any;
+  mocks.getGlobalEnv.mockResolvedValue({
+    env: [{ name: 'LLM_API_ENDPOINT', value: 'https://gateway.example/openai' }],
+  });
+  render(Toolbar);
+
+  await fireEvent.click(screen.getByRole('button', { name: '启用' }));
+
+  await waitFor(() => expect(mocks.store.addToast).toHaveBeenCalledWith(
+    expect.stringContaining('LLM_API_KEY'),
+    'info',
+  ));
 });
 
 test('saves a browser draft without starting the enable preview', async () => {

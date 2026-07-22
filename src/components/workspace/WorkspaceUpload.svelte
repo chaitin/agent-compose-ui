@@ -3,7 +3,7 @@
   import { workspaceFiles } from '../../lib/workspace/store.svelte';
   import { LocalWorkspaceApiError } from '../../lib/workspace/local-api';
   import { formatFileSize } from '../../lib/workspace/tree';
-  import { sanitizeTarPath, packTarBlob } from '../../lib/workspace/tar';
+  import { sanitizeTarPath } from '../../lib/workspace/tar';
   import type { TarEntryInput } from '../../lib/workspace/types';
 
   // Design doc §4.1: actual limit should come from GET /api/agent-compose/config/workspace (not yet implemented).
@@ -151,10 +151,7 @@
     if (current.kind === 'single') {
       void performSingleUpload(current.file, current.path);
     } else if (current.kind === 'tar') {
-      // Send the existing .tar as-is via XHR + FormData. The backend extracts
-      // its contents. Do NOT wrap it in another tar - that would store the .tar
-      // as a single file instead of extracting it.
-      void performTarExtractUpload(current.file);
+      void performSingleUpload(current.file, current.file.name);
     } else if (current.kind === 'archive-overwrite') {
       void performArchiveUpload(current.entries, current.totalBytes);
     }
@@ -162,13 +159,6 @@
 
   function cancelPrompt() {
     prompt = null;
-  }
-
-  function pickAsFile() {
-    if (!prompt || prompt.kind !== 'tar') return;
-    const file = prompt.file;
-    prompt = null;
-    void startSingleUpload(file);
   }
 
   async function performSingleUpload(file: File, targetPath: string) {
@@ -185,29 +175,20 @@
     }
   }
 
-  async function performTarExtractUpload(file: File) {
-    uploading = true;
-    progress = { loaded: 0, total: file.size, phase: 'uploading' };
-    try {
-      await workspaceFiles.upload(file, undefined, (p) => (progress = { ...p, phase: 'uploading' }));
-      store.addToast(`已上传 ${file.name}`, 'success');
-    } catch (error) {
-      handleUploadError(error);
-    } finally {
-      uploading = false;
-      progress = null;
-    }
-  }
-
   async function performArchiveUpload(entries: TarEntryInput[], totalBytes: number) {
     uploading = true;
-    progress = { loaded: 0, total: totalBytes, phase: 'packing' };
+    progress = { loaded: 0, total: totalBytes, phase: 'uploading' };
     try {
-      const tarBlob = packTarBlob(entries);
-      const tarFile = new File([tarBlob], 'upload.tar', { type: 'application/x-tar' });
-      await workspaceFiles.upload(tarFile, undefined, (p) => {
-        progress = { loaded: p.loaded, total: totalBytes, phase: 'uploading' };
-      });
+      let completedBytes = 0;
+      for (const entry of entries) {
+        const file = entry.file instanceof File
+          ? entry.file
+          : new File([entry.file], entry.path.split('/').at(-1) || 'upload');
+        await workspaceFiles.upload(file, entry.path, (p) => {
+          progress = { loaded: completedBytes + p.loaded, total: totalBytes, phase: 'uploading' };
+        });
+        completedBytes += entry.file.size;
+      }
       store.addToast(`已上传 ${entries.length} 个文件`, 'success');
     } catch (error) {
       handleUploadError(error);
@@ -302,12 +283,11 @@
       {:else if prompt.kind === 'tar'}
         <div class="confirm-title">检测到 .tar 文件</div>
         <div class="confirm-desc">
-          <code>{prompt.file.name}</code> 是 tar 归档。要作为普通文件存储，还是解压到 workspace 根目录？
+          <code>{prompt.file.name}</code> 是 tar 归档。当前文件服务不支持在线解压，只能作为普通文件存储。
         </div>
         <div class="confirm-actions">
           <button type="button" onclick={cancelPrompt} disabled={uploading}>取消</button>
-          <button type="button" onclick={pickAsFile} disabled={uploading}>作为文件存储</button>
-          <button type="button" class="primary" onclick={confirmPrompt} disabled={uploading}>解压到 workspace</button>
+          <button type="button" class="primary" onclick={confirmPrompt} disabled={uploading}>作为文件存储</button>
         </div>
       {:else if prompt.kind === 'archive-overwrite'}
         <div class="confirm-title">将覆盖 {prompt.existing.length} 个文件</div>

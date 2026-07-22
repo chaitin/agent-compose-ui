@@ -74,16 +74,28 @@ func resolveRoot(sourcePath, workspacePath string) (string, error) {
 		return "", fmt.Errorf("resolve sourcePath: %w", err)
 	}
 	info, err := os.Stat(sourceAbs)
-	if err == nil && !info.IsDir() {
-		sourceAbs = filepath.Dir(sourceAbs)
+	if err == nil {
+		if !info.IsDir() {
+			sourceAbs = filepath.Dir(sourceAbs)
+		}
+	} else if os.IsNotExist(err) {
+		// API-created projects retain a logical compose path even when the YAML
+		// is not materialized on the gateway filesystem.
+		ext := strings.ToLower(filepath.Ext(sourceAbs))
+		if ext == ".yml" || ext == ".yaml" {
+			sourceAbs = filepath.Dir(sourceAbs)
+		}
+	} else {
+		return "", fmt.Errorf("inspect sourcePath: %w", err)
 	}
 	root := filepath.Join(sourceAbs, clean)
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
 		return "", fmt.Errorf("resolve workspace root: %w", err)
 	}
-	// Safety: ensure resolved path is within sourceDir
-	if !strings.HasPrefix(rootAbs, sourceAbs) {
+	// Safety: ensure resolved path is within sourceDir.
+	rel, err := filepath.Rel(sourceAbs, rootAbs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("workspace path escapes source root")
 	}
 	return rootAbs, nil

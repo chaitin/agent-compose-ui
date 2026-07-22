@@ -5,6 +5,7 @@
   import WebhookSourceTable from './WebhookSourceTable.svelte';
   import WebhookRegisterModal from './WebhookRegisterModal.svelte';
   import type { TestState } from '../../lib/webhook/types';
+  import { createUUID } from '../../lib/uuid';
 
   let testStates = $state<Map<string, TestState>>(new Map());
   let registerOpen = $state(false);
@@ -123,7 +124,7 @@
     if (!target) return;
     const source = webhookStore.sources.find((s) => s.id === target.id);
     if (!source) return;
-    const newToken = 'tok_' + crypto.randomUUID().replace(/-/g, '').slice(0, 24);
+    const newToken = 'tok_' + createUUID().replace(/-/g, '').slice(0, 24);
     regenPending = true;
     try {
       await webhookStore.upsert({

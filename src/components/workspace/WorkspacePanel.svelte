@@ -67,8 +67,8 @@
         <div class="placeholder-icon">⌥</div>
         <div class="placeholder-title">文件管理不可用</div>
         <div class="placeholder-desc">
-          {#if binding?.provider && binding.provider !== 'file'}
-            当前 workspace 类型为 <code>{binding.provider}</code>，文件管理仅支持 <code>file</code> 类型
+          {#if binding?.provider && binding.provider !== 'local'}
+            当前 workspace 类型为 <code>{binding.provider}</code>，文件管理仅支持 <code>local</code> 类型
           {:else}
             请先在 YAML 中配置 <code>agents.&lt;name&gt;.workspace.path</code>
           {/if}
