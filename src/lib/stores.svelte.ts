@@ -77,6 +77,10 @@ function createDraftId(): string {
   return `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function draftComposePath(id: string): string {
+  return `/agent-compose-ui/projects/${encodeURIComponent(id)}/agent-compose.yml`;
+}
+
 function persistBrowserDrafts(drafts: BrowserDraft[]): void {
   try {
     localStorage.setItem(BROWSER_DRAFTS_KEY, JSON.stringify({ version: 1, drafts }));
@@ -522,7 +526,7 @@ export class Store {
     if (duplicate) return { ok: false as const, reason: 'duplicate-name' as const, name };
     const existing = this.browserDrafts.find((draft) => draft.id === this.activeDraftId);
     const draft: BrowserDraft = {
-      id: existing?.id || createDraftId(),
+      id: existing?.id || this.activeDraftId || createDraftId(),
       name,
       content: this.editorContent,
       updatedAt: new Date().toISOString(),
@@ -533,6 +537,14 @@ export class Store {
     this.activeDraftId = draft.id;
     persistBrowserDrafts(this.browserDrafts);
     return { ok: true as const, draft };
+  }
+
+  ensureEditorDraftSourcePath(): string {
+    if (this.activeProjectId) {
+      return this.projects.find((project) => project.summary.projectId === this.activeProjectId)?.summary.sourcePath?.trim() || '';
+    }
+    if (!this.activeDraftId) this.activeDraftId = createDraftId();
+    return draftComposePath(this.activeDraftId);
   }
 
   loadEditorDraft(id = this.activeDraftId): string | null {

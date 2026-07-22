@@ -82,6 +82,25 @@ test('saveEditorDraft persists multiple new-project drafts with stable identitie
   expect(store.browserDrafts[0].id).not.toBe(store.browserDrafts[1].id);
 });
 
+test('new project source identity is stable for a draft and rotates for the next project', () => {
+  localStorage.clear();
+  store.browserDrafts = [];
+  store.activeDraftId = '';
+  store.activeProjectId = '';
+  store.editorContent = 'name: first-draft\n';
+
+  const firstPath = store.ensureEditorDraftSourcePath();
+  expect(firstPath).toMatch(/^\/agent-compose-ui\/projects\/[^/]+\/agent-compose\.yml$/);
+  expect(store.ensureEditorDraftSourcePath()).toBe(firstPath);
+  const saved = store.saveEditorDraft();
+  expect(saved.ok).toBe(true);
+  expect(firstPath).toContain(`/${saved.draft.id}/`);
+
+  store.beginEditorDraft();
+  const secondPath = store.ensureEditorDraftSourcePath();
+  expect(secondPath).not.toBe(firstPath);
+});
+
 test('saveEditorDraft updates the selected draft and rejects another draft with the same name', () => {
   localStorage.clear();
   store.browserDrafts = [];

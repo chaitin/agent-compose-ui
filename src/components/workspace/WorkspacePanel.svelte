@@ -2,7 +2,6 @@
   import { store } from '../../lib/stores.svelte';
   import WorkspaceBindingBar from './WorkspaceBindingBar.svelte';
   import WorkspaceFileTree from './WorkspaceFileTree.svelte';
-  import WorkspaceUpload from './WorkspaceUpload.svelte';
   import WorkspaceFilePreview from './WorkspaceFilePreview.svelte';
   import { parseWorkspaceBinding, isWorkspaceBindingValid, defaultWorkspacePath } from '../../lib/workspace-binding';
   import { workspaceFiles } from '../../lib/workspace/store.svelte';
@@ -56,7 +55,6 @@
             activePath={workspaceFiles.activePath}
             onSelect={handleSelect}
           />
-          <WorkspaceUpload />
         </div>
         <WorkspaceFilePreview />
       {/if}

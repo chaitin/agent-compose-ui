@@ -2,6 +2,7 @@
   import { store } from '../../lib/stores.svelte';
   import { parseWorkspaceBinding } from '../../lib/workspace-binding';
   import { createWorkspaceAndBind } from '../../lib/workspace-create';
+  import WorkspaceUpload from './WorkspaceUpload.svelte';
 
   interface Props {
     sourcePath: string;
@@ -21,16 +22,6 @@
   });
 
   let creating = $state(false);
-
-  async function copyPath() {
-    if (status.kind !== 'valid') return;
-    try {
-      await navigator.clipboard.writeText(status.path);
-      store.addToast('已复制 workspace path', 'success');
-    } catch {
-      store.addToast('复制失败，请手动选择复制', 'error');
-    }
-  }
 
   async function createWorkspace() {
     if (creating) return;
@@ -60,7 +51,7 @@
     <span class="path">{status.path}</span>
     <span class="sep">·</span>
     <span class="sync">● 已绑定</span>
-    <button type="button" class="copy-btn" onclick={copyPath}>📋 复制 path</button>
+    <WorkspaceUpload />
   </div>
 {:else if status.kind === 'non-file'}
   <div class="binding-bar warn">
@@ -111,7 +102,6 @@
   .warn-text { color: var(--accent-yellow); }
   .hint { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
   .hint code { color: var(--accent-blue); }
-  .copy-btn,
   .create-btn {
     padding: 2px 8px;
     border: 1px solid var(--border-color);
@@ -122,15 +112,11 @@
     font-family: var(--font-sans);
     cursor: pointer;
   }
-  .copy-btn { margin-left: auto; }
+  :global(.binding-bar.valid > .upload-bar) { margin-left: auto; }
   .create-btn {
     color: var(--accent-blue);
     border-color: color-mix(in srgb, var(--accent-blue) 50%, var(--border-color));
     background: color-mix(in srgb, var(--accent-blue) 8%, var(--bg-secondary));
-  }
-  .copy-btn:hover {
-    color: var(--accent-blue);
-    border-color: var(--accent-blue);
   }
   .create-btn:hover:not(:disabled) {
     background: color-mix(in srgb, var(--accent-blue) 15%, var(--bg-secondary));

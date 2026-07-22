@@ -229,7 +229,7 @@
         store.addToast(`YAML 解析错误: ${error}`, 'error');
         return;
       }
-      const source = new ProjectSource({ composePath: 'agent-compose.yml' });
+      const source = new ProjectSource({ composePath: store.ensureEditorDraftSourcePath() });
       void warnAboutMissingLLMConfig(spec);
       const req = new ValidateProjectRequest({ spec, source });
       const resp = await projectService.validateProject(req) as ValidateProjectResponse;
@@ -291,8 +291,9 @@
     const editorContent = store.editorContent;
     const projects = store.projects.map((project) => ({ ...project, summary: { ...project.summary } }));
     const fallbackSpecHash = specHash;
+    const newProjectSourcePath = currentProjectId ? '' : store.ensureEditorDraftSourcePath();
     const preview = await prepareProjectPreview({
-      mode, currentProjectId, editorContent, projects, fallbackSpecHash,
+      mode, currentProjectId, editorContent, projects, fallbackSpecHash, newProjectSourcePath,
       prepare: async (snapshotEditorContent) => prepareScriptRequest({
         mode,
         editorYaml: snapshotEditorContent,

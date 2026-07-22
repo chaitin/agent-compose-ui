@@ -249,7 +249,7 @@
   {:else}
     <button
       type="button"
-      class="upload-btn primary"
+      class="upload-btn"
       onclick={openPicker}
       disabled={uploading}
     >
@@ -314,27 +314,26 @@
 <style>
   .upload-bar {
     display: flex;
-    gap: 8px;
-    margin: 8px 14px;
+    gap: 6px;
+    margin: 0;
     flex-shrink: 0;
-    align-items: stretch;
+    align-items: center;
   }
   .upload-bar.uploading {
-    flex-direction: column;
+    width: 160px;
   }
   .upload-btn {
-    flex: 1;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    padding: 8px 12px;
+    gap: 4px;
+    padding: 2px 8px;
     border: 1px solid var(--border-color);
-    border-radius: 6px;
-    background: var(--bg-tertiary);
+    border-radius: 3px;
+    background: var(--bg-secondary);
     color: var(--text-secondary);
-    font-size: var(--font-size-sm);
-    font-family: inherit;
+    font-size: 10px;
+    font-family: var(--font-sans);
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
   }
@@ -347,23 +346,12 @@
     outline: 2px solid var(--accent-blue);
     outline-offset: 1px;
   }
-  .upload-btn.primary {
-    background: var(--accent-blue);
-    border-color: var(--accent-blue);
-    color: #0d1117;
-    font-weight: 600;
-  }
-  .upload-btn.primary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent-blue) 88%, white);
-    border-color: color-mix(in srgb, var(--accent-blue) 88%, white);
-    color: #0d1117;
-  }
   .upload-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
   .btn-icon {
-    font-size: 14px;
+    font-size: 10px;
     line-height: 1;
   }
   .upload-progress {

@@ -510,6 +510,26 @@ describe('saveProject', () => {
     ]);
   });
 
+  test('uses one caller-provided virtual source path for a new project preview and apply', async () => {
+    const requests = [];
+    const virtualPath = '/agent-compose-ui/projects/draft-1/agent-compose.yml';
+    const preview = await previewProject(validYaml, {
+      applyProject: async (request) => {
+        requests.push(request);
+        return request.dryRun
+          ? { applied: false, unchanged: false, changes: [], issues: [], revision: { specHash: 'preview-hash' } }
+          : { applied: true, unchanged: false, changes: [] };
+      },
+    }, {
+      currentProjectId: '',
+      projects: [],
+      newProjectSourcePath: virtualPath,
+    });
+
+    await preview.apply();
+    expect(requests.map((request) => request.source.composePath)).toEqual([virtualPath, virtualPath]);
+  });
+
   test('marks agents that define a scheduler in the applied YAML', async () => {
     const result = await saveProject(`name: scheduled-demo
 agents:
