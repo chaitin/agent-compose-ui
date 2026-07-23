@@ -8,12 +8,18 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
-const maxCreateBody = 4 << 10
+const (
+	maxCreateBody       = 4 << 10
+	defaultValidityDays = 90
+)
+
+var allowedValidityDays = map[int]struct{}{1: {}, 7: {}, 30: {}, 90: {}, 365: {}}
 
 type tokenStore interface {
-	Create(context.Context, string, Role) (Created, error)
+	Create(context.Context, string, Role, time.Duration) (Created, error)
 	List(context.Context) ([]Metadata, error)
 	Revoke(context.Context, string) error
 }
@@ -52,8 +58,9 @@ func (h *HTTPHandler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 type createRequest struct {
-	Name string `json:"name"`
-	Role Role   `json:"role"`
+	Name          string `json:"name"`
+	Role          Role   `json:"role"`
+	ExpiresInDays int    `json:"expiresInDays"`
 }
 
 func (h *HTTPHandler) create(w http.ResponseWriter, r *http.Request) {
@@ -78,11 +85,15 @@ func (h *HTTPHandler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input.Name = strings.TrimSpace(input.Name)
-	if length := len([]rune(input.Name)); length < 1 || length > 64 || !input.Role.Valid() {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "name or role is invalid"})
+	if input.ExpiresInDays == 0 {
+		input.ExpiresInDays = defaultValidityDays
+	}
+	_, validityAllowed := allowedValidityDays[input.ExpiresInDays]
+	if length := len([]rune(input.Name)); length < 1 || length > 64 || !input.Role.Valid() || !validityAllowed {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "name, role, or validity is invalid"})
 		return
 	}
-	created, err := h.store.Create(r.Context(), input.Name, input.Role)
+	created, err := h.store.Create(r.Context(), input.Name, input.Role, time.Duration(input.ExpiresInDays)*24*time.Hour)
 	if err != nil {
 		writeStoreError(w, err)
 		return

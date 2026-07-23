@@ -27,8 +27,8 @@ test('creates and revokes through strict JSON endpoints', async () => {
   const fetchMock = vi.spyOn(globalThis, 'fetch')
     .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'id', name: 'ci', role: 'admin', createdAt: 'now', token: 'once' }), { status: 201 }))
     .mockResolvedValueOnce(new Response(null, { status: 204 }));
-  await expect(apiTokens.create('ci', 'admin')).resolves.toMatchObject({ token: 'once' });
+  await expect(apiTokens.create('ci', 'admin', 365)).resolves.toMatchObject({ token: 'once' });
   await apiTokens.revoke('id/unsafe');
-  expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST', body: JSON.stringify({ name: 'ci', role: 'admin' }) });
+  expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST', body: JSON.stringify({ name: 'ci', role: 'admin', expiresInDays: 365 }) });
   expect(fetchMock.mock.calls[1][0]).toBe('/ui-api/v1/tokens/id%2Funsafe');
 });

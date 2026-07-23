@@ -23,13 +23,14 @@ test('shows the disabled state for a 503 response', async () => {
 });
 
 test('shows a created token once, copies it, then clears it', async () => {
-  mocks.create.mockResolvedValue({ id: 'id', name: 'ci', role: 'read-only-admin', createdAt: 'now', token: 'acp_once' });
+  mocks.create.mockResolvedValue({ id: 'id', name: 'ci', role: 'read-only-admin', createdAt: '2026-07-23T00:00:00Z', expiresAt: '2026-10-21T00:00:00Z', token: 'acp_once' });
   mocks.copy.mockResolvedValue(undefined);
   render(TokenManagementPanel);
   await screen.findByText('尚未创建 API Token。');
   await fireEvent.click(screen.getByRole('button', { name: '创建 Token' }));
   await fireEvent.input(screen.getByPlaceholderText('例如：CI 只读巡检'), { target: { value: 'ci' } });
   await fireEvent.click(screen.getByRole('button', { name: '创建' }));
+  expect(mocks.create).toHaveBeenCalledWith('ci', 'read-only-admin', 90);
   expect(await screen.findByText('acp_once')).toBeInTheDocument();
   await fireEvent.click(screen.getByRole('button', { name: '复制 Token' }));
   await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('acp_once'));
@@ -38,10 +39,25 @@ test('shows a created token once, copies it, then clears it', async () => {
 });
 
 test('revokes an active token after confirmation', async () => {
-  mocks.list.mockResolvedValue([{ id: 'id', name: 'ci', role: 'admin', createdAt: '2026-01-01T00:00:00Z' }]);
+  mocks.list.mockResolvedValue([{ id: 'id', name: 'ci', role: 'admin', createdAt: '2026-01-01T00:00:00Z', expiresAt: '2099-01-01T00:00:00Z' }]);
   mocks.revoke.mockResolvedValue(undefined);
   render(TokenManagementPanel);
   await fireEvent.click(await screen.findByRole('button', { name: '撤销' }));
   await fireEvent.click(screen.getByRole('button', { name: '确认撤销' }));
   await waitFor(() => expect(mocks.revoke).toHaveBeenCalledWith('id'));
+});
+
+test('selects a fixed validity and renders expired tokens without extension actions', async () => {
+  mocks.create.mockResolvedValue({ id: 'new', name: 'yearly', role: 'admin', createdAt: '2026-01-01T00:00:00Z', expiresAt: '2027-01-01T00:00:00Z', token: 'acp_year' });
+  mocks.list.mockResolvedValueOnce([{ id: 'expired', name: 'old', role: 'admin', createdAt: '2025-01-01T00:00:00Z', expiresAt: '2025-01-02T00:00:00Z' }]).mockResolvedValueOnce([]);
+  render(TokenManagementPanel);
+  expect(await screen.findByText('已过期')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '撤销' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: /延期/ })).not.toBeInTheDocument();
+
+  await fireEvent.click(screen.getByRole('button', { name: '创建 Token' }));
+  await fireEvent.input(screen.getByPlaceholderText('例如：CI 只读巡检'), { target: { value: 'yearly' } });
+  await fireEvent.change(screen.getByLabelText('有效期'), { target: { value: '365' } });
+  await fireEvent.click(screen.getByRole('button', { name: '创建' }));
+  expect(mocks.create).toHaveBeenCalledWith('yearly', 'read-only-admin', 365);
 });

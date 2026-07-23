@@ -18,7 +18,8 @@ const sqliteConstraintPrimaryKey = 1555
 var dummyDigest = secretDigest("invalid-token-secret")
 
 type Store struct {
-	db *sql.DB
+	db  *sql.DB
+	now func() time.Time
 }
 
 func OpenStore(path string) (*Store, error) {
@@ -32,7 +33,7 @@ func OpenStore(path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
-	store := &Store{db: db}
+	store := &Store{db: db, now: time.Now}
 	if err := store.init(context.Background()); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -50,6 +51,7 @@ func (s *Store) init(ctx context.Context) error {
 			name TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 64),
 			role TEXT NOT NULL CHECK(role IN ('admin', 'read-only-admin')),
 			created_at INTEGER NOT NULL,
+			expires_at INTEGER,
 			revoked_at INTEGER
 		)`,
 	} {
@@ -57,20 +59,30 @@ func (s *Store) init(ctx context.Context) error {
 			return fmt.Errorf("initialize token database: %w", err)
 		}
 	}
+	var expiresAtColumns int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('api_token') WHERE name='expires_at'`).Scan(&expiresAtColumns); err != nil {
+		return fmt.Errorf("inspect token database schema: %w", err)
+	}
+	if expiresAtColumns == 0 {
+		if _, err := s.db.ExecContext(ctx, `ALTER TABLE api_token ADD COLUMN expires_at INTEGER`); err != nil {
+			return fmt.Errorf("migrate token database: %w", err)
+		}
+	}
 	return nil
 }
 
-func (s *Store) Create(ctx context.Context, name string, role Role) (Created, error) {
-	now := time.Now().UTC().Truncate(time.Second)
+func (s *Store) Create(ctx context.Context, name string, role Role, validFor time.Duration) (Created, error) {
+	now := s.now().UTC().Truncate(time.Second)
+	expiresAt := now.Add(validFor)
 	for range createCollisionRetries {
 		parsed, raw, err := generateToken()
 		if err != nil {
 			return Created{}, fmt.Errorf("generate api token: %w", err)
 		}
 		digest := secretDigest(parsed.secret)
-		_, err = s.db.ExecContext(ctx, `INSERT INTO api_token(id, secret_hash, name, role, created_at) VALUES(?,?,?,?,?)`, parsed.id, digest[:], name, role, now.Unix())
+		_, err = s.db.ExecContext(ctx, `INSERT INTO api_token(id, secret_hash, name, role, created_at, expires_at) VALUES(?,?,?,?,?,?)`, parsed.id, digest[:], name, role, now.Unix(), expiresAt.Unix())
 		if err == nil {
-			return Created{Metadata: Metadata{ID: parsed.id, Name: name, Role: role, CreatedAt: now}, Token: raw}, nil
+			return Created{Metadata: Metadata{ID: parsed.id, Name: name, Role: role, CreatedAt: now, ExpiresAt: &expiresAt}, Token: raw}, nil
 		}
 		if !isUniqueConstraint(err) {
 			return Created{}, fmt.Errorf("create api token: %w", err)
@@ -80,7 +92,7 @@ func (s *Store) Create(ctx context.Context, name string, role Role) (Created, er
 }
 
 func (s *Store) List(ctx context.Context) ([]Metadata, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, role, created_at, revoked_at FROM api_token ORDER BY created_at DESC, id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, role, created_at, expires_at, revoked_at FROM api_token ORDER BY created_at DESC, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list api tokens: %w", err)
 	}
@@ -89,11 +101,16 @@ func (s *Store) List(ctx context.Context) ([]Metadata, error) {
 	for rows.Next() {
 		var item Metadata
 		var createdAt int64
+		var expiresAt sql.NullInt64
 		var revokedAt sql.NullInt64
-		if err := rows.Scan(&item.ID, &item.Name, &item.Role, &createdAt, &revokedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Role, &createdAt, &expiresAt, &revokedAt); err != nil {
 			return nil, fmt.Errorf("scan api token: %w", err)
 		}
 		item.CreatedAt = time.Unix(createdAt, 0).UTC()
+		if expiresAt.Valid {
+			value := time.Unix(expiresAt.Int64, 0).UTC()
+			item.ExpiresAt = &value
+		}
 		if revokedAt.Valid {
 			value := time.Unix(revokedAt.Int64, 0).UTC()
 			item.RevokedAt = &value
@@ -122,8 +139,9 @@ func (s *Store) Authenticate(ctx context.Context, raw string) (Identity, error) 
 	}
 	var digest []byte
 	var role Role
+	var expiresAt sql.NullInt64
 	var revokedAt sql.NullInt64
-	err := s.db.QueryRowContext(ctx, `SELECT secret_hash, role, revoked_at FROM api_token WHERE id=?`, lookupID).Scan(&digest, &role, &revokedAt)
+	err := s.db.QueryRowContext(ctx, `SELECT secret_hash, role, expires_at, revoked_at FROM api_token WHERE id=?`, lookupID).Scan(&digest, &role, &expiresAt, &revokedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		digest = dummyDigest[:]
 		role = RoleReadOnlyAdmin
@@ -131,7 +149,8 @@ func (s *Store) Authenticate(ctx context.Context, raw string) (Identity, error) 
 		return Identity{}, fmt.Errorf("authenticate api token: %w", err)
 	}
 	presented := secretDigest(parsed.secret)
-	valid := parseErr == nil && !revokedAt.Valid && role.Valid() && digestEqual(digest, presented[:])
+	notExpired := !expiresAt.Valid || expiresAt.Int64 > s.now().UTC().Unix()
+	valid := parseErr == nil && !revokedAt.Valid && notExpired && role.Valid() && digestEqual(digest, presented[:])
 	if !valid {
 		return Identity{}, ErrInvalidToken
 	}

@@ -26,6 +26,7 @@ type Metadata struct {
 	Name      string     `json:"name"`
 	Role      Role       `json:"role"`
 	CreatedAt time.Time  `json:"createdAt"`
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
 	RevokedAt *time.Time `json:"revokedAt,omitempty"`
 }
 

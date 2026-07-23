@@ -5,6 +5,7 @@ export interface ApiTokenMetadata {
   name: string;
   role: ApiTokenRole;
   createdAt: string;
+  expiresAt?: string;
   revokedAt?: string;
 }
 
@@ -48,11 +49,11 @@ export const apiTokens = {
     return Array.isArray(body.items) ? body.items : [];
   },
 
-  async create(name: string, role: ApiTokenRole): Promise<CreatedApiToken> {
+  async create(name: string, role: ApiTokenRole, expiresInDays: number): Promise<CreatedApiToken> {
     const response = await request('/ui-api/v1/tokens', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, role }),
+      body: JSON.stringify({ name, role, expiresInDays }),
     });
     return await response.json() as CreatedApiToken;
   },

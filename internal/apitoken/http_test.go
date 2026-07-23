@@ -7,15 +7,18 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeTokenStore struct {
-	created Created
-	items   []Metadata
-	err     error
+	created  Created
+	items    []Metadata
+	err      error
+	validFor time.Duration
 }
 
-func (s *fakeTokenStore) Create(context.Context, string, Role) (Created, error) {
+func (s *fakeTokenStore) Create(_ context.Context, _ string, _ Role, validFor time.Duration) (Created, error) {
+	s.validFor = validFor
 	return s.created, s.err
 }
 func (s *fakeTokenStore) List(context.Context) ([]Metadata, error) { return s.items, s.err }
@@ -30,7 +33,9 @@ func TestCreateInputBoundary(t *testing.T) {
 		fetchSite   string
 		want        int
 	}{
-		{"valid", `{"name":"ci","role":"read-only-admin"}`, "application/json", "http://example.com", "same-origin", http.StatusCreated},
+		{"valid default", `{"name":"ci","role":"read-only-admin"}`, "application/json", "http://example.com", "same-origin", http.StatusCreated},
+		{"valid one year", `{"name":"ci","role":"admin","expiresInDays":365}`, "application/json", "", "", http.StatusCreated},
+		{"invalid validity", `{"name":"ci","role":"admin","expiresInDays":2}`, "application/json", "", "", http.StatusUnprocessableEntity},
 		{"unknown field", `{"name":"ci","role":"admin","extra":true}`, "application/json", "", "", http.StatusBadRequest},
 		{"trailing json", `{"name":"ci","role":"admin"}{}`, "application/json", "", "", http.StatusBadRequest},
 		{"invalid role", `{"name":"ci","role":"owner"}`, "application/json", "", "", http.StatusUnprocessableEntity},
@@ -51,6 +56,18 @@ func TestCreateInputBoundary(t *testing.T) {
 				t.Fatalf("status = %d, want %d: %s", response.Code, test.want, response.Body.String())
 			}
 		})
+	}
+}
+
+func TestCreateDefaultsValidityToNinetyDays(t *testing.T) {
+	store := &fakeTokenStore{created: Created{Token: "once"}}
+	handler := NewHTTPHandler(store)
+	request := httptest.NewRequest(http.MethodPost, "/ui-api/v1/tokens", strings.NewReader(`{"name":"ci","role":"admin"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated || store.validFor != 90*24*time.Hour {
+		t.Fatalf("response = %d, validFor = %v", response.Code, store.validFor)
 	}
 }
 
