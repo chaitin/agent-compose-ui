@@ -54,27 +54,27 @@ async function request(input: RequestInfo, init?: RequestInit): Promise<Response
 }
 
 export const localWorkspaceApi = {
-  async ensureDir(sourcePath: string, workspacePath: string): Promise<{ ok: boolean; path: string }> {
+  async ensureDir(projectKey: string, workspacePath: string): Promise<{ ok: boolean; path: string }> {
     const response = await request('/api/local-workspace/ensure-dir', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sourcePath, workspacePath }),
+      body: JSON.stringify({ projectKey, workspacePath }),
     });
     return response.json();
   },
 
   async listFiles(
-    sourcePath: string,
+    projectKey: string,
     workspacePath: string,
   ): Promise<{ files: WorkspaceFileEntry[] }> {
-    const params = new URLSearchParams({ sourcePath, workspacePath });
+    const params = new URLSearchParams({ projectKey, workspacePath });
     const response = await request(`/api/local-workspace/files?${params}`);
     const data = await response.json() as { files: GoFileEntry[] };
     return { files: data.files.map(mapEntry) };
   },
 
   async uploadFile(
-    sourcePath: string,
+    projectKey: string,
     workspacePath: string,
     file: File,
     targetPath?: string,
@@ -83,7 +83,7 @@ export const localWorkspaceApi = {
     return await new Promise((resolve, reject) => {
       const form = new FormData();
       form.append('file', file);
-      form.append('sourcePath', sourcePath);
+      form.append('projectKey', projectKey);
       form.append('workspacePath', workspacePath);
       if (targetPath) form.append('path', targetPath);
 
@@ -118,43 +118,43 @@ export const localWorkspaceApi = {
   },
 
   async downloadFile(
-    sourcePath: string,
+    projectKey: string,
     workspacePath: string,
     path: string,
   ): Promise<Blob> {
-    const params = new URLSearchParams({ sourcePath, workspacePath, path });
+    const params = new URLSearchParams({ projectKey, workspacePath, path });
     const response = await request(`/api/local-workspace/download?${params}`);
     return response.blob();
   },
 
   async deleteFile(
-    sourcePath: string,
+    projectKey: string,
     workspacePath: string,
     path: string,
   ): Promise<void> {
-    const params = new URLSearchParams({ sourcePath, workspacePath, path });
+    const params = new URLSearchParams({ projectKey, workspacePath, path });
     await request(`/api/local-workspace/file?${params}`, { method: 'DELETE' });
   },
 
   async createFolder(
-    sourcePath: string,
+    projectKey: string,
     workspacePath: string,
     path: string,
   ): Promise<void> {
     await request('/api/local-workspace/folder', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sourcePath, workspacePath, path }),
+      body: JSON.stringify({ projectKey, workspacePath, path }),
     });
   },
 
   async deleteFolder(
-    sourcePath: string,
+    projectKey: string,
     workspacePath: string,
     path: string,
     recursive: boolean,
   ): Promise<void> {
-    const params = new URLSearchParams({ sourcePath, workspacePath, path, recursive: String(recursive) });
+    const params = new URLSearchParams({ projectKey, workspacePath, path, recursive: String(recursive) });
     await request(`/api/local-workspace/folder?${params}`, { method: 'DELETE' });
   },
 };

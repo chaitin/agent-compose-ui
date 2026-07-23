@@ -5,23 +5,55 @@
   import WorkspaceFilePreview from './WorkspaceFilePreview.svelte';
   import { parseWorkspaceBinding, isWorkspaceBindingValid, defaultWorkspacePath } from '../../lib/workspace-binding';
   import { workspaceFiles } from '../../lib/workspace/store.svelte';
+  import { workspaceBindings, setProjectBindingOverride, projectStorageErrorMessage } from '../../lib/workspace/bindings';
 
   const binding = $derived(parseWorkspaceBinding(store.editorContent));
   const isValid = $derived(isWorkspaceBindingValid(binding));
   const workspacePath = $derived(binding?.path ?? defaultWorkspacePath());
 
   const currentProject = $derived(store.projects.find(p => p.summary.projectId === store.activeProjectId));
-  const sourcePath = $derived(currentProject?.summary.sourcePath ?? '');
+  const sourcePath = $derived(currentProject?.summary.sourcePath ?? store.activeDraftBinding().sourcePath ?? '');
+
+  let bindingError = $state('');
+  let bindingGeneration = 0;
 
   $effect(() => {
+    const generation = ++bindingGeneration;
     if (!isValid) {
       workspaceFiles.setWorkspace('', '');
       return;
     }
-    workspaceFiles.setWorkspace(sourcePath, workspacePath);
+    const projectId = store.activeProjectId;
+    const draft = store.activeDraftBinding();
+    if (!projectId && !store.activeDraftId) store.ensureEditorDraftSourcePath();
+    const identity = projectId ? `project:${projectId}` : `draft:${store.activeDraftId}`;
+    void (async () => {
+      try {
+        let resolved;
+        try {
+          resolved = await workspaceBindings.ensure(identity, {
+            projectKey: projectId ? undefined : draft.projectKey,
+            sourcePath: projectId ? sourcePath : draft.sourcePath,
+            ensureWorkspace: true,
+          });
+        } catch {
+          if (!projectId) throw new Error('项目 Workspace 绑定恢复失败');
+          resolved = await workspaceBindings.ensure(`${identity}:replacement`, { ensureWorkspace: true });
+          setProjectBindingOverride(projectId, resolved);
+        }
+        if (generation !== bindingGeneration) return;
+        if (!projectId) store.persistActiveDraftBinding(resolved);
+        bindingError = '';
+        workspaceFiles.setWorkspace(resolved.projectKey, workspacePath);
+      } catch (error) {
+        if (generation !== bindingGeneration) return;
+        bindingError = projectStorageErrorMessage(error);
+        workspaceFiles.setWorkspace('', workspacePath);
+      }
+    })();
   });
 
-  const loadError = $derived(workspaceFiles.lastError);
+  const loadError = $derived(bindingError ? { message: bindingError } : workspaceFiles.lastError);
 
   let recreating = $state(false);
 

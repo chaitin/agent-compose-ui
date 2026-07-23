@@ -9,10 +9,8 @@ export interface WorkspaceRefreshResult {
   error: LocalWorkspaceApiError | null;
 }
 
-let tempSeq = 0;
-
 export class WorkspaceFileStore {
-  sourcePath = $state('');
+  projectKey = $state('');
   workspacePath = $state('');
   files = $state<WorkspaceFileEntry[]>([]);
   activePath = $state('');
@@ -21,22 +19,10 @@ export class WorkspaceFileStore {
   lastRefreshedAt = $state('');
 
   #refreshGeneration = 0;
-  #tempSourcePath = '';
+  setWorkspace(projectKey: string, workspacePath: string): void {
+    if (this.projectKey === projectKey && this.workspacePath === workspacePath) return;
 
-  /** The path actually used for file operations — real sourcePath, or a temp dir when sourcePath is empty. */
-  get #effectiveSourcePath(): string {
-    return this.sourcePath || this.#tempSourcePath;
-  }
-
-  setWorkspace(sourcePath: string, workspacePath: string): void {
-    if (this.sourcePath === sourcePath && this.workspacePath === workspacePath) return;
-
-    const oldSource = this.sourcePath;
-    const oldTemp = this.#tempSourcePath;
-    const oldWorkspace = this.workspacePath;
-    const hadTemp = !oldSource && oldTemp && oldWorkspace;
-
-    this.sourcePath = sourcePath;
+    this.projectKey = projectKey;
     this.workspacePath = workspacePath;
     this.files = [];
     this.activePath = '';
@@ -44,19 +30,13 @@ export class WorkspaceFileStore {
     this.lastRefreshedAt = '';
     this.#refreshGeneration += 1;
 
-    // If sourcePath just became available, migrate files from temp → real path
-    if (hadTemp && sourcePath && workspacePath) {
-      this.#migrateFromTemp(oldTemp, oldWorkspace, sourcePath, workspacePath);
-    }
-
-    // Ensure temp or real directory exists (fire-and-forget)
-    if (workspacePath) {
+    if (projectKey && workspacePath) {
       void this.#ensureDirAndRefresh();
     }
   }
 
   async #ensureDirAndRefresh(): Promise<void> {
-    const sp = this.#effectiveSourcePath;
+    const sp = this.projectKey;
     const wp = this.workspacePath;
     if (!sp || !wp) return;
     try {
@@ -68,45 +48,18 @@ export class WorkspaceFileStore {
     }
   }
 
-  async #migrateFromTemp(
-    tempSrc: string,
-    tempWs: string,
-    realSrc: string,
-    realWs: string,
-  ): Promise<void> {
-    try {
-      await localWorkspaceApi.ensureDir(realSrc, realWs);
-      const tempFiles = await localWorkspaceApi.listFiles(tempSrc, tempWs);
-      for (const entry of tempFiles.files) {
-        if (entry.dir) continue;
-        try {
-          const blob = await localWorkspaceApi.downloadFile(tempSrc, tempWs, entry.path);
-          const file = new File([blob], entry.path.split('/').pop() ?? entry.path);
-          await localWorkspaceApi.uploadFile(realSrc, realWs, file, entry.path);
-        } catch {
-          // skip individual file errors during migration
-        }
-      }
-    } catch {
-      // migration is best-effort; refresh will show current state
-    }
-  }
-
   get workspaceID(): string {
-    const sp = this.#effectiveSourcePath;
+    const sp = this.projectKey;
     return sp && this.workspacePath ? `${sp}::${this.workspacePath}` : '';
   }
 
   async #ensureReady(): Promise<void> {
     if (!this.workspacePath) throw new LocalWorkspaceApiError(0, '未绑定 workspace');
-    if (!this.#tempSourcePath && !this.sourcePath) {
-      this.#tempSourcePath = `/tmp/agent-compose-ws-${Date.now()}-${++tempSeq}`;
-      await localWorkspaceApi.ensureDir(this.#tempSourcePath, this.workspacePath);
-    }
+    if (!this.projectKey) throw new LocalWorkspaceApiError(0, '项目 Workspace 尚未创建');
   }
 
   async refresh(): Promise<WorkspaceRefreshResult> {
-    const sp = this.#effectiveSourcePath;
+    const sp = this.projectKey;
     if (!sp || !this.workspacePath) {
       return { files: this.files, error: null };
     }
@@ -116,7 +69,7 @@ export class WorkspaceFileStore {
     this.loading = true;
     try {
       const response = await localWorkspaceApi.listFiles(source, ws);
-      if (generation !== this.#refreshGeneration || this.#effectiveSourcePath !== source || this.workspacePath !== ws) {
+      if (generation !== this.#refreshGeneration || this.projectKey !== source || this.workspacePath !== ws) {
         return { files: this.files, error: null };
       }
       this.files = response.files;
@@ -124,7 +77,7 @@ export class WorkspaceFileStore {
       this.lastRefreshedAt = new Date().toISOString();
       return { files: response.files, error: null };
     } catch (error) {
-      if (generation !== this.#refreshGeneration || this.#effectiveSourcePath !== source || this.workspacePath !== ws) {
+      if (generation !== this.#refreshGeneration || this.projectKey !== source || this.workspacePath !== ws) {
         return { files: this.files, error: null };
       }
       const wrapped = error instanceof LocalWorkspaceApiError
@@ -133,7 +86,7 @@ export class WorkspaceFileStore {
       this.lastError = wrapped;
       return { files: this.files, error: null };
     } finally {
-      if (generation === this.#refreshGeneration && this.#effectiveSourcePath === source && this.workspacePath === ws) {
+      if (generation === this.#refreshGeneration && this.projectKey === source && this.workspacePath === ws) {
         this.loading = false;
       }
     }
@@ -146,7 +99,7 @@ export class WorkspaceFileStore {
   ): Promise<WorkspaceFileEntry[]> {
     await this.#ensureReady();
     const result = await localWorkspaceApi.uploadFile(
-      this.#effectiveSourcePath,
+      this.projectKey,
       this.workspacePath,
       file,
       targetPath,
@@ -160,7 +113,7 @@ export class WorkspaceFileStore {
 
   async download(path: string): Promise<Blob> {
     await this.#ensureReady();
-    return await localWorkspaceApi.downloadFile(this.#effectiveSourcePath, this.workspacePath, path);
+    return await localWorkspaceApi.downloadFile(this.projectKey, this.workspacePath, path);
   }
 
   hasFile(path: string): boolean {
@@ -174,19 +127,19 @@ export class WorkspaceFileStore {
 
   async deleteFile(path: string): Promise<void> {
     await this.#ensureReady();
-    await localWorkspaceApi.deleteFile(this.#effectiveSourcePath, this.workspacePath, path);
+    await localWorkspaceApi.deleteFile(this.projectKey, this.workspacePath, path);
     this.removeFile(path);
   }
 
   async createFolder(path: string): Promise<void> {
     await this.#ensureReady();
-    await localWorkspaceApi.createFolder(this.#effectiveSourcePath, this.workspacePath, path);
+    await localWorkspaceApi.createFolder(this.projectKey, this.workspacePath, path);
     await this.refresh();
   }
 
   async deleteFolder(path: string, recursive: boolean): Promise<void> {
     await this.#ensureReady();
-    await localWorkspaceApi.deleteFolder(this.#effectiveSourcePath, this.workspacePath, path, recursive);
+    await localWorkspaceApi.deleteFolder(this.projectKey, this.workspacePath, path, recursive);
     await this.refresh();
   }
 }

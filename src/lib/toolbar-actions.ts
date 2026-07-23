@@ -335,6 +335,7 @@ export async function prepareProjectPreview<TPrepared extends { yamlText: string
   projects: ProjectNameEntry[];
   fallbackSpecHash: string;
   newProjectSourcePath?: string;
+  sourcePathOverride?: string;
   prepare: (editorContent: string) => Promise<TPrepared>;
   preflight?: (prepared: TPrepared) => Promise<void>;
   client: ApplyProjectClient;
@@ -351,6 +352,7 @@ export async function prepareProjectPreview<TPrepared extends { yamlText: string
     projects: snapshotProjects,
     preparedYaml: prepared.yamlText,
     newProjectSourcePath: options.newProjectSourcePath,
+    sourcePathOverride: options.sourcePathOverride,
     expectedSpecHash: snapshotProject?.summary.specHash || options.fallbackSpecHash,
   });
   if (!options.isCurrent(options.currentProjectId)) return undefined;
@@ -375,6 +377,7 @@ export interface SaveProjectOptions {
   currentProjectId: string;
   projects: ProjectNameEntry[];
   newProjectSourcePath?: string;
+  sourcePathOverride?: string;
   preparedYaml?: string;
   expectedSpecHash?: string;
 }
@@ -392,7 +395,8 @@ function prepareApplyRequest(editorContent: string, options?: SaveProjectOptions
   if (projectName && duplicate) throw new Error(`智能体应用名称 "${projectName}" 已存在，请修改名称`);
 
   const currentProject = options?.projects.find((project) => isSameProjectId(project.summary.projectId, options.currentProjectId));
-  const composePath = currentProject?.summary.sourcePath?.trim()
+  const composePath = options?.sourcePathOverride?.trim()
+    || currentProject?.summary.sourcePath?.trim()
     || options?.newProjectSourcePath?.trim()
     || 'agent-compose.yml';
   return {

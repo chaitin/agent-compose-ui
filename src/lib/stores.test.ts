@@ -82,23 +82,20 @@ test('saveEditorDraft persists multiple new-project drafts with stable identitie
   expect(store.browserDrafts[0].id).not.toBe(store.browserDrafts[1].id);
 });
 
-test('new project source identity is stable for a draft and rotates for the next project', () => {
+test('new project source identity comes from its persisted server binding', () => {
   localStorage.clear();
   store.browserDrafts = [];
   store.activeDraftId = '';
   store.activeProjectId = '';
   store.editorContent = 'name: first-draft\n';
 
-  const firstPath = store.ensureEditorDraftSourcePath();
-  expect(firstPath).toMatch(/^\/agent-compose-ui\/projects\/[^/]+\/agent-compose\.yml$/);
+  expect(store.ensureEditorDraftSourcePath()).toBe('');
+  const firstPath = '/data/work/projects/ws_0123456789abcdef0123456789abcdef/agent-compose.yml';
+  store.persistActiveDraftBinding({ projectKey: 'ws_0123456789abcdef0123456789abcdef', sourcePath: firstPath });
   expect(store.ensureEditorDraftSourcePath()).toBe(firstPath);
-  const saved = store.saveEditorDraft();
-  expect(saved.ok).toBe(true);
-  expect(firstPath).toContain(`/${saved.draft.id}/`);
 
   store.beginEditorDraft();
-  const secondPath = store.ensureEditorDraftSourcePath();
-  expect(secondPath).not.toBe(firstPath);
+  expect(store.ensureEditorDraftSourcePath()).toBe('');
 });
 
 test('saveEditorDraft updates the selected draft and rejects another draft with the same name', () => {
@@ -143,4 +140,22 @@ test('loadBrowserDrafts migrates the legacy singleton draft', () => {
 
   expect(loadBrowserDrafts()).toMatchObject([{ name: 'legacy-draft', content: 'name: legacy-draft\n' }]);
   expect(localStorage.getItem('editor:__new_project_draft__')).toBeNull();
+});
+
+test('draft workspace binding survives persistence and selection', () => {
+  localStorage.clear();
+  store.browserDrafts = [];
+  store.activeDraftId = '';
+  store.activeProjectId = '';
+  store.editorContent = 'name: bound-draft\n';
+
+  store.persistActiveDraftBinding({
+    projectKey: 'ws_0123456789abcdef0123456789abcdef',
+    sourcePath: '/data/work/projects/ws_0123456789abcdef0123456789abcdef/agent-compose.yml',
+  });
+
+  const loaded = loadBrowserDrafts();
+  expect(loaded).toHaveLength(1);
+  expect(loaded[0].projectKey).toBe('ws_0123456789abcdef0123456789abcdef');
+  expect(loaded[0].sourcePath).toContain('/data/work/projects/');
 });

@@ -44,6 +44,8 @@
   } from '../lib/project-image-build';
   import { checkProjectDependencies } from '../lib/project-dependency-preflight';
   import { llmConfigWarning } from '../lib/llm-config-preflight';
+  import { parseWorkspaceBinding, isWorkspaceBindingValid } from '../lib/workspace-binding';
+  import { workspaceBindings, getProjectBindingOverride, setProjectBindingOverride, clearProjectBindingOverride } from '../lib/workspace/bindings';
 
   let specHash = $state('');
   let synced = $state(false);
@@ -93,6 +95,38 @@
     operationPhase = 'choose';
     showUnchanged = false;
     showDiff = false;
+  }
+
+  async function ensureCanonicalSourcePath(yamlText: string): Promise<string> {
+    const workspace = parseWorkspaceBinding(yamlText);
+    const needsWorkspace = isWorkspaceBindingValid(workspace);
+    const projectId = store.activeProjectId;
+    if (projectId) {
+      const override = getProjectBindingOverride(projectId);
+      if (override) return override.sourcePath;
+      const current = store.projects.find((project) => project.summary.projectId === projectId)?.summary.sourcePath?.trim() || '';
+      if (current) {
+        try {
+          const resolved = await workspaceBindings.ensure(`project:${projectId}`, { sourcePath: current, ensureWorkspace: needsWorkspace });
+          return resolved.sourcePath;
+        } catch {
+          if (!needsWorkspace) return current;
+        }
+      }
+      if (!needsWorkspace) return current;
+      const replacement = await workspaceBindings.ensure(`project:${projectId}:replacement`, { ensureWorkspace: true });
+      setProjectBindingOverride(projectId, replacement);
+      return replacement.sourcePath;
+    }
+    store.ensureEditorDraftSourcePath();
+    const draft = store.activeDraftBinding();
+    const resolved = await workspaceBindings.ensure(`draft:${store.activeDraftId}`, {
+      projectKey: draft.projectKey,
+      sourcePath: draft.sourcePath,
+      ensureWorkspace: needsWorkspace,
+    });
+    store.persistActiveDraftBinding(resolved);
+    return resolved.sourcePath;
   }
 
   function closePreview() {
@@ -229,7 +263,7 @@
         store.addToast(`YAML 解析错误: ${error}`, 'error');
         return;
       }
-      const source = new ProjectSource({ composePath: store.ensureEditorDraftSourcePath() });
+      const source = new ProjectSource({ composePath: await ensureCanonicalSourcePath(prepared.yamlText) });
       void warnAboutMissingLLMConfig(spec);
       const req = new ValidateProjectRequest({ spec, source });
       const resp = await projectService.validateProject(req) as ValidateProjectResponse;
@@ -291,9 +325,11 @@
     const editorContent = store.editorContent;
     const projects = store.projects.map((project) => ({ ...project, summary: { ...project.summary } }));
     const fallbackSpecHash = specHash;
-    const newProjectSourcePath = currentProjectId ? '' : store.ensureEditorDraftSourcePath();
+    const canonicalSourcePath = await ensureCanonicalSourcePath(editorContent);
+    const newProjectSourcePath = currentProjectId ? '' : canonicalSourcePath;
+    const sourcePathOverride = currentProjectId && getProjectBindingOverride(currentProjectId) ? canonicalSourcePath : undefined;
     const preview = await prepareProjectPreview({
-      mode, currentProjectId, editorContent, projects, fallbackSpecHash, newProjectSourcePath,
+      mode, currentProjectId, editorContent, projects, fallbackSpecHash, newProjectSourcePath, sourcePathOverride,
       prepare: async (snapshotEditorContent) => prepareScriptRequest({
         mode,
         editorYaml: snapshotEditorContent,
@@ -376,6 +412,7 @@
       store.removeProjectEditor(supersededProjectId);
     }
     const appliedProjectId = getAppliedProjectId(response, candidate.currentProjectId);
+    if (candidate.currentProjectId) clearProjectBindingOverride(candidate.currentProjectId);
     const stillCurrent = previewGeneration.isCurrent(candidate.generation);
     if (stillCurrent) {
       if (!candidate.currentProjectId && appliedProjectId) store.removeEditorDraft();
