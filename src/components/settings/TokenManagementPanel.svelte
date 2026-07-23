@@ -146,7 +146,7 @@
       <header><h3 id="create-token-title">创建 API Token</h3><button aria-label="关闭" onclick={() => createOpen = false}>×</button></header>
       <label><span>名称</span><input maxlength="64" bind:value={name} placeholder="例如：CI 只读巡检" /></label>
       <label><span>角色</span><select bind:value={role}><option value="read-only-admin">read-only-admin</option><option value="admin">admin</option></select></label>
-      <label><span>有效期</span><select value={expiresInDays} onchange={(event) => expiresInDays = event.currentTarget.value}><option value="1">1 天</option><option value="7">7 天</option><option value="30">30 天</option><option value="90">90 天（默认）</option><option value="365">1 年（365 天）</option></select></label>
+      <label><span>有效期</span><select value={expiresInDays} onchange={(event) => expiresInDays = event.currentTarget.value}><option value="1">1 天</option><option value="7">7 天</option><option value="30">30 天</option><option value="90">90 天</option><option value="365">1 年</option></select></label>
       {#if error}<p class="error" role="alert">{error}</p>{/if}
       <footer><button onclick={() => createOpen = false} disabled={saving}>取消</button><button class="primary" onclick={createToken} disabled={saving}>{saving ? '创建中...' : '创建'}</button></footer>
     </div>
