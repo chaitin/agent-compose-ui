@@ -139,7 +139,7 @@
       const advanced = overrides[key];
       if (payloadJson) JSON.parse(payloadJson);
       if (!advanced?.sandboxId) {
-        const sourcePath = store.projects.find((project) => project.summary.projectId === projectId)?.summary.sourcePath || '';
+        const sourcePath = store.projects?.find((project) => project.summary.projectId === projectId)?.summary.sourcePath || '';
         await assertManagedWorkspace({ yaml: store.editorContent, sourcePath });
       }
       const request = new RunAgentRequest({

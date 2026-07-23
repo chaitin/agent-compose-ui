@@ -37,17 +37,14 @@ test('delete handlers delegate to workspace.deleteFile and workspace.deleteFolde
   assert.match(source, /workspace\.deleteFolder\(path\)/);
 });
 
-test('shows a service unavailable indicator when the script service is down', () => {
-  assert.match(source, /workspace\.serviceAvailable/);
-  assert.match(source, /header-status/);
+test('reports the script service error through the shared toast surface', () => {
+  assert.match(source, /store\.addToast\('脚本服务不可用：' \+ message\(e\), 'error'\)/);
 });
 
-test('supports dragging the top edge to resize the panel vertically', () => {
-  assert.match(source, /let panelHeight = \$state\(240\)/);
-  assert.match(source, /function startVerticalResize/);
-  assert.match(source, /class="panel-resizer"/);
-  assert.match(source, /aria-label="调整脚本面板高度"/);
-  assert.match(source, /row-resize/);
-  assert.match(source, /startHeight \+ \(startY - e\.clientY\)/);
-  assert.match(source, /style:height=\{workspace\.panelOpen/);
+test('supports dragging the directory edge to resize the tree horizontally', () => {
+  assert.match(source, /let treeWidth = \$state\(220\)/);
+  assert.match(source, /function startResize/);
+  assert.match(source, /aria-label="调整脚本目录宽度"/);
+  assert.match(source, /col-resize/);
+  assert.match(source, /startWidth \+ \(e\.clientX - startX\)/);
 });

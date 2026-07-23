@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'; import { readFileSync } from 'node:fs';
 test('reads scheduler definitions and uses direct v2 scheduler controls', () => {
   const source=readFileSync(new URL('./SchedulerListView.svelte', import.meta.url),'utf8');
-  expect(source).toContain('projectService.getProject(new GetProjectRequest');
+  expect(source).toContain('runtimeProjectService.getProject(new GetProjectRequest');
   expect(source).toContain('const request = new RunAgentRequest');
   expect(source).toContain('runService.runAgent(request)');
   expect(source).toContain('runService.startRun(new StartRunRequest({ run: request }))');

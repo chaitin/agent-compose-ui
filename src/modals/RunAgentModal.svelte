@@ -72,7 +72,7 @@
     try {
       req = request();
       if (!req.sandboxId) {
-        const sourcePath = store.projects.find((project) => project.summary.projectId === store.activeProjectId)?.summary.sourcePath || '';
+        const sourcePath = store.projects?.find((project) => project.summary.projectId === store.activeProjectId)?.summary.sourcePath || '';
         await assertManagedWorkspace({ yaml: store.editorContent, sourcePath });
       }
       validationError = '';
