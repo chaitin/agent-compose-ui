@@ -59,3 +59,32 @@ func TestStorageRejectsWorkspaceSymlink(t *testing.T) {
 		t.Fatal("accepted symlink workspace")
 	}
 }
+
+func TestStorageMigratesConfiguredLegacyWorkspace(t *testing.T) {
+	root, legacy := t.TempDir(), t.TempDir()
+	legacyProject := filepath.Join(legacy, "draft-safe", "workspace", "nested")
+	if err := os.MkdirAll(legacyProject, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyProject, "readme.txt"), []byte("legacy"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	storage := NewStorage(root, legacy)
+	binding, err := storage.MigrateLegacy("draft-safe", "workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(root, binding.ProjectKey, "workspace", "nested", "readme.txt"))
+	if err != nil || string(content) != "legacy" {
+		t.Fatalf("content=%q err=%v", content, err)
+	}
+}
+
+func TestStorageRejectsUnsafeOrDisabledLegacyMigration(t *testing.T) {
+	if _, err := NewStorage(t.TempDir(), "").MigrateLegacy("draft-safe", "workspace"); err == nil {
+		t.Fatal("migrated with disabled legacy root")
+	}
+	if _, err := NewStorage(t.TempDir(), t.TempDir()).MigrateLegacy("../outside", "workspace"); err == nil {
+		t.Fatal("accepted traversal key")
+	}
+}

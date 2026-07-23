@@ -38,6 +38,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.bind(w, r)
 	case p == "/api/project-storage/resolve" && r.Method == http.MethodPost:
 		h.resolve(w, r)
+	case p == "/api/project-storage/migrate" && r.Method == http.MethodPost:
+		h.migrate(w, r)
 	case p == "/api/local-workspace/files" && (r.Method == http.MethodGet || r.Method == http.MethodHead):
 		h.listFiles(w, r)
 	case p == "/api/local-workspace/upload" && r.Method == http.MethodPost:
@@ -55,6 +57,23 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "not found")
 	}
+}
+
+func (h *Handler) migrate(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		LegacyKey     string `json:"legacyKey"`
+		WorkspacePath string `json:"workspacePath"`
+	}
+	if json.NewDecoder(r.Body).Decode(&body) != nil {
+		writeError(w, 400, "invalid_request", "invalid JSON body")
+		return
+	}
+	binding, err := h.storage.MigrateLegacy(body.LegacyKey, body.WorkspacePath)
+	if err != nil {
+		writeStorageError(w, err)
+		return
+	}
+	writeJSON(w, 200, binding)
 }
 
 func (h *Handler) bind(w http.ResponseWriter, r *http.Request) {

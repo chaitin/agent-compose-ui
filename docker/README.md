@@ -35,6 +35,8 @@ docker compose up --build
 默认通过 `http://host.docker.internal:7410` 连接宿主上已暴露 7410 的 agent-compose。
 若 agent-compose 在另一容器内：把它接入 `agent-web-net` 网络并设 `AGENT_COMPOSE_URL=http://agent-compose:7410`，或直接指向其地址。
 
+项目 Workspace 使用 `PROJECT_WORK_DIR` 挂载到 web 容器内的 `/data/work`，网关固定以 `/data/work/projects` 生成项目 `sourcePath`。外部 agent-compose 所在主机或容器必须把同一块宿主目录、NFS 或云文件系统也挂载为 `/data/work`；仅配置 HTTP 地址不能共享 Workspace。默认 `PROJECT_WORK_DIR=./data/work` 只便于本机准备目录，外部 daemon 不在同一文件系统时必须显式覆盖。
+
 ### 前后端一体
 
 ```bash
@@ -48,6 +50,8 @@ docker compose -f docker-compose.full.yml up --build
 
 > 注意：full 模式会挂载宿主 `/var/run/docker.sock`（agent-compose 管理沙箱所需），并占用宿主 `7410` 端口（可用 `AGENT_COMPOSE_PORT` 调整）。
 > **不要与宿主机已运行的 agent-compose 并存**：full 模式用 Docker 容器跑 agent-compose，需独占 `7410` 端口与 `data/` 目录。若宿主机已在跑 agent-compose（占用 7410 或持有 `data/` 锁），full 模式会因端口/数据冲突启动失败。此时请先停掉宿主机的 agent-compose，或改用上面的**纯前端模式**连接宿主机 daemon。
+
+full 模式已让 web 的 `${AGENT_COMPOSE_DATA_DIR}/work` 与 agent-compose 的 `/data/work` 指向同一宿主目录，并设置 `PROJECT_STORAGE_ROOT=/data/work/projects`。旧 `/agent-compose-ui/projects` 数据只有在管理员额外挂载旧目录并设置绝对的 `LEGACY_PROJECT_STORAGE_ROOT` 时才会自动复制；迁移不会删除旧文件。
 
 ## YAML 全局变量引用
 

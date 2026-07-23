@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -33,7 +35,10 @@ type Storage struct {
 }
 
 func NewStorage(root, legacyRoot string) *Storage {
-	return &Storage{root: filepath.Clean(root), legacyRoot: filepath.Clean(legacyRoot)}
+	if legacyRoot != "" {
+		legacyRoot = filepath.Clean(legacyRoot)
+	}
+	return &Storage{root: filepath.Clean(root), legacyRoot: legacyRoot}
 }
 
 func storageErr(code, format string, args ...any) error {
@@ -204,4 +209,93 @@ func safeTarget(root, relative string, allowMissing bool) (string, error) {
 		}
 	}
 	return target, nil
+}
+
+func (s *Storage) MigrateLegacy(legacyKey, workspacePath string) (Binding, error) {
+	if s.legacyRoot == "" {
+		return Binding{}, storageErr("legacy_source_unavailable", "legacy project storage is not configured")
+	}
+	if !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(legacyKey) {
+		return Binding{}, storageErr("unsafe_path", "invalid legacy project identifier")
+	}
+	workspace, err := validateRelativePath(workspacePath, "workspace path", false)
+	if err != nil {
+		return Binding{}, err
+	}
+	legacyProject := filepath.Join(s.legacyRoot, legacyKey)
+	if err := rejectSymlinks(s.legacyRoot, filepath.Join(legacyKey, workspace)); err != nil {
+		return Binding{}, err
+	}
+	source := filepath.Join(legacyProject, workspace)
+	info, err := os.Lstat(source)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return Binding{}, storageErr("legacy_source_unavailable", "legacy workspace is unavailable")
+	}
+	if err := os.MkdirAll(s.root, 0o755); err != nil {
+		return Binding{}, storageErr("storage_unavailable", "create storage root: %v", err)
+	}
+	stage, err := os.MkdirTemp(s.root, ".migrate-")
+	if err != nil {
+		return Binding{}, storageErr("storage_not_writable", "create migration stage: %v", err)
+	}
+	defer os.RemoveAll(stage)
+	if err := copyRegularTree(source, filepath.Join(stage, "workspace")); err != nil {
+		return Binding{}, err
+	}
+	for attempts := 0; attempts < 8; attempts++ {
+		key, err := newProjectKey()
+		if err != nil {
+			return Binding{}, err
+		}
+		final := filepath.Join(s.root, key)
+		if err := os.Rename(stage, final); errors.Is(err, os.ErrExist) {
+			continue
+		} else if err != nil {
+			return Binding{}, storageErr("storage_not_writable", "publish migrated workspace: %v", err)
+		}
+		stage = ""
+		return s.binding(key), nil
+	}
+	return Binding{}, storageErr("storage_unavailable", "could not allocate migration binding")
+}
+
+func copyRegularTree(source, destination string) error {
+	return filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return storageErr("unsafe_path", "legacy workspace contains a symbolic link")
+		}
+		rel, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(destination, rel)
+		if entry.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return storageErr("unsafe_path", "legacy workspace contains a non-regular file")
+		}
+		input, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer input.Close()
+		output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, info.Mode().Perm())
+		if err != nil {
+			return err
+		}
+		_, copyErr := io.Copy(output, input)
+		closeErr := output.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		return closeErr
+	})
 }

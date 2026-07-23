@@ -66,6 +66,7 @@ export interface BrowserDraft {
   updatedAt: string;
   projectKey?: string;
   sourcePath?: string;
+  legacyStorageKey?: string;
 }
 
 function draftName(content: string): string {
@@ -95,12 +96,17 @@ export function loadBrowserDrafts(): BrowserDraft[] {
           !!draft && typeof draft === 'object' &&
           typeof (draft as BrowserDraft).id === 'string' &&
           typeof (draft as BrowserDraft).content === 'string'
-        )).map((draft: BrowserDraft) => ({ ...draft, name: draftName(draft.content) }));
+        )).map((draft: BrowserDraft) => ({
+          ...draft,
+          name: draftName(draft.content),
+          legacyStorageKey: parsed.version === 1 ? draft.id : draft.legacyStorageKey,
+        }));
       }
     }
     const legacy = localStorage.getItem(projectEditorKey(NEW_PROJECT_DRAFT_ID));
     if (!legacy) return [];
-    const migrated = [{ id: createDraftId(), name: draftName(legacy), content: legacy, updatedAt: new Date().toISOString() }];
+    const migratedId = createDraftId();
+    const migrated = [{ id: migratedId, name: draftName(legacy), content: legacy, updatedAt: new Date().toISOString(), legacyStorageKey: migratedId }];
     persistBrowserDrafts(migrated);
     localStorage.removeItem(projectEditorKey(NEW_PROJECT_DRAFT_ID));
     return migrated;

@@ -5,7 +5,7 @@
   import WorkspaceFilePreview from './WorkspaceFilePreview.svelte';
   import { parseWorkspaceBinding, isWorkspaceBindingValid, defaultWorkspacePath } from '../../lib/workspace-binding';
   import { workspaceFiles } from '../../lib/workspace/store.svelte';
-  import { workspaceBindings, setProjectBindingOverride, projectStorageErrorMessage } from '../../lib/workspace/bindings';
+  import { workspaceBindings, setProjectBindingOverride, projectStorageErrorMessage, legacyKeyFromSourcePath } from '../../lib/workspace/bindings';
 
   const binding = $derived(parseWorkspaceBinding(store.editorContent));
   const isValid = $derived(isWorkspaceBindingValid(binding));
@@ -34,6 +34,7 @@
           resolved = await workspaceBindings.ensure(identity, {
             projectKey: projectId ? undefined : draft.projectKey,
             sourcePath: projectId ? sourcePath : draft.sourcePath,
+            legacyKey: projectId ? legacyKeyFromSourcePath(sourcePath) : store.browserDrafts.find((item) => item.id === store.activeDraftId)?.legacyStorageKey,
             ensureWorkspace: true,
           });
         } catch {

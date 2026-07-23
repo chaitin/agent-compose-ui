@@ -9,6 +9,7 @@ export interface ProjectStorageBinding {
 export interface BindingApi {
   bind(input: { projectKey?: string; workspacePath?: string; ensureWorkspace?: boolean }): Promise<ProjectStorageBinding>;
   resolve(sourcePath: string): Promise<ProjectStorageBinding>;
+  migrate?(legacyKey: string, workspacePath: string): Promise<ProjectStorageBinding>;
 }
 
 export class ProjectStorageError extends Error {
@@ -34,19 +35,22 @@ async function post(path: string, body: unknown): Promise<ProjectStorageBinding>
 export const projectStorageApi: BindingApi = {
   bind: (input) => post('/api/project-storage/bind', input),
   resolve: (sourcePath) => post('/api/project-storage/resolve', { sourcePath }),
+  migrate: (legacyKey, workspacePath) => post('/api/project-storage/migrate', { legacyKey, workspacePath }),
 };
 
 export class BindingCoordinator {
   #pending = new Map<string, Promise<ProjectStorageBinding>>();
   constructor(private readonly api: BindingApi = projectStorageApi) {}
 
-  ensure(identity: string, input: { projectKey?: string; sourcePath?: string; ensureWorkspace?: boolean }): Promise<ProjectStorageBinding> {
+  ensure(identity: string, input: { projectKey?: string; sourcePath?: string; legacyKey?: string; ensureWorkspace?: boolean }): Promise<ProjectStorageBinding> {
     const existing = this.#pending.get(identity);
     if (existing) return existing;
     const request = input.projectKey
       ? this.api.bind({ projectKey: input.projectKey, workspacePath: input.ensureWorkspace ? 'workspace' : undefined, ensureWorkspace: input.ensureWorkspace })
-      : input.sourcePath
-        ? this.api.resolve(input.sourcePath)
+      : input.legacyKey && this.api.migrate
+          ? this.api.migrate(input.legacyKey, 'workspace')
+        : input.sourcePath
+          ? this.api.resolve(input.sourcePath)
         : this.api.bind({ workspacePath: input.ensureWorkspace ? 'workspace' : undefined, ensureWorkspace: input.ensureWorkspace });
     this.#pending.set(identity, request);
     void request.finally(() => {
@@ -80,4 +84,9 @@ export function projectStorageErrorMessage(error: unknown): string {
     legacy_source_unavailable: '旧 Workspace 目录不可用，请重新上传或联系管理员迁移',
   };
   return labels[error.code] ? `${labels[error.code]}：${error.message}` : error.message;
+}
+
+export function legacyKeyFromSourcePath(sourcePath: string): string {
+  const match = /^\/agent-compose-ui\/projects\/([A-Za-z0-9_-]+)\/agent-compose\.ya?ml$/.exec(sourcePath.trim());
+  return match?.[1] || '';
 }

@@ -45,7 +45,7 @@
   import { checkProjectDependencies } from '../lib/project-dependency-preflight';
   import { llmConfigWarning } from '../lib/llm-config-preflight';
   import { parseWorkspaceBinding, isWorkspaceBindingValid } from '../lib/workspace-binding';
-  import { workspaceBindings, getProjectBindingOverride, setProjectBindingOverride, clearProjectBindingOverride } from '../lib/workspace/bindings';
+  import { workspaceBindings, getProjectBindingOverride, setProjectBindingOverride, clearProjectBindingOverride, legacyKeyFromSourcePath } from '../lib/workspace/bindings';
 
   let specHash = $state('');
   let synced = $state(false);
@@ -107,7 +107,7 @@
       const current = store.projects.find((project) => project.summary.projectId === projectId)?.summary.sourcePath?.trim() || '';
       if (current) {
         try {
-          const resolved = await workspaceBindings.ensure(`project:${projectId}`, { sourcePath: current, ensureWorkspace: needsWorkspace });
+          const resolved = await workspaceBindings.ensure(`project:${projectId}`, { sourcePath: current, legacyKey: legacyKeyFromSourcePath(current), ensureWorkspace: needsWorkspace });
           return resolved.sourcePath;
         } catch {
           if (!needsWorkspace) return current;
@@ -123,6 +123,7 @@
     const resolved = await workspaceBindings.ensure(`draft:${store.activeDraftId}`, {
       projectKey: draft.projectKey,
       sourcePath: draft.sourcePath,
+      legacyKey: store.browserDrafts.find((item) => item.id === store.activeDraftId)?.legacyStorageKey,
       ensureWorkspace: needsWorkspace,
     });
     store.persistActiveDraftBinding(resolved);
