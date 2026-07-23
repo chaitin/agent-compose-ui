@@ -20,6 +20,8 @@ services:
       - "${TOKEN_RBAC_API_PORT:-8081}:8081"
     environment:
       AGENT_COMPOSE_URL: ${AGENT_COMPOSE_URL:-http://host.docker.internal:7410}
+      PROJECT_STORAGE_ROOT: /data/work/projects
+      LEGACY_PROJECT_STORAGE_ROOT: ${LEGACY_PROJECT_STORAGE_ROOT:-}
       SCRIPT_SERVICE_URL: http://scripts:7420
       SCRIPT_SERVICE_TOKEN: ${SCRIPT_SERVICE_TOKEN:?set SCRIPT_SERVICE_TOKEN in .env}
       AUTH_MODE: ${AUTH_MODE:-disabled}
@@ -33,6 +35,8 @@ services:
     extra_hosts:
       # Lets the container reach a host-exposed agent-compose via host.docker.internal.
       - "host.docker.internal:host-gateway"
+    volumes:
+      - ${PROJECT_WORK_DIR:-./data/work}:/data/work
     depends_on:
       - scripts
     restart: unless-stopped

@@ -240,6 +240,24 @@ func TestJupyterRouteRequiresPasswordSessionAndProxiesAfterLogin(t *testing.T) {
 	}
 }
 
+func TestProjectStorageRoutesRequirePasswordSession(t *testing.T) {
+	target, _ := url.Parse("http://127.0.0.1:1")
+	cfg := testConfig(target)
+	cfg.AuthMode = config.AuthPassword
+	cfg.AuthPassword = "password"
+	cfg.AuthSecret = "secret"
+	cfg.ProjectStorageRoot = t.TempDir()
+	handler := New(cfg)
+
+	for _, path := range []string{"/api/project-storage/bind", "/api/local-workspace/ensure-dir"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`)))
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("%s status = %d, want %d", path, response.Code, http.StatusUnauthorized)
+		}
+	}
+}
+
 func TestAuthenticationRoutesArePublicAndDaemonIsProtected(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)

@@ -15,7 +15,7 @@ describe('v2-only application boundary', () => {
     const expected = [
       'projectService', 'runService', 'execService', 'imageService', 'cacheService',
       'volumeService', 'sandboxService', 'dashboardService', 'settingsService',
-      'capabilityService',
+      'capabilityService', 'runtimeProjectService',
     ];
     for (const name of expected) {
       expect(source).toContain(`export const ${name}`);

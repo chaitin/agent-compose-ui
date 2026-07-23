@@ -64,6 +64,7 @@ func newHandlers(cfg config.Config, logger *slog.Logger) (gatewayHandlers, func(
 	}
 	daemonProxy := manager.Require(daemonHandler)
 	scriptProxy := manager.Require(proxy.NewScripts(cfg.ScriptServiceURL, cfg.ScriptServiceToken))
+	projectStorage := manager.Require(localfs.New(localfs.NewStorage(cfg.ProjectStorageRoot, cfg.LegacyProjectStorageRoot)))
 	authHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		serveAuth(manager, w, r)
 	})
@@ -81,13 +82,16 @@ func newHandlers(cfg config.Config, logger *slog.Logger) (gatewayHandlers, func(
 		machineHandler = tokenproxy.New(store, proxy.NewTokenDaemon(cfg.AgentComposeURL), logger)
 	}
 	return gatewayHandlers{
-		browser: recoverHTTPPanics(routeHandler(authHandler, managementHandler, scriptProxy, daemonProxy)),
+		browser: recoverHTTPPanics(routeHandler(authHandler, managementHandler, scriptProxy, daemonProxy, projectStorage)),
 		token:   recoverHTTPPanics(machineHandler),
 	}, cleanup, nil
 }
 
-func routeHandler(authHandler, managementHandler, scriptProxy, daemonProxy http.Handler) http.Handler {
-	localWsHandler := localfs.New()
+func routeHandler(authHandler, managementHandler, scriptProxy, daemonProxy http.Handler, storageHandlers ...http.Handler) http.Handler {
+	var projectStorage http.Handler = localfs.New()
+	if len(storageHandlers) > 0 && storageHandlers[0] != nil {
+		projectStorage = storageHandlers[0]
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
@@ -97,8 +101,8 @@ func routeHandler(authHandler, managementHandler, scriptProxy, daemonProxy http.
 			managementHandler.ServeHTTP(w, r)
 		case strings.HasPrefix(path, "/script-api/"):
 			scriptProxy.ServeHTTP(w, r)
-		case strings.HasPrefix(path, "/api/local-workspace/"):
-			localWsHandler.ServeHTTP(w, r)
+		case strings.HasPrefix(path, "/api/local-workspace/") || strings.HasPrefix(path, "/api/project-storage/"):
+			projectStorage.ServeHTTP(w, r)
 		case isDaemonPath(path):
 			daemonProxy.ServeHTTP(w, r)
 		default:

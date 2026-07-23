@@ -6,10 +6,11 @@ import Toolbar from './Toolbar.svelte';
 
 const mocks = vi.hoisted(() => ({
   store: {
-    activeProjectId: 'p1', editorContent: 'yaml', projects: [{ summary: { projectId: 'p1', name: 'P1', sourcePath: '' } }],
+    activeProjectId: 'p1', activeDraftId: '', editorContent: 'yaml', projects: [{ summary: { projectId: 'p1', name: 'P1', sourcePath: '' } }],
     runtimeView: { level: 'agents' }, toasts: [] as unknown[], runtimeRefreshVersion: 0,
     navigateTo: vi.fn((level: string) => { mocks.store.runtimeView = { level }; }),
     addToast: vi.fn(), triggerRuntimeRefresh: vi.fn(), syncHash: vi.fn(), saveEditorDraft: vi.fn(), removeEditorDraft: vi.fn(),
+    ensureEditorDraftSourcePath: vi.fn(), activeDraftBinding: vi.fn(() => ({})), persistActiveDraftBinding: vi.fn(), browserDrafts: [] as Array<any>,
   },
   startRun: vi.fn(),
   softPauseProject: vi.fn(),
@@ -33,6 +34,7 @@ const mocks = vi.hoisted(() => ({
   runProjectImageBuildPlans: vi.fn(),
   checkProjectDependencies: vi.fn(),
   getGlobalEnv: vi.fn(),
+  ensureWorkspaceBinding: vi.fn(),
   previewResponse: { changes: [] as Array<any>, issues: [] as Array<any>, unchanged: true },
   applyResponse: { applied: true, project: { summary: { projectId: 'p1' } }, changes: [] as Array<any> },
 }));
@@ -52,6 +54,13 @@ vi.mock('../lib/scripts/workspace.svelte', () => ({ scriptWorkspace: { tree: [],
 vi.mock('../lib/scripts/tree', () => ({ countScriptFiles: () => 0 }));
 vi.mock('../lib/scripts/request-pipeline', () => ({ prepareScriptRequest: vi.fn() }));
 vi.mock('../lib/scripts/project-lifecycle', () => ({ canonicalProjectId: (id: string) => id }));
+vi.mock('../lib/workspace/bindings', () => ({
+  workspaceBindings: { ensure: mocks.ensureWorkspaceBinding },
+  getProjectBindingOverride: () => undefined,
+  setProjectBindingOverride: vi.fn(),
+  clearProjectBindingOverride: vi.fn(),
+  legacyKeyFromSourcePath: () => undefined,
+}));
 vi.mock('../lib/project-image-build', () => ({
   changedBuildAgentNames: () => mocks.changedBuildAgents,
   createProjectImageBuildPlans: () => mocks.buildPlans,
@@ -106,6 +115,7 @@ beforeEach(() => {
   mocks.store.saveEditorDraft.mockReturnValue({ ok: true, draft: null });
   mocks.runCalls.length = 0;
   mocks.store.activeProjectId = 'p1';
+  mocks.store.activeDraftId = '';
   mocks.store.runtimeView = { level: 'agents' };
   mocks.store.projects = [{ summary: { projectId: 'p1', name: 'P1', sourcePath: '/srv/p1/agent-compose.yml' } }];
   mocks.currentSpec = { name: 'P1', agents: [{ name: 'a', systemPrompt: 'A' }, { name: 'b', systemPrompt: 'B' }] };
@@ -115,6 +125,11 @@ beforeEach(() => {
   mocks.runProjectImageBuildPlans.mockResolvedValue([]);
   mocks.checkProjectDependencies.mockResolvedValue({ warnings: [] });
   mocks.getGlobalEnv.mockResolvedValue({ env: [] });
+  mocks.ensureWorkspaceBinding.mockResolvedValue({
+    projectKey: 'ws_0123456789abcdef0123456789abcdef',
+    sourcePath: '/data/work/projects/ws_0123456789abcdef0123456789abcdef/agent-compose.yml',
+    workspacePath: 'workspace',
+  });
   mocks.getProject.mockResolvedValue({ project: { spec: mocks.savedSpec } });
   mocks.previewResponse = { changes: [], issues: [], unchanged: true };
   mocks.applyResponse = { applied: true, project: { summary: { projectId: 'p1' } }, changes: [] };
@@ -243,7 +258,7 @@ test('counts only actual changes in the toolbar while retaining unchanged previe
 
   await fireEvent.click(screen.getByRole('button', { name: '启用' }));
 
-  expect(await screen.findByRole('button', { name: '变更 (0)' })).toBeEnabled();
+  await waitFor(() => expect(screen.getByRole('button', { name: '变更 (0)' })).toBeEnabled());
   expect(screen.getByText('未变更内容')).toBeInTheDocument();
   expect(screen.getByText('13 项')).toBeInTheDocument();
 });
@@ -290,6 +305,46 @@ test('removes a new-project browser draft only after Apply succeeds', async () =
   await fireEvent.click(await screen.findByRole('button', { name: '确认启用' }));
 
   await waitFor(() => expect(mocks.store.removeEditorDraft).toHaveBeenCalledTimes(1));
+});
+
+test('removes the draft captured by the enable preview when the active draft changes before Apply completes', async () => {
+  const toolbarActions = await import('../lib/toolbar-actions');
+  mocks.store.activeProjectId = '';
+  mocks.store.activeDraftId = 'draft-to-enable';
+  mocks.store.projects = [];
+  vi.mocked(toolbarActions.prepareProjectPreview).mockResolvedValueOnce({
+    currentProjectId: '', editorContent: 'yaml', prepared: { yamlText: 'yaml', references: [] },
+    response: mocks.previewResponse,
+    apply: async () => {
+      mocks.store.activeDraftId = '';
+      return { response: mocks.applyResponse, agentNames: [], agents: [], supersededProjectId: '' };
+    },
+  } as any);
+  mocks.applyResponse = { applied: true, project: { summary: { projectId: 'new-project' } }, changes: [] };
+  render(Toolbar);
+
+  await fireEvent.click(screen.getByRole('button', { name: '启用' }));
+  await fireEvent.click(await screen.findByRole('button', { name: '确认启用' }));
+
+  await waitFor(() => expect(mocks.store.removeEditorDraft).toHaveBeenCalledWith('draft-to-enable'));
+});
+
+test('removes a manually saved draft after Apply succeeds even when the response omits the project summary', async () => {
+  const toolbarActions = await import('../lib/toolbar-actions');
+  mocks.store.activeProjectId = '';
+  mocks.store.activeDraftId = 'manually-saved-draft';
+  mocks.store.projects = [];
+  vi.mocked(toolbarActions.prepareProjectPreview).mockResolvedValueOnce({
+    currentProjectId: '', editorContent: 'yaml', prepared: { yamlText: 'yaml', references: [] },
+    response: mocks.previewResponse,
+    apply: async () => ({ response: { applied: true, changes: [] }, agentNames: [], agents: [], supersededProjectId: '' }),
+  } as any);
+  render(Toolbar);
+
+  await fireEvent.click(screen.getByRole('button', { name: '启用' }));
+  await fireEvent.click(await screen.findByRole('button', { name: '确认启用' }));
+
+  await waitFor(() => expect(mocks.store.removeEditorDraft).toHaveBeenCalledWith('manually-saved-draft'));
 });
 
 test('creates and opens the batch before starting the first Agent without locking the toolbar on the stream', async () => {

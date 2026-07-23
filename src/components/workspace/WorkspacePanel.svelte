@@ -5,23 +5,57 @@
   import WorkspaceFilePreview from './WorkspaceFilePreview.svelte';
   import { parseWorkspaceBinding, isWorkspaceBindingValid, defaultWorkspacePath } from '../../lib/workspace-binding';
   import { workspaceFiles } from '../../lib/workspace/store.svelte';
+  import { workspaceBindings, setProjectBindingOverride, projectStorageErrorMessage, legacyKeyFromSourcePath } from '../../lib/workspace/bindings';
 
   const binding = $derived(parseWorkspaceBinding(store.editorContent));
   const isValid = $derived(isWorkspaceBindingValid(binding));
   const workspacePath = $derived(binding?.path ?? defaultWorkspacePath());
 
   const currentProject = $derived(store.projects.find(p => p.summary.projectId === store.activeProjectId));
-  const sourcePath = $derived(currentProject?.summary.sourcePath ?? '');
+  const sourcePath = $derived(currentProject?.summary.sourcePath ?? store.activeDraftBinding().sourcePath ?? '');
+
+  let bindingError = $state('');
+  let bindingGeneration = 0;
 
   $effect(() => {
+    const generation = ++bindingGeneration;
     if (!isValid) {
       workspaceFiles.setWorkspace('', '');
       return;
     }
-    workspaceFiles.setWorkspace(sourcePath, workspacePath);
+    const projectId = store.activeProjectId;
+    const draft = store.activeDraftBinding();
+    if (!projectId && !store.activeDraftId) store.ensureEditorDraftSourcePath();
+    const draftId = store.activeDraftId;
+    const identity = projectId ? `project:${projectId}` : `draft:${draftId}`;
+    void (async () => {
+      try {
+        let resolved;
+        try {
+          resolved = await workspaceBindings.ensure(identity, {
+            projectKey: projectId ? undefined : draft.projectKey,
+            sourcePath: projectId ? sourcePath : draft.sourcePath,
+            legacyKey: projectId ? legacyKeyFromSourcePath(sourcePath) : store.browserDrafts.find((item) => item.id === store.activeDraftId)?.legacyStorageKey,
+            ensureWorkspace: true,
+          });
+        } catch {
+          if (!projectId) throw new Error('项目 Workspace 绑定恢复失败');
+          resolved = await workspaceBindings.ensure(`${identity}:replacement`, { ensureWorkspace: true });
+          setProjectBindingOverride(projectId, resolved);
+        }
+        if (generation !== bindingGeneration) return;
+        if (!projectId) store.persistActiveDraftBinding(resolved, draftId);
+        bindingError = '';
+        workspaceFiles.setWorkspace(resolved.projectKey, workspacePath);
+      } catch (error) {
+        if (generation !== bindingGeneration) return;
+        bindingError = projectStorageErrorMessage(error);
+        workspaceFiles.setWorkspace('', workspacePath);
+      }
+    })();
   });
 
-  const loadError = $derived(workspaceFiles.lastError);
+  const loadError = $derived(bindingError ? { message: bindingError } : workspaceFiles.lastError);
 
   let recreating = $state(false);
 
@@ -65,8 +99,8 @@
         <div class="placeholder-icon">⌥</div>
         <div class="placeholder-title">文件管理不可用</div>
         <div class="placeholder-desc">
-          {#if binding?.provider && binding.provider !== 'local'}
-            当前 workspace 类型为 <code>{binding.provider}</code>，文件管理仅支持 <code>local</code> 类型
+          {#if binding?.provider && binding.provider !== 'file'}
+            当前 workspace 类型为 <code>{binding.provider}</code>，文件管理仅支持 <code>file</code> 类型
           {:else}
             请先在 YAML 中配置 <code>agents.&lt;name&gt;.workspace.path</code>
           {/if}
@@ -117,7 +151,6 @@
   .error-icon { font-size: 32px; opacity: 0.5; }
   .error-title { font-size: var(--font-size-md); color: var(--text-secondary); font-weight: 600; }
   .error-desc { font-size: var(--font-size-xs); max-width: 360px; line-height: 1.5; }
-  .error-desc code { color: var(--accent-blue); font-family: var(--font-mono); }
   .retry-btn {
     margin-top: 8px;
     padding: 6px 14px;

@@ -3,6 +3,7 @@
   import { projectService, runService, runtimeProjectService } from '../../lib/rpc';
   import { store } from '../../lib/stores.svelte';
   import RuntimeBreadcrumb from './RuntimeBreadcrumb.svelte';
+  import { assertManagedWorkspace } from '../../lib/workspace/preflight';
 
   type SchedulerRow = { sourceProjectId: string; summary: ProjectScheduler; triggers: TriggerSpec[]; resolvedTriggers: Record<string, ResolvedTrigger>; events: SchedulerEvent[]; eventsCursor: string; seenEventCursors: string[]; eventsLoading: boolean };
   let rows: SchedulerRow[] = $state([]);
@@ -137,6 +138,10 @@
       const payloadJson = (payloads[key] || '').trim();
       const advanced = overrides[key];
       if (payloadJson) JSON.parse(payloadJson);
+      if (!advanced?.sandboxId) {
+        const sourcePath = store.projects?.find((project) => project.summary.projectId === projectId)?.summary.sourcePath || '';
+        await assertManagedWorkspace({ yaml: store.editorContent, sourcePath });
+      }
       const request = new RunAgentRequest({
         projectId, agentName: row.summary.agentName,
         source: RunSource.MANUAL, prompt: advanced?.prompt.trim() || trigger.prompt,

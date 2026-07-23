@@ -24,6 +24,8 @@ services:
       AGENT_COMPOSE_URL: ${AGENT_COMPOSE_URL:-http://agent-compose:7410}
       AGENT_COMPOSE_DB_PATH: /data/agent-compose/data.db
       UI_STATE_DB_PATH: /data/ui/project-env.db
+      PROJECT_STORAGE_ROOT: /data/work/projects
+      LEGACY_PROJECT_STORAGE_ROOT: ${LEGACY_PROJECT_STORAGE_ROOT:-}
       SCRIPT_SERVICE_URL: http://scripts:7420
       SCRIPT_SERVICE_TOKEN: ${SCRIPT_SERVICE_TOKEN:?set SCRIPT_SERVICE_TOKEN in .env}
       AUTH_MODE: ${AUTH_MODE:-disabled}

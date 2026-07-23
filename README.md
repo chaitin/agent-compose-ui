@@ -121,6 +121,12 @@ Token 管理 API 由部署入口的统一认证/RBAC 保护，不依赖本地 `A
 
 ## 环境与代理配置
 
+### 项目 Workspace 共享存储
+
+Go 网关通过 `PROJECT_STORAGE_ROOT` 管理项目文件，浏览器不再提交或拼接任意绝对路径。Docker 使用 `/data/work/projects`；每个草稿或项目获得稳定的随机存储键，草稿启用后继续使用同一目录。UI 网关和 Agent Compose daemon 必须把同一共享存储挂载为相同的绝对 `/data/work` 路径，否则 daemon 无法为 Run 准备本地 Workspace。
+
+本地开发未设置变量时使用 `${TMPDIR:-/tmp}/agent-compose-ui/projects`。分服务器部署必须显式设置共享的 NFS/云文件系统挂载。可选 `LEGACY_PROJECT_STORAGE_ROOT` 仅用于迁移网关仍能读取的旧目录；旧目录不可见时 UI 会要求重新上传或由管理员迁移。
+
 Vite 开发服务器默认使用端口 `5174`，并将浏览器请求代理到后端服务：
 
 | 请求路径 | 目标服务 |

@@ -35,7 +35,9 @@
   let filterTimer: ReturnType<typeof setTimeout> | undefined;
   let requestGeneration = 0;
   let visibleDrafts = $derived(store.browserDrafts.filter((draft) => (
-    !filterText.trim() || draft.name.toLocaleLowerCase().includes(filterText.trim().toLocaleLowerCase())
+    !store.projects.some((project) => (
+      !!draft.sourcePath?.trim() && project.summary.sourcePath?.trim() === draft.sourcePath.trim()
+    )) && (!filterText.trim() || draft.name.toLocaleLowerCase().includes(filterText.trim().toLocaleLowerCase()))
   )));
   let filterEmpty = $derived(filterText.trim() !== '' && !filterLoading && visibleProjects.length === 0 && visibleDrafts.length === 0);
 

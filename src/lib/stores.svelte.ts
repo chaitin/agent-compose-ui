@@ -64,6 +64,9 @@ export interface BrowserDraft {
   name: string;
   content: string;
   updatedAt: string;
+  projectKey?: string;
+  sourcePath?: string;
+  legacyStorageKey?: string;
 }
 
 function draftName(content: string): string {
@@ -77,13 +80,9 @@ function createDraftId(): string {
   return `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function draftComposePath(id: string): string {
-  return `/agent-compose-ui/projects/${encodeURIComponent(id)}/agent-compose.yml`;
-}
-
 function persistBrowserDrafts(drafts: BrowserDraft[]): void {
   try {
-    localStorage.setItem(BROWSER_DRAFTS_KEY, JSON.stringify({ version: 1, drafts }));
+    localStorage.setItem(BROWSER_DRAFTS_KEY, JSON.stringify({ version: 2, drafts }));
   } catch { /* ignore */ }
 }
 
@@ -92,17 +91,22 @@ export function loadBrowserDrafts(): BrowserDraft[] {
     const raw = localStorage.getItem(BROWSER_DRAFTS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed?.version === 1 && Array.isArray(parsed.drafts)) {
+      if ((parsed?.version === 1 || parsed?.version === 2) && Array.isArray(parsed.drafts)) {
         return parsed.drafts.filter((draft: unknown): draft is BrowserDraft => (
           !!draft && typeof draft === 'object' &&
           typeof (draft as BrowserDraft).id === 'string' &&
           typeof (draft as BrowserDraft).content === 'string'
-        )).map((draft: BrowserDraft) => ({ ...draft, name: draftName(draft.content) }));
+        )).map((draft: BrowserDraft) => ({
+          ...draft,
+          name: draftName(draft.content),
+          legacyStorageKey: parsed.version === 1 ? draft.id : draft.legacyStorageKey,
+        }));
       }
     }
     const legacy = localStorage.getItem(projectEditorKey(NEW_PROJECT_DRAFT_ID));
     if (!legacy) return [];
-    const migrated = [{ id: createDraftId(), name: draftName(legacy), content: legacy, updatedAt: new Date().toISOString() }];
+    const migratedId = createDraftId();
+    const migrated = [{ id: migratedId, name: draftName(legacy), content: legacy, updatedAt: new Date().toISOString(), legacyStorageKey: migratedId }];
     persistBrowserDrafts(migrated);
     localStorage.removeItem(projectEditorKey(NEW_PROJECT_DRAFT_ID));
     return migrated;
@@ -527,6 +531,7 @@ export class Store {
     if (duplicate) return { ok: false as const, reason: 'duplicate-name' as const, name };
     const existing = this.browserDrafts.find((draft) => draft.id === this.activeDraftId);
     const draft: BrowserDraft = {
+	  ...existing,
       id: existing?.id || this.activeDraftId || createDraftId(),
       name,
       content: this.editorContent,
@@ -545,7 +550,32 @@ export class Store {
       return this.projects.find((project) => project.summary.projectId === this.activeProjectId)?.summary.sourcePath?.trim() || '';
     }
     if (!this.activeDraftId) this.activeDraftId = createDraftId();
-    return draftComposePath(this.activeDraftId);
+    return this.browserDrafts.find((draft) => draft.id === this.activeDraftId)?.sourcePath || '';
+  }
+
+  activeDraftBinding(): Pick<BrowserDraft, 'projectKey' | 'sourcePath'> {
+    const draft = this.browserDrafts.find((item) => item.id === this.activeDraftId);
+    return { projectKey: draft?.projectKey, sourcePath: draft?.sourcePath };
+  }
+
+  persistActiveDraftBinding(binding: { projectKey: string; sourcePath: string }, expectedDraftId = this.activeDraftId): BrowserDraft | undefined {
+    if (this.activeProjectId) throw new Error('cannot persist a draft binding for a saved project');
+    if (expectedDraftId && this.activeDraftId !== expectedDraftId) return undefined;
+    if (!this.activeDraftId) this.activeDraftId = createDraftId();
+    const existing = this.browserDrafts.find((item) => item.id === this.activeDraftId);
+    const draft: BrowserDraft = {
+      id: this.activeDraftId,
+      name: draftName(this.editorContent),
+      content: this.editorContent,
+      updatedAt: new Date().toISOString(),
+      ...existing,
+      ...binding,
+    };
+    this.browserDrafts = existing
+      ? this.browserDrafts.map((item) => item.id === draft.id ? draft : item)
+      : [...this.browserDrafts, draft];
+    persistBrowserDrafts(this.browserDrafts);
+    return draft;
   }
 
   loadEditorDraft(id = this.activeDraftId): string | null {

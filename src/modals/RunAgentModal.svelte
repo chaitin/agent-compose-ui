@@ -8,6 +8,7 @@
   } from '../gen/agentcompose/v2/agentcompose_pb';
   import { buildRunAgentRequest, type RunRequestInput } from '../lib/run-controls';
   import { listAllSandboxes, filterSandboxes } from '../lib/sandbox-inventory';
+  import { assertManagedWorkspace } from '../lib/workspace/preflight';
 
   let { onclose = () => {}, oncreated = () => {}, onstarted = () => {}, prefilledAgent = '', prefilledPrompt = '' }: {
     onclose?: () => void;
@@ -70,6 +71,10 @@
     let req;
     try {
       req = request();
+      if (!req.sandboxId) {
+        const sourcePath = store.projects?.find((project) => project.summary.projectId === store.activeProjectId)?.summary.sourcePath || '';
+        await assertManagedWorkspace({ yaml: store.editorContent, sourcePath });
+      }
       validationError = '';
     } catch (error) {
       validationError = error instanceof Error ? error.message : String(error);

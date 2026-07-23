@@ -530,6 +530,25 @@ describe('saveProject', () => {
     expect(requests.map((request) => request.source.composePath)).toEqual([virtualPath, virtualPath]);
   });
 
+  test('source path override replaces an unmanaged saved-project path for preview and apply', async () => {
+    const requests = [];
+    const sharedPath = '/data/work/projects/ws_0123456789abcdef0123456789abcdef/agent-compose.yml';
+    const preview = await previewProject(validYaml, {
+      applyProject: async (request) => {
+        requests.push(request);
+        return request.dryRun
+          ? { changes: [], issues: [], revision: { specHash: 'preview-hash' } }
+          : { applied: true, changes: [] };
+      },
+    }, {
+      currentProjectId: 'current',
+      projects: [{ summary: { projectId: 'current', name: 'demo', sourcePath: '/legacy/agent-compose.yml' } }],
+      sourcePathOverride: sharedPath,
+    });
+    await preview.apply();
+    expect(requests.map((request) => request.source.composePath)).toEqual([sharedPath, sharedPath]);
+  });
+
   test('marks agents that define a scheduler in the applied YAML', async () => {
     const result = await saveProject(`name: scheduled-demo
 agents:
