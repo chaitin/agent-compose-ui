@@ -1,5 +1,4 @@
-// @ts-nocheck -- Bun provides the test module at runtime.
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { BindingCoordinator, type ProjectStorageBinding } from './bindings';
 
 const binding: ProjectStorageBinding = {

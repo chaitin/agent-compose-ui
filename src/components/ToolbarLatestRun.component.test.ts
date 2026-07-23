@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   runProjectImageBuildPlans: vi.fn(),
   checkProjectDependencies: vi.fn(),
   getGlobalEnv: vi.fn(),
+  ensureWorkspaceBinding: vi.fn(),
   previewResponse: { changes: [] as Array<any>, issues: [] as Array<any>, unchanged: true },
   applyResponse: { applied: true, project: { summary: { projectId: 'p1' } }, changes: [] as Array<any> },
 }));
@@ -52,6 +53,13 @@ vi.mock('../lib/scripts/workspace.svelte', () => ({ scriptWorkspace: { tree: [],
 vi.mock('../lib/scripts/tree', () => ({ countScriptFiles: () => 0 }));
 vi.mock('../lib/scripts/request-pipeline', () => ({ prepareScriptRequest: vi.fn() }));
 vi.mock('../lib/scripts/project-lifecycle', () => ({ canonicalProjectId: (id: string) => id }));
+vi.mock('../lib/workspace/bindings', () => ({
+  workspaceBindings: { ensure: mocks.ensureWorkspaceBinding },
+  getProjectBindingOverride: () => undefined,
+  setProjectBindingOverride: vi.fn(),
+  clearProjectBindingOverride: vi.fn(),
+  legacyKeyFromSourcePath: () => undefined,
+}));
 vi.mock('../lib/project-image-build', () => ({
   changedBuildAgentNames: () => mocks.changedBuildAgents,
   createProjectImageBuildPlans: () => mocks.buildPlans,
@@ -115,6 +123,11 @@ beforeEach(() => {
   mocks.runProjectImageBuildPlans.mockResolvedValue([]);
   mocks.checkProjectDependencies.mockResolvedValue({ warnings: [] });
   mocks.getGlobalEnv.mockResolvedValue({ env: [] });
+  mocks.ensureWorkspaceBinding.mockResolvedValue({
+    projectKey: 'ws_0123456789abcdef0123456789abcdef',
+    sourcePath: '/data/work/projects/ws_0123456789abcdef0123456789abcdef/agent-compose.yml',
+    workspacePath: 'workspace',
+  });
   mocks.getProject.mockResolvedValue({ project: { spec: mocks.savedSpec } });
   mocks.previewResponse = { changes: [], issues: [], unchanged: true };
   mocks.applyResponse = { applied: true, project: { summary: { projectId: 'p1' } }, changes: [] };
@@ -243,7 +256,7 @@ test('counts only actual changes in the toolbar while retaining unchanged previe
 
   await fireEvent.click(screen.getByRole('button', { name: '启用' }));
 
-  expect(await screen.findByRole('button', { name: '变更 (0)' })).toBeEnabled();
+  await waitFor(() => expect(screen.getByRole('button', { name: '变更 (0)' })).toBeEnabled());
   expect(screen.getByText('未变更内容')).toBeInTheDocument();
   expect(screen.getByText('13 项')).toBeInTheDocument();
 });
