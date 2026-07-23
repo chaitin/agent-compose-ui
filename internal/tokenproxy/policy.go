@@ -14,6 +14,7 @@ var readOnlyProcedures = map[string]struct{}{
 	"/agentcompose.v2.ProjectService/GetScheduler":                {},
 	"/agentcompose.v2.ProjectService/ListSchedulers":              {},
 	"/agentcompose.v2.ProjectService/ListSchedulerEvents":         {},
+	"/agentcompose.v2.ProjectService/ListProjectSchedulerEvents":  {},
 	"/agentcompose.v2.ProjectService/GetSchedulerRun":             {},
 	"/agentcompose.v2.ProjectService/ListSchedulerRuns":           {},
 	"/agentcompose.v2.RunService/GetRun":                          {},
