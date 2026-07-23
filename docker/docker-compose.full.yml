@@ -19,6 +19,7 @@ services:
       dockerfile: docker/Dockerfile.web
     ports:
       - "${WEB_PORT:-8080}:80"
+      - "${TOKEN_RBAC_API_PORT:-8081}:8081"
     environment:
       AGENT_COMPOSE_URL: ${AGENT_COMPOSE_URL:-http://agent-compose:7410}
       AGENT_COMPOSE_DB_PATH: /data/agent-compose/data.db
@@ -32,6 +33,7 @@ services:
       AUTH_PASSWORD: ${AUTH_PASSWORD:-}
       AUTH_SECRET: ${AUTH_SECRET:-}
       AUTH_SESSION_TTL: ${AUTH_SESSION_TTL:-24h}
+      TOKEN_DB_PATH: /data/api/tokens.db
     volumes:
       # Read daemon variables server-side; never expose this mount to nginx or the browser.
       - ${AGENT_COMPOSE_DATA_DIR:-./data}:/data/agent-compose:ro
@@ -40,6 +42,7 @@ services:
       - ${AGENT_COMPOSE_DATA_DIR:-./data}/work:/data/work
       # Reference-only project shadows and pending-sync state.
       - ui-state:/data/ui
+      - api-token-data:/data/api
     depends_on:
       - scripts
       - agent-compose
@@ -89,3 +92,4 @@ networks:
 volumes:
   script-data:
   ui-state:
+  api-token-data:

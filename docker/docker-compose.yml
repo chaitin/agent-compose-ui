@@ -17,6 +17,7 @@ services:
       dockerfile: docker/Dockerfile.web
     ports:
       - "${WEB_PORT:-8080}:80"
+      - "${TOKEN_RBAC_API_PORT:-8081}:8081"
     environment:
       AGENT_COMPOSE_URL: ${AGENT_COMPOSE_URL:-http://host.docker.internal:7410}
       PROJECT_STORAGE_ROOT: /data/work/projects
@@ -28,6 +29,9 @@ services:
       AUTH_PASSWORD: ${AUTH_PASSWORD:-}
       AUTH_SECRET: ${AUTH_SECRET:-}
       AUTH_SESSION_TTL: ${AUTH_SESSION_TTL:-24h}
+      TOKEN_DB_PATH: /data/api/tokens.db
+    volumes:
+      - api-token-data:/data/api
     extra_hosts:
       # Lets the container reach a host-exposed agent-compose via host.docker.internal.
       - "host.docker.internal:host-gateway"
@@ -60,3 +64,4 @@ networks:
 
 volumes:
   script-data:
+  api-token-data:

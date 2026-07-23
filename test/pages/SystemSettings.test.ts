@@ -42,17 +42,18 @@ describe('SystemSettings v2 boundary', () => {
     expect(systemSettingsSource).not.toContain("'OFF'");
   });
 
-  test('renders three route-backed tabs with only the visible modules', async () => {
+  test('renders five route-backed tabs with only the visible modules', async () => {
     render(SystemSettings);
     const systemHeading = screen.getByRole('heading', { name: '系统管理' });
     expect(systemHeading).toBeInTheDocument();
     const tablist = screen.getByRole('tablist', { name: '系统管理模块' });
     const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(4);
+    expect(tabs).toHaveLength(5);
     expect(tablist).toHaveTextContent('镜像');
     expect(tablist).toHaveTextContent('环境变量');
     expect(tablist).toHaveTextContent('Webhooks');
     expect(tablist).toHaveTextContent('能力服务');
+    expect(tablist).toHaveTextContent('Token 管理');
     expect(tablist).not.toHaveTextContent('缓存');
     expect(tablist).not.toHaveTextContent('存储卷');
     expect(tablist).not.toHaveTextContent('工作区预设');

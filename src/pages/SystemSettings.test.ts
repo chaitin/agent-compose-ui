@@ -12,3 +12,15 @@ describe('webhook routing', () => {
     expect(hash).toBe('#/system/webhooks');
   });
 });
+
+describe('token routing', () => {
+  test('Page type includes tokens', () => {
+    store.goTo('tokens');
+    expect(store.currentPage).toBe('tokens');
+  });
+
+  test('buildHash produces #/system/tokens', () => {
+    const hash = buildHash('tokens', '', { level: 'agents', agentName: '', runId: '', sessionId: '' });
+    expect(hash).toBe('#/system/tokens');
+  });
+});

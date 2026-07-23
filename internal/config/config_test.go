@@ -79,6 +79,27 @@ func TestLoadProjectEnvironmentPaths(t *testing.T) {
 	}
 }
 
+func TestLoadTokenDatabasePathIsOptional(t *testing.T) {
+	cfg, err := Load(env(map[string]string{
+		"SCRIPT_SERVICE_TOKEN": "token",
+		"TOKEN_DB_PATH":        " /data/api/tokens.db ",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TokenDBPath != "/data/api/tokens.db" {
+		t.Fatalf("TokenDBPath = %q", cfg.TokenDBPath)
+	}
+
+	cfg, err = Load(env(map[string]string{"SCRIPT_SERVICE_TOKEN": "token"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TokenDBPath != "" {
+		t.Fatalf("TokenDBPath = %q, want empty", cfg.TokenDBPath)
+	}
+}
+
 func TestLoadProjectStoragePaths(t *testing.T) {
 	cfg, err := Load(env(map[string]string{
 		"SCRIPT_SERVICE_TOKEN":        "token",

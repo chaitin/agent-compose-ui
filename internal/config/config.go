@@ -22,7 +22,7 @@ type Config struct {
 	SessionTTL                                         time.Duration
 	AgentComposeURL, ScriptServiceURL                  *url.URL
 	ScriptServiceToken                                 string
-	AgentComposeDBPath, UIStateDBPath                  string
+	AgentComposeDBPath, UIStateDBPath, TokenDBPath     string
 	ProjectStorageRoot, LegacyProjectStorageRoot       string
 }
 
@@ -72,6 +72,7 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	cfg.AgentComposeDBPath = strings.TrimSpace(getenv("AGENT_COMPOSE_DB_PATH"))
 	cfg.UIStateDBPath = strings.TrimSpace(getenv("UI_STATE_DB_PATH"))
+	cfg.TokenDBPath = strings.TrimSpace(getenv("TOKEN_DB_PATH"))
 	if (cfg.AgentComposeDBPath == "") != (cfg.UIStateDBPath == "") {
 		return Config{}, fmt.Errorf("AGENT_COMPOSE_DB_PATH and UI_STATE_DB_PATH must be configured together")
 	}

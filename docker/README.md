@@ -75,6 +75,7 @@ full 模式默认启用服务端 `${VAR}` 解析：web 网关只读挂载 daemon
 | 端口 | 服务 | 默认 |
 | --- | --- | --- |
 | `WEB_PORT` | web UI | 8080 → 80 |
+| `TOKEN_RBAC_API_PORT` | Token 保护的 daemon API | 8081 → 8081 |
 | `AGENT_COMPOSE_PORT`（仅 full） | agent-compose | 127.0.0.1:7410 → 7410 |
 
 ## 构建说明
@@ -86,5 +87,5 @@ full 模式默认启用服务端 `${VAR}` 解析：web 网关只读挂载 daemon
 ## 常见问题
 
 - **web 打开但数据为空/报错**：检查 agent-compose 是否可达。纯前端模式下确认 `AGENT_COMPOSE_URL` 指向正确地址且 daemon 已启动；full 模式下查看 `agent-compose` 容器日志。
-- **端口冲突**：调整 `.env` 中的 `WEB_PORT` 或 `AGENT_COMPOSE_PORT`。
+- **端口冲突**：调整 `.env` 中的 `WEB_PORT`、`TOKEN_RBAC_API_PORT` 或 `AGENT_COMPOSE_PORT`。
 - **脚本引用功能不可用**：确认 `scripts` 容器正常运行，且 `SCRIPT_SERVICE_TOKEN` 在 web 与 scripts 间一致（compose 已保证）。

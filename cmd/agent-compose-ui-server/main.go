@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,14 +12,17 @@ import (
 )
 
 func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	cfg, err := config.Load(os.Getenv)
 	if err != nil {
-		log.Fatalf("gateway configuration error: %v", err)
+		logger.Error("gateway configuration error", "error", err)
+		os.Exit(1)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := app.Run(ctx, cfg); err != nil {
-		log.Fatalf("gateway server error: %v", err)
+	if err := app.Run(ctx, cfg, logger); err != nil {
+		logger.Error("gateway server error", "error", err)
+		os.Exit(1)
 	}
 }

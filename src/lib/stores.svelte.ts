@@ -1,4 +1,4 @@
-export type Page = 'dashboard' | 'project' | 'images' | 'environment' | 'caches' | 'volumes' | 'settings' | 'webhooks' | 'session-detail';
+export type Page = 'dashboard' | 'project' | 'images' | 'environment' | 'caches' | 'volumes' | 'settings' | 'webhooks' | 'tokens' | 'session-detail';
 
 export type RuntimeLevel =
   | 'agents'
@@ -177,7 +177,7 @@ export function parseHash(hash: string): {
   }
 
   if (segments[0] === 'system' && segments.length === 2) {
-    const page = ({ images: 'images', environment: 'environment', capabilities: 'settings', webhooks: 'webhooks' } as const)[segments[1]];
+    const page = ({ images: 'images', environment: 'environment', capabilities: 'settings', webhooks: 'webhooks', tokens: 'tokens' } as const)[segments[1]];
     if (page) {
       return {
         page,
@@ -388,6 +388,7 @@ export function buildHash(page: Page, projectId: string, rv: RuntimeView): strin
   if (page === 'images') return '#/system/images';
   if (page === 'environment') return '#/system/environment';
   if (page === 'webhooks') return '#/system/webhooks';
+  if (page === 'tokens') return '#/system/tokens';
   if (page === 'caches') return '#/resources/caches';
   if (page === 'volumes') return '#/resources/volumes';
 

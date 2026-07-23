@@ -96,7 +96,7 @@ func TestProxyAbortPanicIsNotRecovered(t *testing.T) {
 		_, _ = io.WriteString(w, "partial")
 		panic(http.ErrAbortHandler)
 	})
-	handler := recoverHTTPPanics(routeHandler(http.NotFoundHandler(), panickingProxy, panickingProxy))
+	handler := recoverHTTPPanics(routeHandler(http.NotFoundHandler(), http.NotFoundHandler(), panickingProxy, panickingProxy))
 	response := httptest.NewRecorder()
 
 	deferred := func() (recovered any) {
@@ -116,7 +116,7 @@ func TestHTTPBoundaryRecoversOrdinaryProxyPanicAsGenericJSON(t *testing.T) {
 	panickingProxy := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		panic("sensitive internal detail")
 	})
-	handler := recoverHTTPPanics(routeHandler(http.NotFoundHandler(), panickingProxy, panickingProxy))
+	handler := recoverHTTPPanics(routeHandler(http.NotFoundHandler(), http.NotFoundHandler(), panickingProxy, panickingProxy))
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/test", nil))
@@ -150,7 +150,7 @@ func TestRunReturnsWhenContextIsAlreadyCanceled(t *testing.T) {
 	cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, cfg)
+		done <- Run(ctx, cfg, nil)
 	}()
 
 	select {
