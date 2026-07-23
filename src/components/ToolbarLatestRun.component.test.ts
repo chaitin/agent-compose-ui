@@ -6,10 +6,11 @@ import Toolbar from './Toolbar.svelte';
 
 const mocks = vi.hoisted(() => ({
   store: {
-    activeProjectId: 'p1', editorContent: 'yaml', projects: [{ summary: { projectId: 'p1', name: 'P1', sourcePath: '' } }],
+    activeProjectId: 'p1', activeDraftId: '', editorContent: 'yaml', projects: [{ summary: { projectId: 'p1', name: 'P1', sourcePath: '' } }],
     runtimeView: { level: 'agents' }, toasts: [] as unknown[], runtimeRefreshVersion: 0,
     navigateTo: vi.fn((level: string) => { mocks.store.runtimeView = { level }; }),
     addToast: vi.fn(), triggerRuntimeRefresh: vi.fn(), syncHash: vi.fn(), saveEditorDraft: vi.fn(), removeEditorDraft: vi.fn(),
+    ensureEditorDraftSourcePath: vi.fn(), activeDraftBinding: vi.fn(() => ({})), persistActiveDraftBinding: vi.fn(), browserDrafts: [] as Array<any>,
   },
   startRun: vi.fn(),
   softPauseProject: vi.fn(),
@@ -114,6 +115,7 @@ beforeEach(() => {
   mocks.store.saveEditorDraft.mockReturnValue({ ok: true, draft: null });
   mocks.runCalls.length = 0;
   mocks.store.activeProjectId = 'p1';
+  mocks.store.activeDraftId = '';
   mocks.store.runtimeView = { level: 'agents' };
   mocks.store.projects = [{ summary: { projectId: 'p1', name: 'P1', sourcePath: '/srv/p1/agent-compose.yml' } }];
   mocks.currentSpec = { name: 'P1', agents: [{ name: 'a', systemPrompt: 'A' }, { name: 'b', systemPrompt: 'B' }] };
@@ -303,6 +305,46 @@ test('removes a new-project browser draft only after Apply succeeds', async () =
   await fireEvent.click(await screen.findByRole('button', { name: '确认启用' }));
 
   await waitFor(() => expect(mocks.store.removeEditorDraft).toHaveBeenCalledTimes(1));
+});
+
+test('removes the draft captured by the enable preview when the active draft changes before Apply completes', async () => {
+  const toolbarActions = await import('../lib/toolbar-actions');
+  mocks.store.activeProjectId = '';
+  mocks.store.activeDraftId = 'draft-to-enable';
+  mocks.store.projects = [];
+  vi.mocked(toolbarActions.prepareProjectPreview).mockResolvedValueOnce({
+    currentProjectId: '', editorContent: 'yaml', prepared: { yamlText: 'yaml', references: [] },
+    response: mocks.previewResponse,
+    apply: async () => {
+      mocks.store.activeDraftId = '';
+      return { response: mocks.applyResponse, agentNames: [], agents: [], supersededProjectId: '' };
+    },
+  } as any);
+  mocks.applyResponse = { applied: true, project: { summary: { projectId: 'new-project' } }, changes: [] };
+  render(Toolbar);
+
+  await fireEvent.click(screen.getByRole('button', { name: '启用' }));
+  await fireEvent.click(await screen.findByRole('button', { name: '确认启用' }));
+
+  await waitFor(() => expect(mocks.store.removeEditorDraft).toHaveBeenCalledWith('draft-to-enable'));
+});
+
+test('removes a manually saved draft after Apply succeeds even when the response omits the project summary', async () => {
+  const toolbarActions = await import('../lib/toolbar-actions');
+  mocks.store.activeProjectId = '';
+  mocks.store.activeDraftId = 'manually-saved-draft';
+  mocks.store.projects = [];
+  vi.mocked(toolbarActions.prepareProjectPreview).mockResolvedValueOnce({
+    currentProjectId: '', editorContent: 'yaml', prepared: { yamlText: 'yaml', references: [] },
+    response: mocks.previewResponse,
+    apply: async () => ({ response: { applied: true, changes: [] }, agentNames: [], agents: [], supersededProjectId: '' }),
+  } as any);
+  render(Toolbar);
+
+  await fireEvent.click(screen.getByRole('button', { name: '启用' }));
+  await fireEvent.click(await screen.findByRole('button', { name: '确认启用' }));
+
+  await waitFor(() => expect(mocks.store.removeEditorDraft).toHaveBeenCalledWith('manually-saved-draft'));
 });
 
 test('creates and opens the batch before starting the first Agent without locking the toolbar on the stream', async () => {

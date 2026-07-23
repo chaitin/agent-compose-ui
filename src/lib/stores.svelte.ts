@@ -557,8 +557,9 @@ export class Store {
     return { projectKey: draft?.projectKey, sourcePath: draft?.sourcePath };
   }
 
-  persistActiveDraftBinding(binding: { projectKey: string; sourcePath: string }): BrowserDraft {
+  persistActiveDraftBinding(binding: { projectKey: string; sourcePath: string }, expectedDraftId = this.activeDraftId): BrowserDraft | undefined {
     if (this.activeProjectId) throw new Error('cannot persist a draft binding for a saved project');
+    if (expectedDraftId && this.activeDraftId !== expectedDraftId) return undefined;
     if (!this.activeDraftId) this.activeDraftId = createDraftId();
     const existing = this.browserDrafts.find((item) => item.id === this.activeDraftId);
     const draft: BrowserDraft = {

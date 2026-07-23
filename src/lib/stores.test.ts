@@ -159,3 +159,22 @@ test('draft workspace binding survives persistence and selection', () => {
   expect(loaded[0].projectKey).toBe('ws_0123456789abcdef0123456789abcdef');
   expect(loaded[0].sourcePath).toContain('/data/work/projects/');
 });
+
+test('a late workspace binding response cannot recreate a removed draft', () => {
+  localStorage.clear();
+  store.browserDrafts = [];
+  store.activeDraftId = '';
+  store.activeProjectId = '';
+  store.editorContent = 'name: enabled-project\n';
+
+  store.ensureEditorDraftSourcePath();
+  const removedDraftId = store.activeDraftId;
+  store.removeEditorDraft(removedDraftId);
+
+  expect(store.persistActiveDraftBinding({
+    projectKey: 'ws_late',
+    sourcePath: '/data/work/projects/ws_late/agent-compose.yml',
+  }, removedDraftId)).toBeUndefined();
+  expect(store.browserDrafts).toEqual([]);
+  expect(store.activeDraftId).toBe('');
+});

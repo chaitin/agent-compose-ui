@@ -14,7 +14,7 @@
 
   const status = $derived.by(() => {
     if (!binding) return { kind: 'none' as const };
-    if (binding.provider && binding.provider !== 'local') {
+    if (binding.provider && binding.provider !== 'file') {
       return { kind: 'non-file' as const, provider: binding.provider };
     }
     if (!binding.path) return { kind: 'none' as const };

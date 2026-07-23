@@ -182,7 +182,7 @@
 
   function bindingKind(binding: WorkspaceBinding | null): WorkspaceBindingKind | null {
     if (!binding) return null;
-    if (binding.provider && binding.provider !== 'local') {
+    if (binding.provider && binding.provider !== 'file') {
       if (KNOWN_NON_FILE_PROVIDERS.has(binding.provider)) return null;
       return 'non-file';
     }

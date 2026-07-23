@@ -64,7 +64,7 @@
   let previewIssues: Array<{ severity: unknown; path: string; message: string }> = $state([]);
   let previewUnchanged = $state(false);
   type PreparedScripts = Awaited<ReturnType<typeof prepareScriptRequest>>;
-  let pendingApply: (PreparedProjectPreview<PreparedScripts> & { generation: number }) | undefined = $state();
+  let pendingApply: (PreparedProjectPreview<PreparedScripts> & { generation: number; draftId: string }) | undefined = $state();
   let pendingMode: 'save' | 'run' = $state('save');
   let buildPlans: ProjectImageBuildPlan[] = $state([]);
   let selectedBuildAgents: Set<string> = $state(new Set());
@@ -119,14 +119,15 @@
       return replacement.sourcePath;
     }
     store.ensureEditorDraftSourcePath();
+    const draftId = store.activeDraftId;
     const draft = store.activeDraftBinding();
-    const resolved = await workspaceBindings.ensure(`draft:${store.activeDraftId}`, {
+    const resolved = await workspaceBindings.ensure(`draft:${draftId}`, {
       projectKey: draft.projectKey,
       sourcePath: draft.sourcePath,
       legacyKey: store.browserDrafts.find((item) => item.id === store.activeDraftId)?.legacyStorageKey,
       ensureWorkspace: needsWorkspace,
     });
-    store.persistActiveDraftBinding(resolved);
+    store.persistActiveDraftBinding(resolved, draftId);
     return resolved.sourcePath;
   }
 
@@ -363,7 +364,7 @@
       : undefined;
     if (!previewGeneration.isCurrent(generation)) return;
     if (currentProject && !savedSpec) throw new Error('无法读取已保存的智能体应用配置');
-    pendingApply = { ...preview, generation };
+    pendingApply = { ...preview, generation, draftId: currentProjectId ? '' : store.activeDraftId };
     pendingMode = mode;
     buildPlans = createProjectImageBuildPlans(frozenSpec, currentProject?.summary.sourcePath?.trim() || '');
     const changedBuildAgents = changedBuildAgentNames(savedSpec, frozenSpec);
@@ -400,7 +401,7 @@
       },
       restore: (failed) => {
         if (!previewGeneration.isCurrent(candidate.generation)) return;
-        pendingApply = failed as PreparedProjectPreview<PreparedScripts> & { generation: number };
+        pendingApply = failed as PreparedProjectPreview<PreparedScripts> & { generation: number; draftId: string };
         showDiff = true;
       },
     }, controller.signal);
@@ -416,7 +417,7 @@
     if (candidate.currentProjectId) clearProjectBindingOverride(candidate.currentProjectId);
     const stillCurrent = previewGeneration.isCurrent(candidate.generation);
     if (stillCurrent) {
-      if (!candidate.currentProjectId && appliedProjectId) store.removeEditorDraft();
+      if (!candidate.currentProjectId) store.removeEditorDraft(candidate.draftId);
       synced = true;
       if (response.revision) specHash = response.revision.specHash;
       diffChanges = [];

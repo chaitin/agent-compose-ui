@@ -13,7 +13,7 @@
 
   const warnTooltip = $derived(
     provider
-      ? `${provider} 类型不支持文件管理，点击切换为 local 类型并创建 workspace`
+      ? `${provider} 类型不支持文件管理，点击切换为 file 类型并创建 workspace`
       : '当前 workspace 类型不支持文件管理，点击切换为 local 类型',
   );
 </script>

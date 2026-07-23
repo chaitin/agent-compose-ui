@@ -15,7 +15,7 @@ function normalizeProvider(value: unknown): string | null {
 }
 
 function publishedProvider(value: string | null): string | null {
-  return value === 'file' ? 'local' : value;
+  return value === 'local' ? 'file' : value;
 }
 
 export function parseWorkspaceBinding(yamlText: string): WorkspaceBinding | null {
@@ -40,7 +40,7 @@ export function parseWorkspaceBinding(yamlText: string): WorkspaceBinding | null
     return {
       path,
       agentName,
-      provider: provider ?? 'local',
+      provider: provider ?? 'file',
     };
   }
 
@@ -53,8 +53,8 @@ export function migrateLegacyWorkspaceProviders(yamlText: string): string {
   const migrate = (workspace: unknown) => {
     if (!workspace || typeof workspace !== 'object' || Array.isArray(workspace)) return;
     const spec = workspace as Record<string, unknown>;
-    if (normalizeProvider(spec.provider) === 'file') {
-      spec.provider = 'local';
+    if (normalizeProvider(spec.provider) === 'local') {
+      spec.provider = 'file';
       changed = true;
     }
   };
@@ -75,7 +75,7 @@ export function migrateLegacyWorkspaceProviders(yamlText: string): string {
 }
 
 export function isWorkspaceBindingValid(binding: WorkspaceBinding | null): binding is WorkspaceBinding {
-  return binding !== null && binding.path !== '' && binding.provider === 'local';
+  return binding !== null && binding.path !== '' && binding.provider === 'file';
 }
 
 export function defaultWorkspacePath(): string {
@@ -84,8 +84,8 @@ export function defaultWorkspacePath(): string {
 
 // Inject a default workspace.path into the first agent's workspace block.
 // - If no agent has a workspace block, creates one on the first agent.
-// - If an existing block has provider != local, throws unless `force: true`.
-// - If an existing block has provider local (or unspecified), writes path into it.
+// - If an existing block has provider other than file/local, throws unless `force: true`.
+// - Existing local is normalized to the daemon's canonical file provider.
 // Returns the new YAML text.
 export function setWorkspacePathForFirstAgent(
   yamlText: string,
@@ -111,14 +111,14 @@ export function setWorkspacePathForFirstAgent(
       const provider = typeof providerRaw === 'string' ? providerRaw.trim().toLowerCase() : '';
       if (provider && provider !== 'local' && provider !== 'file') {
         if (!options?.force) {
-          throw new Error(`当前 workspace provider 是 ${provider}，无法自动改为 local（会覆盖已有配置）`);
+          throw new Error(`当前 workspace provider 是 ${provider}，无法自动改为 file（会覆盖已有配置）`);
         }
       }
-      existingWs.provider = 'local';
+      existingWs.provider = 'file';
       existingWs.path = path;
       return dumpYamlObject(root);
     }
-    defObj.workspace = { provider: 'local', path };
+    defObj.workspace = { provider: 'file', path };
     return dumpYamlObject(root);
   }
   throw new Error('无法定位 workspace 配置位置');
