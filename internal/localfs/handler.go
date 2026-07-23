@@ -139,11 +139,16 @@ func (h *Handler) workspaceRoot(r *http.Request, create bool) (string, error) {
 
 func listDir(root string) ([]FileEntry, error) {
 	entries := make([]FileEntry, 0)
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	scoped, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer scoped.Close()
+	err = fs.WalkDir(scoped.FS(), ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if path == root {
+		if path == "." {
 			return nil
 		}
 		if d.Type()&os.ModeSymlink != 0 {
@@ -153,11 +158,7 @@ func listDir(root string) ([]FileEntry, error) {
 		if err != nil {
 			return err
 		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		entries = append(entries, FileEntry{Name: info.Name(), Path: filepath.ToSlash(rel), Dir: d.IsDir(), Size: info.Size(), MtimeMs: info.ModTime().UnixMilli()})
+		entries = append(entries, FileEntry{Name: info.Name(), Path: filepath.ToSlash(path), Dir: d.IsDir(), Size: info.Size(), MtimeMs: info.ModTime().UnixMilli()})
 		return nil
 	})
 	return entries, err
@@ -212,7 +213,18 @@ func (h *Handler) uploadFile(w http.ResponseWriter, r *http.Request) {
 		writeStorageError(w, err)
 		return
 	}
-	out, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	rel, _ := filepath.Rel(root, dest)
+	scoped, err := os.OpenRoot(root)
+	if err != nil {
+		writeStorageError(w, err)
+		return
+	}
+	defer scoped.Close()
+	if err := scoped.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
+		writeStorageError(w, err)
+		return
+	}
+	out, err := scoped.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
 		writeStorageError(w, err)
 		return
@@ -286,7 +298,14 @@ func (h *Handler) downloadFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "unsafe_path", "path is not a regular file")
 		return
 	}
-	file, err := os.Open(target)
+	rel, _ := filepath.Rel(root, target)
+	scoped, err := os.OpenRoot(root)
+	if err != nil {
+		writeStorageError(w, err)
+		return
+	}
+	defer scoped.Close()
+	file, err := scoped.Open(rel)
 	if err != nil {
 		writeStorageError(w, err)
 		return
@@ -321,10 +340,17 @@ func (h *Handler) remove(w http.ResponseWriter, r *http.Request, wantDir, recurs
 		writeError(w, 400, "unsafe_path", "target type is not allowed")
 		return
 	}
+	rel, _ := filepath.Rel(root, target)
+	scoped, openErr := os.OpenRoot(root)
+	if openErr != nil {
+		writeStorageError(w, openErr)
+		return
+	}
+	defer scoped.Close()
 	if recursive {
-		err = os.RemoveAll(target)
+		err = scoped.RemoveAll(rel)
 	} else {
-		err = os.Remove(target)
+		err = scoped.Remove(rel)
 	}
 	if err != nil {
 		writeStorageError(w, err)
@@ -353,7 +379,14 @@ func (h *Handler) createFolder(w http.ResponseWriter, r *http.Request) {
 		writeStorageError(w, err)
 		return
 	}
-	if err := ensureSafeParents(root, target); err != nil {
+	rel, _ := filepath.Rel(root, target)
+	scoped, err := os.OpenRoot(root)
+	if err != nil {
+		writeStorageError(w, err)
+		return
+	}
+	defer scoped.Close()
+	if err := scoped.MkdirAll(rel, 0o755); err != nil {
 		writeStorageError(w, err)
 		return
 	}

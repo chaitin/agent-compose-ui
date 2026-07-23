@@ -84,7 +84,7 @@ export class WorkspaceFileStore {
         ? error
         : new LocalWorkspaceApiError(0, error instanceof Error ? error.message : String(error));
       this.lastError = wrapped;
-      return { files: this.files, error: null };
+      return { files: this.files, error: wrapped };
     } finally {
       if (generation === this.#refreshGeneration && this.projectKey === source && this.workspacePath === ws) {
         this.loading = false;

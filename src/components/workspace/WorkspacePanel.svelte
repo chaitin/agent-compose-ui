@@ -150,7 +150,6 @@
   .error-icon { font-size: 32px; opacity: 0.5; }
   .error-title { font-size: var(--font-size-md); color: var(--text-secondary); font-weight: 600; }
   .error-desc { font-size: var(--font-size-xs); max-width: 360px; line-height: 1.5; }
-  .error-desc code { color: var(--accent-blue); font-family: var(--font-mono); }
   .retry-btn {
     margin-top: 8px;
     padding: 6px 14px;
