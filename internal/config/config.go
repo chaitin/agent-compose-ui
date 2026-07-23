@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -21,6 +23,7 @@ type Config struct {
 	AgentComposeURL, ScriptServiceURL                  *url.URL
 	ScriptServiceToken                                 string
 	AgentComposeDBPath, UIStateDBPath                  string
+	ProjectStorageRoot, LegacyProjectStorageRoot       string
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -74,6 +77,22 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if cfg.AgentComposeDBPath != "" && cfg.AgentComposeDBPath == cfg.UIStateDBPath {
 		return Config{}, fmt.Errorf("AGENT_COMPOSE_DB_PATH and UI_STATE_DB_PATH must be different")
+	}
+	cfg.ProjectStorageRoot = strings.TrimSpace(getenv("PROJECT_STORAGE_ROOT"))
+	if cfg.ProjectStorageRoot == "" {
+		cfg.ProjectStorageRoot = filepath.Join(os.TempDir(), "agent-compose-ui", "projects")
+	}
+	cfg.LegacyProjectStorageRoot = strings.TrimSpace(getenv("LEGACY_PROJECT_STORAGE_ROOT"))
+	for name, value := range map[string]string{
+		"PROJECT_STORAGE_ROOT":        cfg.ProjectStorageRoot,
+		"LEGACY_PROJECT_STORAGE_ROOT": cfg.LegacyProjectStorageRoot,
+	} {
+		if value == "" {
+			continue
+		}
+		if !filepath.IsAbs(value) || filepath.Clean(value) != value {
+			return Config{}, fmt.Errorf("%s must be an absolute clean path", name)
+		}
 	}
 	return cfg, nil
 }

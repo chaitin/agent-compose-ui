@@ -1,6 +1,7 @@
 package config
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -70,6 +71,45 @@ func TestLoadProjectEnvironmentPaths(t *testing.T) {
 		{"AGENT_COMPOSE_DB_PATH": "/data/data.db"},
 		{"UI_STATE_DB_PATH": "/data/ui.db"},
 		{"AGENT_COMPOSE_DB_PATH": "/same.db", "UI_STATE_DB_PATH": "/same.db"},
+	} {
+		values["SCRIPT_SERVICE_TOKEN"] = "token"
+		if _, err := Load(env(values)); err == nil {
+			t.Fatalf("expected path error for %#v", values)
+		}
+	}
+}
+
+func TestLoadProjectStoragePaths(t *testing.T) {
+	cfg, err := Load(env(map[string]string{
+		"SCRIPT_SERVICE_TOKEN":        "token",
+		"PROJECT_STORAGE_ROOT":        "/data/work/projects",
+		"LEGACY_PROJECT_STORAGE_ROOT": "/legacy/projects",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ProjectStorageRoot != "/data/work/projects" || cfg.LegacyProjectStorageRoot != "/legacy/projects" {
+		t.Fatalf("storage paths = %#v", cfg)
+	}
+}
+
+func TestLoadDefaultsProjectStorageToTemp(t *testing.T) {
+	tempRoot := t.TempDir()
+	t.Setenv("TMPDIR", tempRoot)
+	cfg, err := Load(env(map[string]string{"SCRIPT_SERVICE_TOKEN": "token"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(tempRoot, "agent-compose-ui", "projects")
+	if cfg.ProjectStorageRoot != want {
+		t.Fatalf("default project storage root = %q, want %q", cfg.ProjectStorageRoot, want)
+	}
+}
+
+func TestLoadRejectsRelativeProjectStoragePaths(t *testing.T) {
+	for _, values := range []map[string]string{
+		{"PROJECT_STORAGE_ROOT": "relative/projects"},
+		{"LEGACY_PROJECT_STORAGE_ROOT": "legacy/projects"},
 	} {
 		values["SCRIPT_SERVICE_TOKEN"] = "token"
 		if _, err := Load(env(values)); err == nil {

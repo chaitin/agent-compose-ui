@@ -51,14 +51,18 @@ func newHandler(cfg config.Config) (http.Handler, func() error, error) {
 	}
 	daemonProxy := manager.Require(daemonHandler)
 	scriptProxy := manager.Require(proxy.NewScripts(cfg.ScriptServiceURL, cfg.ScriptServiceToken))
+	projectStorage := manager.Require(localfs.New(localfs.NewStorage(cfg.ProjectStorageRoot, cfg.LegacyProjectStorageRoot)))
 	authHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		serveAuth(manager, w, r)
 	})
-	return recoverHTTPPanics(routeHandler(authHandler, scriptProxy, daemonProxy)), cleanup, nil
+	return recoverHTTPPanics(routeHandler(authHandler, scriptProxy, daemonProxy, projectStorage)), cleanup, nil
 }
 
-func routeHandler(authHandler, scriptProxy, daemonProxy http.Handler) http.Handler {
-	localWsHandler := localfs.New()
+func routeHandler(authHandler, scriptProxy, daemonProxy http.Handler, storageHandlers ...http.Handler) http.Handler {
+	var projectStorage http.Handler = localfs.New()
+	if len(storageHandlers) > 0 && storageHandlers[0] != nil {
+		projectStorage = storageHandlers[0]
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
@@ -66,8 +70,8 @@ func routeHandler(authHandler, scriptProxy, daemonProxy http.Handler) http.Handl
 			authHandler.ServeHTTP(w, r)
 		case strings.HasPrefix(path, "/script-api/"):
 			scriptProxy.ServeHTTP(w, r)
-		case strings.HasPrefix(path, "/api/local-workspace/"):
-			localWsHandler.ServeHTTP(w, r)
+		case strings.HasPrefix(path, "/api/local-workspace/") || strings.HasPrefix(path, "/api/project-storage/"):
+			projectStorage.ServeHTTP(w, r)
 		case isDaemonPath(path):
 			daemonProxy.ServeHTTP(w, r)
 		default:
