@@ -33,16 +33,19 @@ Set `AGENT_COMPOSE_BASE` to host the app under a sub-path (default `/`).
 
 ## Token-protected API
 
-Set `TOKEN_DB_PATH` to an absolute path in a persistent volume to enable API
-Token management in the System Settings page. The UI server then exposes a
-separate h2c-capable machine API listener on container port `8081`. Map that
+The official image enables API Token management by default with
+`TOKEN_DB_PATH=/data/api/tokens.db`. Mount a persistent volume at `/data/api`
+and override `TOKEN_DB_PATH` when a different location is required. When the
+UI server binary is run outside the image, set `TOKEN_DB_PATH` explicitly to
+enable Token management in the System Settings page. The server then exposes
+a separate h2c-capable machine API listener on container port `8081`. Map that
 port explicitly (for example `${TOKEN_RBAC_API_PORT:-8081}:8081`) and protect
 cross-host traffic with TLS, a VPN, or a tunnel.
 
 Tokens use the `admin` or `read-only-admin` role and are only shown once when
 created. The database stores a non-recoverable digest. When `TOKEN_DB_PATH` is
-unset, the browser UI remains available while Token management and port `8081`
-return HTTP 503.
+unset (for example when running the server binary directly), the browser UI
+remains available while Token management and port `8081` return HTTP 503.
 
 The UI server accepts `LISTEN_ADDR` to override its default browser API address
 `127.0.0.1:8080` and `AGENT_COMPOSE_URL` to override the default daemon URL

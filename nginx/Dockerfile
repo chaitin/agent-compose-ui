@@ -18,6 +18,7 @@ COPY internal ./internal
 RUN CGO_ENABLED=0 go build -o /out/agent-compose-ui-server ./cmd/agent-compose-ui-server
 
 FROM ${REGISTRY_MIRROR}/library/nginx:alpine
+RUN mkdir -p /data/api
 RUN rm -f /etc/nginx/conf.d/default.conf
 COPY nginx/nginx.main /etc/nginx/nginx.conf
 COPY nginx/10-normalize-jupyter-proxy-base.envsh /docker-entrypoint.d/10-normalize-jupyter-proxy-base.envsh
