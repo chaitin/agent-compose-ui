@@ -27,5 +27,6 @@ COPY --from=frontend-build /app/dist /srv/agent-compose/frontend
 COPY --from=ui-server-build /out/agent-compose-ui-server /usr/local/bin/agent-compose-ui-server
 COPY nginx/agent-compose-entrypoint.sh /agent-compose-entrypoint.sh
 RUN chmod +x /agent-compose-entrypoint.sh
+EXPOSE 8000 8081
 ENTRYPOINT ["/agent-compose-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]

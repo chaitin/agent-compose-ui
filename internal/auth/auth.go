@@ -146,7 +146,7 @@ func (a *Manager) protectsPath(path string, accept string) bool {
 	if strings.HasPrefix(path, "/agentcompose.v1.") || strings.HasPrefix(path, "/agentcompose.v2.") || strings.HasPrefix(path, "/health.v1.") || strings.HasPrefix(path, "/agent-compose/session/") {
 		return true
 	}
-	if strings.HasPrefix(path, "/api/") {
+	if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/ui-api/") {
 		return true
 	}
 	return strings.Contains(accept, "text/html")
