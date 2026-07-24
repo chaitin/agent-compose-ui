@@ -194,24 +194,25 @@
         <button class="ghost" aria-label="关闭" on:click={() => guideOpen = false}>关闭</button>
       </div>
       <div class="proxy-port">
-        <span>当前 Token Proxy 监听端口</span>
+        <span>Token Proxy 部署端口</span>
         <strong>8081</strong>
       </div>
+      <p class="base-url-note">具体可访问的 API Base URL 请联系管理员获取。</p>
       <ol>
         <li>创建 Token 后立即复制并安全保存，关闭创建结果弹窗后无法再次查看明文。</li>
-        <li>将 Agent Compose API 地址设置为 <code>http://&lt;服务器地址&gt;:8081</code>。</li>
+        <li>将调用方的 Agent Compose API Base URL 配置为管理员提供的地址。</li>
         <li>每次请求携带 Header：<code>Authorization: Bearer &lt;API_TOKEN&gt;</code>。</li>
       </ol>
       <div>
         <b>curl 示例</b>
         <pre>curl -H 'Authorization: Bearer &lt;API_TOKEN&gt;' \
-  http://&lt;服务器地址&gt;:8081/api/version</pre>
+  '&lt;API_BASE_URL&gt;/api/version'</pre>
       </div>
       <div class="role-help">
         <p><code>read-only-admin</code> 仅允许已登记的查询接口，适合巡检和只读自动化。</p>
         <p><code>admin</code> 允许代理所有 API，请仅授予可信调用方。</p>
       </div>
-      <div class="alert warning">容器内监听端口固定为 8081；如果部署时映射到其他宿主机端口，请使用实际映射端口。跨主机访问应通过 TLS、VPN 或隧道保护。</div>
+      <div class="alert warning">请仅通过受信任且加密的网络连接传输 Token，不要直接连接未受 Token/RBAC 保护的 daemon API。</div>
       <div class="token-modal-actions"><button class="primary" on:click={() => guideOpen = false}>知道了</button></div>
     </div>
   </div>
@@ -282,6 +283,7 @@
   .proxy-port { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--primary-weak); }
   .proxy-port span { color: var(--muted); }
   .proxy-port strong { color: var(--primary); font-family: var(--mono); font-size: var(--font-size-xl); }
+  .base-url-note { margin: 0; color: var(--muted); }
   .role-help { display: grid; gap: 6px; }
   .role-help p { margin: 0; }
   .token-warning { display: grid; gap: 4px; padding: 12px; border: 1px solid #f3d28a; border-radius: 6px; background: var(--amber-weak); color: #92400e; }
