@@ -148,22 +148,23 @@
   <div class="backdrop" role="presentation">
     <div class="dialog guide-dialog" role="dialog" aria-modal="true" aria-labelledby="token-guide-title">
       <header><h3 id="token-guide-title">API Token 使用说明</h3><button aria-label="关闭" onclick={() => guideOpen = false}>×</button></header>
-      <div class="proxy-port"><span>当前 Token Proxy 监听端口</span><strong>8081</strong></div>
+      <div class="proxy-port"><span>Token Proxy 部署端口</span><strong>8081</strong></div>
+      <p class="base-url-note">具体可访问的 API Base URL 请联系管理员获取。</p>
       <ol>
         <li>创建 Token 后立即复制并安全保存，关闭创建结果弹窗后无法再次查看明文。</li>
-        <li>将 Agent Compose API 地址设置为 <code>http://&lt;服务器地址&gt;:8081</code>。</li>
+        <li>将调用方的 Agent Compose API Base URL 配置为管理员提供的地址。</li>
         <li>每次请求携带 Header：<code>Authorization: Bearer &lt;API_TOKEN&gt;</code>。</li>
       </ol>
       <div>
         <strong>curl 示例</strong>
         <pre>curl -H 'Authorization: Bearer &lt;API_TOKEN&gt;' \
-  http://&lt;服务器地址&gt;:8081/api/version</pre>
+  '&lt;API_BASE_URL&gt;/api/version'</pre>
       </div>
       <div class="role-help">
         <p><code>read-only-admin</code> 仅允许已登记的查询接口，适合巡检和只读自动化。</p>
         <p><code>admin</code> 允许代理所有 API，请仅授予可信调用方。</p>
       </div>
-      <div class="security-note">容器内监听端口固定为 8081；如果部署时映射到其他宿主机端口，请使用实际映射端口。跨主机访问应通过 TLS、VPN 或隧道保护。</div>
+      <div class="security-note">请仅通过受信任且加密的网络连接传输 Token，不要直接连接未受 Token/RBAC 保护的 daemon API。</div>
       <footer><button class="primary" onclick={() => guideOpen = false}>知道了</button></footer>
     </div>
   </div>
@@ -214,6 +215,6 @@
   .error{color:var(--accent-red)}.empty{padding:22px;color:var(--text-muted);text-align:center}.unavailable{display:grid;gap:5px;margin-top:16px;padding:18px;border:1px dashed var(--border-color);color:var(--text-secondary)}.unavailable strong{color:var(--text-primary)}
   .table-wrap{margin-top:16px;overflow:auto}table{width:100%;border-collapse:collapse;font-size:var(--font-size-sm)}th,td{padding:10px;border-bottom:1px solid var(--border-color);text-align:left;white-space:nowrap}td:first-child{display:grid;gap:3px}td code{color:var(--text-muted);font-size:var(--font-size-xs)}.role{font-family:var(--font-mono)}.active{color:var(--accent-green)}.expired{color:var(--accent-orange)}.revoked{color:var(--text-muted)}
   .backdrop{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:16px;background:#0009}.dialog{display:grid;gap:16px;width:min(520px,100%);padding:20px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-secondary);box-shadow:0 20px 60px #0009}.dialog label{display:grid;gap:6px}.dialog input,.dialog select{width:100%}.dialog footer{justify-content:flex-end}.warning{display:grid;gap:4px;padding:12px;border:1px solid var(--accent-orange);border-radius:6px;color:var(--accent-orange)}.expiry{margin:0;color:var(--text-secondary)}.raw-token{overflow-wrap:anywhere;padding:12px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-primary);user-select:all}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
-  .guide-dialog{width:min(620px,100%)}.guide-dialog ol{display:grid;gap:8px;margin:0;padding-left:22px;color:var(--text-secondary)}.guide-dialog code{font-family:var(--font-mono);color:var(--text-primary)}.guide-dialog pre{margin:8px 0 0;padding:12px;overflow:auto;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-primary);color:var(--text-primary);font-family:var(--font-mono);line-height:1.5}.proxy-port{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary)}.proxy-port span{color:var(--text-secondary)}.proxy-port strong{color:var(--accent-blue);font-family:var(--font-mono);font-size:var(--font-size-xl)}.role-help{display:grid;gap:6px}.role-help p{margin:0}.security-note{padding:12px;border:1px solid var(--accent-orange);border-radius:6px;color:var(--accent-orange)}
+  .guide-dialog{width:min(620px,100%)}.guide-dialog ol{display:grid;gap:8px;margin:0;padding-left:22px;color:var(--text-secondary)}.guide-dialog code{font-family:var(--font-mono);color:var(--text-primary)}.guide-dialog pre{margin:8px 0 0;padding:12px;overflow:auto;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-primary);color:var(--text-primary);font-family:var(--font-mono);line-height:1.5}.proxy-port{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary)}.proxy-port span{color:var(--text-secondary)}.proxy-port strong{color:var(--accent-blue);font-family:var(--font-mono);font-size:var(--font-size-xl)}.base-url-note{margin:0;color:var(--text-secondary)}.role-help{display:grid;gap:6px}.role-help p{margin:0}.security-note{padding:12px;border:1px solid var(--accent-orange);border-radius:6px;color:var(--accent-orange)}
   @media(max-width:700px){.panel>header{align-items:flex-start;flex-direction:column}th:nth-child(3),td:nth-child(3){display:none}}
 </style>
