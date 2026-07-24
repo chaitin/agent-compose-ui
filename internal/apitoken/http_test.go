@@ -11,17 +11,21 @@ import (
 )
 
 type fakeTokenStore struct {
-	created  Created
-	err      error
-	validFor time.Duration
+	created   Created
+	err       error
+	validFor  time.Duration
+	listCalls int
 }
 
 func (s *fakeTokenStore) Create(_ context.Context, _ string, _ Role, validFor time.Duration) (Created, error) {
 	s.validFor = validFor
 	return s.created, s.err
 }
-func (s *fakeTokenStore) List(context.Context) ([]Metadata, error) { return nil, s.err }
-func (s *fakeTokenStore) Revoke(context.Context, string) error     { return s.err }
+func (s *fakeTokenStore) List(context.Context) ([]Metadata, error) {
+	s.listCalls++
+	return nil, s.err
+}
+func (s *fakeTokenStore) Revoke(context.Context, string) error { return s.err }
 
 func TestCreateInputBoundary(t *testing.T) {
 	tests := []struct {
@@ -59,6 +63,27 @@ func TestCreateDefaultsValidityToNinetyDays(t *testing.T) {
 	NewHTTPHandler(store).ServeHTTP(response, request)
 	if response.Code != http.StatusCreated || store.validFor != 90*24*time.Hour {
 		t.Fatalf("response = %d, validFor = %v", response.Code, store.validFor)
+	}
+}
+
+func TestListRejectsCrossSiteRequests(t *testing.T) {
+	for _, test := range []struct {
+		name, origin, fetchSite string
+	}{
+		{"cross origin", "https://evil.example", ""},
+		{"cross site", "", "cross-site"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := &fakeTokenStore{}
+			request := httptest.NewRequest(http.MethodGet, "http://example.com/ui-api/v1/tokens", nil)
+			request.Header.Set("Origin", test.origin)
+			request.Header.Set("Sec-Fetch-Site", test.fetchSite)
+			response := httptest.NewRecorder()
+			NewHTTPHandler(store).ServeHTTP(response, request)
+			if response.Code != http.StatusForbidden || store.listCalls != 0 {
+				t.Fatalf("response = %d, list calls = %d", response.Code, store.listCalls)
+			}
+		})
 	}
 }
 

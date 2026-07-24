@@ -20,11 +20,14 @@ func NewBackendProxy(backend *url.URL) http.Handler {
 
 func NewTokenBackendProxy(backend *url.URL) http.Handler {
 	return newBackendProxy(backend, tokenTransport(backend), func(req *http.Request) {
+		for _, name := range []string{
+			"Authorization", "Cookie", "Proxy-Authorization", "Forwarded",
+			"X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-IP",
+		} {
+			req.Header.Del(name)
+		}
 		// A nil X-Forwarded-For value prevents ReverseProxy from synthesizing one.
 		req.Header["X-Forwarded-For"] = nil
-		req.Header.Del("X-Forwarded-Host")
-		req.Header.Del("X-Forwarded-Proto")
-		req.Header.Del("X-Real-IP")
 	})
 }
 

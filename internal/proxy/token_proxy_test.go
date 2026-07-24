@@ -24,12 +24,10 @@ func TestTokenDaemonDoesNotForwardManagedHeaders(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/version", nil)
 	for name, value := range map[string]string{
 		"Authorization": "Bearer secret", "Cookie": "session=secret", "Forwarded": "for=client",
-		"X-Forwarded-For": "client", "X-Forwarded-Host": "client.example", "X-Forwarded-Proto": "https", "X-Real-IP": "client",
+		"Proxy-Authorization": "Basic secret",
+		"X-Forwarded-For":     "client", "X-Forwarded-Host": "client.example", "X-Forwarded-Proto": "https", "X-Real-IP": "client",
 	} {
 		request.Header.Set(name, value)
-	}
-	for _, name := range []string{"Authorization", "Cookie", "Proxy-Authorization", "Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-IP"} {
-		request.Header.Del(name)
 	}
 	response := httptest.NewRecorder()
 	NewTokenBackendProxy(target).ServeHTTP(response, request)

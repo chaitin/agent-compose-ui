@@ -47,6 +47,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.log("", "", r, "deny", http.StatusUnauthorized, started)
 			return
 		}
+		if h.logger != nil {
+			h.logger.ErrorContext(r.Context(), "token authentication failed",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"error", err,
+			)
+		}
 		writeConnectError(w, http.StatusServiceUnavailable, "unavailable", "token service unavailable")
 		h.log("", "", r, "error", http.StatusServiceUnavailable, started)
 		return

@@ -46,6 +46,10 @@ func UnavailableHandler() http.Handler {
 }
 
 func (h *HTTPHandler) list(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(r) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "cross-site request rejected"})
+		return
+	}
 	items, err := h.store.List(r.Context())
 	if err != nil {
 		writeStoreError(w, err)

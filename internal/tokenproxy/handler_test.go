@@ -1,9 +1,13 @@
 package tokenproxy
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"agent-compose-ui/internal/apitoken"
@@ -88,5 +92,30 @@ func TestAuthenticationAndUnavailableErrors(t *testing.T) {
 				t.Fatalf("response = %d, cache-control %q", response.Code, response.Header().Get("Cache-Control"))
 			}
 		})
+	}
+}
+
+func TestAuthenticationStorageFailureIsLoggedWithoutLeaking(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	handler := New(staticAuthenticator{err: errors.New("sqlite read failed")}, http.NotFoundHandler(), logger)
+	request := httptest.NewRequest(http.MethodGet, "/api/version", nil)
+	request.Header.Set("Authorization", "Bearer secret-token")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusServiceUnavailable)
+	}
+	if body := response.Body.String(); strings.Contains(body, "sqlite read failed") || strings.Contains(body, "secret-token") {
+		t.Fatalf("response leaked internal details: %q", body)
+	}
+	output := logs.String()
+	if !strings.Contains(output, "token authentication failed") || !strings.Contains(output, "sqlite read failed") {
+		t.Fatalf("missing authentication error log: %q", output)
+	}
+	if strings.Contains(output, "secret-token") {
+		t.Fatalf("log leaked bearer token: %q", output)
 	}
 }
