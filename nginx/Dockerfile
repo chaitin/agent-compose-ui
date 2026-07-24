@@ -18,6 +18,7 @@ COPY internal ./internal
 RUN CGO_ENABLED=0 go build -o /out/agent-compose-ui-server ./cmd/agent-compose-ui-server
 
 FROM ${REGISTRY_MIRROR}/library/nginx:alpine
+RUN mkdir -p /data/api
 RUN rm -f /etc/nginx/conf.d/default.conf
 COPY nginx/nginx.main /etc/nginx/nginx.conf
 COPY nginx/10-normalize-jupyter-proxy-base.envsh /docker-entrypoint.d/10-normalize-jupyter-proxy-base.envsh
@@ -27,5 +28,6 @@ COPY --from=frontend-build /app/dist /srv/agent-compose/frontend
 COPY --from=ui-server-build /out/agent-compose-ui-server /usr/local/bin/agent-compose-ui-server
 COPY nginx/agent-compose-entrypoint.sh /agent-compose-entrypoint.sh
 RUN chmod +x /agent-compose-entrypoint.sh
+EXPOSE 8000 8081
 ENTRYPOINT ["/agent-compose-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]

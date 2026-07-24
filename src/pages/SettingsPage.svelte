@@ -28,6 +28,7 @@
   import { formatBeijingTime } from '../time';
   import { defaultGuestImage } from '../model/runtime';
   import { currentQueryParams, updateQueryParams } from '../url';
+  import TokenManagementPanel from '../components/TokenManagementPanel.svelte';
 
   let envItems: EnvItem[] = [];
   let workspaces: WorkspacePreset[] = [];
@@ -59,7 +60,7 @@
   const runtimeImage = defaultGuestImage;
   let authStatus: AuthStatus | null = null;
 
-  type SettingsSection = 'workspace' | 'env' | 'runtime' | 'auth' | 'gateway' | 'webhook';
+  type SettingsSection = 'workspace' | 'env' | 'runtime' | 'auth' | 'gateway' | 'webhook' | 'token';
   const settingsSections: Array<{ key: SettingsSection; label: string }> = [
     { key: 'gateway', label: '能力接入网关' },
     { key: 'webhook', label: 'Webhook 配置' },
@@ -67,6 +68,7 @@
     { key: 'workspace', label: '智能体工作文件' },
     { key: 'env', label: '全局环境变量' },
     { key: 'auth', label: '登录控制' },
+    { key: 'token', label: 'API Token' },
   ];
   let activeSection: SettingsSection = 'gateway';
 
@@ -809,6 +811,8 @@
       {/if}
     </div>
   </section>
+  {:else if activeSection === 'token'}
+  <TokenManagementPanel />
   {:else if activeSection === 'webhook'}
   <section class="config-card">
     <div class="panel-head">

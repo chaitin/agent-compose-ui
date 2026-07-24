@@ -1,6 +1,9 @@
 #!/bin/sh
 set -eu
 
+: "${TOKEN_DB_PATH:=/data/api/tokens.db}"
+export TOKEN_DB_PATH
+
 /usr/local/bin/agent-compose-ui-server &
 ui_server_pid=$!
 

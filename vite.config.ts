@@ -3,6 +3,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 const base = process.env.AGENT_COMPOSE_BASE || '/';
 const backendTarget = process.env.AGENT_COMPOSE_DEV_BACKEND || 'http://127.0.0.1:7410';
+const uiServerTarget = process.env.AGENT_COMPOSE_DEV_UI_SERVER || backendTarget;
 
 export default defineConfig({
   base,
@@ -21,6 +22,7 @@ export default defineConfig({
       '/agentcompose.v2.': { target: backendTarget, changeOrigin: true },
       '/health.v1.': { target: backendTarget, changeOrigin: true },
       '/api': { target: backendTarget, changeOrigin: true },
+      '/ui-api': { target: uiServerTarget, changeOrigin: false },
       '/jupyter': { target: backendTarget, changeOrigin: true },
     },
   },
