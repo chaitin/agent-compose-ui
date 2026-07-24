@@ -28,6 +28,7 @@ test('shows API Token usage instructions', async () => {
   expect(screen.getByRole('dialog', { name: 'API Token 使用说明' })).toBeInTheDocument();
   expect(screen.getByText('8081')).toBeInTheDocument();
   expect(screen.getAllByText(/Authorization: Bearer/)).toHaveLength(2);
+  expect(screen.getByText(/请使用实际映射端口/)).toBeInTheDocument();
   await fireEvent.click(screen.getByRole('button', { name: '知道了' }));
   expect(screen.queryByRole('dialog', { name: 'API Token 使用说明' })).not.toBeInTheDocument();
 });
