@@ -70,12 +70,14 @@ full 模式默认启用服务端 `${VAR}` 解析：web 网关只读挂载 daemon
 - 认证网关完全属于 `agent-compose-ui`，不会修改 agent-compose daemon 的认证或其他行为。
 - 公司网络之外仍必须通过 HTTPS 暴露 UI；互联网部署还应按组织要求在入口增加限流或 SSO。
 
+浏览器使用的 Token 管理 API（`/ui-api/*`）不经过本地 `AUTH_MODE`，部署入口必须为其提供统一认证和访问控制。两个 Compose 文件都将 Token 数据库持久化到命名卷中的 `/data/api/tokens.db`。Token RBAC API 的容器端口固定为 `8081`，宿主端口可通过 `TOKEN_RBAC_API_PORT` 调整；该映射不等同于调用方可访问的 API 地址。调用方应从管理员处获取 API Base URL，并使用 `Authorization: Bearer <token>`。Token 属于敏感凭据，请仅通过管理员提供的 API Base URL 使用，切勿泄露或发送到其他地址。
+
 ## 端口
 
 | 端口 | 服务 | 默认 |
 | --- | --- | --- |
 | `WEB_PORT` | web UI | 8080 → 80 |
-| `TOKEN_RBAC_API_PORT` | Token 保护的 daemon API | 8081 → 8081 |
+| `TOKEN_RBAC_API_PORT` | Token 保护的 daemon API（部署端口；API Base URL 由管理员提供） | 8081 → 8081 |
 | `AGENT_COMPOSE_PORT`（仅 full） | agent-compose | 127.0.0.1:7410 → 7410 |
 
 ## 构建说明

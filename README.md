@@ -52,6 +52,12 @@ bun run dev
 
 `bun run dev` 会运行 `scripts/dev.mjs`，自动生成一个随机 `SCRIPT_SERVICE_TOKEN` 并共享给网关、Vite 与脚本服务。Vite 的所有后端请求都代理到网关，不持有或注入脚本服务令牌。认证默认使用 `AUTH_MODE=disabled`；任一子进程退出时，其余进程会被一并终止。
 
+本地开发默认不设置 `TOKEN_DB_PATH`，因此 API Token 管理不可用。需要联调该功能时，先创建数据库文件所在目录，再显式指定绝对路径启动：
+
+```bash
+TOKEN_DB_PATH=/absolute/path/to/tokens.db bun run dev
+```
+
 如需分别启动（例如只调试前端）：
 
 ```bash
@@ -82,7 +88,7 @@ docker compose up --build
 docker compose -f docker-compose.full.yml up --build
 ```
 
-启动后打开 <http://localhost:8080>（端口可在 `.env` 的 `WEB_PORT` 调整）。Token RBAC API 默认暴露在宿主机 `8081`（可用 `TOKEN_RBAC_API_PORT` 调整宿主端口，容器内固定为 `8081`）。Docker 构建使用 `node:22-alpine` + `npm install`（不用 Bun，原因见 docker/README.md）。
+启动后打开 <http://localhost:8080>（端口可在 `.env` 的 `WEB_PORT` 调整）。部署侧默认将 Token RBAC API 的容器端口 `8081` 映射到宿主机 `8081`，可用 `TOKEN_RBAC_API_PORT` 调整宿主端口。该端口映射不等同于调用方可访问的 API 地址；具体 API Base URL 由部署管理员提供。Docker 构建使用 `node:22-alpine` + `npm install`（不用 Bun，原因见 docker/README.md）。
 
 ### 方式三：生产构建
 
@@ -95,11 +101,11 @@ bun run build      # 或 npm run build，产物输出到 dist/
 
 - `/ui-api/*`、`/agentcompose.v1.*`、`/agentcompose.v2.*`、`/health.v1.*`、`/api/*`、`/oauth/*`、`/agent-compose/session/*`、`/jupyter`、`/jupyter/*`、`/script-api/*` → UI 网关 `127.0.0.1:8080`
 
-Token 管理 API 由部署入口的统一认证/RBAC 保护，不依赖本地 `AUTH_MODE`。`TOKEN_DB_PATH` 未设置时管理 API 返回 503；Token RBAC API 仍监听 `:8081`，所有请求统一返回 503。官方 Compose 将数据库持久化为 `/data/api/tokens.db`。Token 明文只在创建响应中返回一次，数据库仅保存 secret 的 SHA-256 摘要。
+浏览器使用的 Token 管理 API（`/ui-api/*`）不经过本地 `AUTH_MODE`，部署时必须由其前置入口提供统一认证和访问控制；不能直接把该管理接口暴露给不受信任的网络。`TOKEN_DB_PATH` 未设置时管理 API 返回 503；Token RBAC API 仍监听 `:8081`，所有请求统一返回 503。官方 Compose 将数据库持久化为 `/data/api/tokens.db`。Token 明文只在创建响应中返回一次，数据库仅保存 secret 的 SHA-256 摘要。
 
 新 Token 创建时必须选择 1、7、30、90 或 365 天有效期，未显式指定时默认 90 天；到期后显示为“已过期”并停止鉴权，不支持延期。升级已有数据库时会自动增加过期时间字段，升级前创建的 Token 保持不过期，避免升级导致现有调用方意外中断。
 
-调用 Token RBAC API 时使用 `Authorization: Bearer <token>`。`admin` 不在 RBAC 层限制 method/path，但 daemon 自身仍可能不支持某些特殊接口；`read-only-admin` 只允许明确列出的 Connect/REST 查询接口，未知接口默认返回 403，其中包含 Run 查询、日志和事件调试接口。当前部署要求上游 daemon 不设置 `AGENT_COMPOSE_AUTH_TOKEN`；未来如需 daemon 认证，应在通用 daemon 连接层统一实现。
+调用方应向部署管理员获取具体可访问的 API Base URL，不要根据容器端口或宿主机端口自行拼接地址。调用 Token RBAC API 时使用 `Authorization: Bearer <token>`。`admin` 不在 RBAC 层限制 method/path，但 daemon 自身仍可能不支持某些特殊接口；`read-only-admin` 只允许明确列出的 Connect/REST 查询接口，未知接口默认返回 403，其中包含 Run 查询、日志和事件调试接口。Token 属于敏感凭据，请仅通过管理员提供的 API Base URL 使用，切勿泄露或发送到其他地址。当前部署要求上游 daemon 不设置 `AGENT_COMPOSE_AUTH_TOKEN`；未来如需 daemon 认证，应在通用 daemon 连接层统一实现。
 
 参考实现见 `docker/nginx/default.conf.template`（nginx envsubst 模板）。
 
