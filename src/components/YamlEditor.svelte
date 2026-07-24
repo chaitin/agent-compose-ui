@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { mount, unmount } from 'svelte';
+  import { mount, onMount, unmount } from 'svelte';
   import { untrack } from 'svelte';
   import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
   import * as monaco from 'monaco-editor';
@@ -10,6 +10,11 @@
   import ScriptLineActions from './scripts/ScriptLineActions.svelte';
   import ScriptReferenceModal from './scripts/ScriptReferenceModal.svelte';
   import WorkspaceLineActions from './workspace/WorkspaceLineActions.svelte';
+  import GlobalEnvLineAction from './env/GlobalEnvLineAction.svelte';
+  import ConfigureGlobalEnvModal from './env/ConfigureGlobalEnvModal.svelte';
+  import { GetGlobalEnvRequest } from '../gen/agentcompose/v2/agentcompose_pb';
+  import { settingsService } from '../lib/rpc';
+  import { missingAgentEnvReferences, type AgentEnvReference } from '../lib/yaml-env-references';
   import { scriptWorkspace } from '../lib/scripts/workspace.svelte';
   import { scriptApi, scriptErrorMessage } from '../lib/scripts/api';
   import { collectScriptFiles } from '../lib/scripts/tree';
@@ -58,10 +63,50 @@
   let actionWidgets: MountedActionWidget[] = [];
   let workspaceWidget: MountedActionWidget | null = null;
   let workspaceWidgetKey = '';
+  let envWidgets: MountedActionWidget[] = [];
+  let envDecorationIds: string[] = [];
+  let configuredGlobalNames = $state<string[]>([]);
+  let globalEnvLoaded = $state(false);
+  let envModal = $state<{ agentName: string; names: string[] } | null>(null);
   let updateScriptActionContext = () => {};
 
   let agentCount = $derived(countAgents(store.editorContent));
   let schedulerCount = $derived(countSchedulers(store.editorContent));
+
+  async function loadGlobalEnv(): Promise<void> {
+    try {
+      configuredGlobalNames = (await settingsService.getGlobalEnv(new GetGlobalEnvRequest())).env.map((item) => item.name);
+      globalEnvLoaded = true;
+    } catch {
+      // The editor remains usable when settings are temporarily unavailable.
+      globalEnvLoaded = false;
+    }
+  }
+
+  onMount(() => { void loadGlobalEnv(); });
+
+  async function configureAgentEnv(agentName: string): Promise<void> {
+    await loadGlobalEnv();
+    if (!globalEnvLoaded) {
+      store.addToast('无法读取全局环境变量，请稍后重试', 'error');
+      return;
+    }
+    const names = [...new Set(missingAgentEnvReferences(store.editorContent, configuredGlobalNames)
+      .filter((item) => item.agentName === agentName)
+      .flatMap((item) => item.names))];
+    if (!names.length) {
+      store.addToast('该 Agent 引用的全局环境变量已配置', 'success');
+      return;
+    }
+    envModal = { agentName, names };
+  }
+
+  function globalEnvSaved(names: string[]): void {
+    configuredGlobalNames = [...new Set([...configuredGlobalNames, ...names])];
+    envModal = null;
+    store.addToast(`已保存 ${names.length} 个全局环境变量；项目将在下次保存或启用时同步`, 'success');
+    void loadGlobalEnv();
+  }
 
   function locationAtCursor(): ScriptLocation | null {
     if (!editor) return null;
@@ -379,6 +424,64 @@
     actionWidgets = ranges.map((range) => addActionWidget(target, range));
   }
 
+  function clearEnvWidgets(target: monaco.editor.IStandaloneCodeEditor): void {
+    for (const entry of envWidgets) {
+      target.removeContentWidget(entry.widget);
+      void unmount(entry.component);
+    }
+    envWidgets = [];
+  }
+
+  function addEnvWidget(target: monaco.editor.IStandaloneCodeEditor, reference: AgentEnvReference): MountedActionWidget {
+    const node = document.createElement('div');
+    const agentNames = [...new Set(missingAgentEnvReferences(store.editorContent, configuredGlobalNames)
+      .filter((item) => item.agentName === reference.agentName)
+      .flatMap((item) => item.names))];
+    const component = mount(GlobalEnvLineAction, {
+      target: node,
+      props: { count: agentNames.length, onConfigure: () => void configureAgentEnv(reference.agentName) },
+    });
+    const widget: monaco.editor.IContentWidget = {
+      allowEditorOverflow: false,
+      suppressMouseDown: true,
+      getId: () => `global-env-line-action:${reference.agentName}:${reference.envLine}`,
+      getDomNode: () => node,
+      getPosition: () => ({
+        position: { lineNumber: reference.envLine, column: 1 },
+        preference: [monaco.editor.ContentWidgetPositionPreference.EXACT],
+      }),
+      afterRender: (position) => {
+        if (position === null) return;
+        const layout = target.getLayoutInfo();
+        const availableWidth = Math.max(0, layout.width - layout.verticalScrollbarWidth - ACTION_RIGHT_GAP - layout.contentLeft);
+        node.style.maxWidth = `${availableWidth}px`;
+        node.style.transform = `translateX(${Math.max(0, availableWidth - Math.min(node.offsetWidth, availableWidth))}px)`;
+      },
+    };
+    target.addContentWidget(widget);
+    return { widget, component };
+  }
+
+  function refreshEnvPresentation(target: monaco.editor.IStandaloneCodeEditor): void {
+    if (!globalEnvLoaded) {
+      clearEnvWidgets(target);
+      envDecorationIds = target.deltaDecorations(envDecorationIds, []);
+      return;
+    }
+    const references = missingAgentEnvReferences(store.editorContent, configuredGlobalNames);
+    clearEnvWidgets(target);
+    const agentEntries = [...new Map(references.map((reference) => [reference.agentName, reference])).values()];
+    envWidgets = agentEntries.map((reference) => addEnvWidget(target, reference));
+    envDecorationIds = target.deltaDecorations(envDecorationIds, references.map((reference) => ({
+      range: new monaco.Range(reference.line, reference.startColumn, reference.line, reference.endColumn),
+      options: {
+        inlineClassName: 'missing-global-env',
+        hoverMessage: { value: `全局环境变量 ${reference.names.join('、')} 尚未配置` },
+        overviewRuler: { color: 'rgba(210, 153, 34, .8)', position: monaco.editor.OverviewRulerLane.Right },
+      },
+    })));
+  }
+
   $effect(() => {
     if (!container) return;
 
@@ -489,6 +592,7 @@
 
     const relayoutActionWidgets = () => {
       for (const entry of actionWidgets) e.layoutContentWidget(entry.widget);
+      for (const entry of envWidgets) e.layoutContentWidget(entry.widget);
       if (workspaceWidget) e.layoutContentWidget(workspaceWidget.widget);
     };
     const scrollDisposable = e.onDidScrollChange(relayoutActionWidgets);
@@ -499,6 +603,7 @@
       updateScriptActionContext();
       refreshScriptPresentation(e);
       refreshWorkspacePresentation(e);
+      refreshEnvPresentation(e);
     });
 
     return () => {
@@ -512,7 +617,9 @@
       layoutDisposable.dispose();
       clearActionWidgets(e);
       clearWorkspaceWidget(e);
+      clearEnvWidgets(e);
       decorationIds = e.deltaDecorations(decorationIds, []);
+      envDecorationIds = e.deltaDecorations(envDecorationIds, []);
       e.dispose();
       editor = null;
     };
@@ -537,6 +644,7 @@
     updateScriptActionContext();
     refreshScriptPresentation(editor);
     refreshWorkspacePresentation(editor);
+    refreshEnvPresentation(editor);
   });
 </script>
 
@@ -563,6 +671,14 @@
         busy={modalBusy}
         onConfirm={confirmScriptAction}
         onCancel={() => !modalBusy && (modalRequest = null)}
+      />
+    {/if}
+    {#if envModal}
+      <ConfigureGlobalEnvModal
+        agentName={envModal.agentName}
+        names={envModal.names}
+        onSaved={globalEnvSaved}
+        onCancel={() => (envModal = null)}
       />
     {/if}
   </div>
@@ -649,6 +765,12 @@
     text-decoration: underline;
     text-decoration-color: rgba(201, 167, 255, 0.75);
     cursor: pointer;
+  }
+  :global(.missing-global-env) {
+    text-decoration-line: underline;
+    text-decoration-style: wavy;
+    text-decoration-color: var(--accent-orange);
+    text-underline-offset: 3px;
   }
   :global(.monaco-scrollable-element > .scrollbar > .slider) { width: 4px !important; }
   :global(.monaco-editor .decorationsOverviewRuler) { width: 4px !important; }

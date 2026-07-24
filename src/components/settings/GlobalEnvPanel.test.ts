@@ -61,6 +61,62 @@ test('explains that global updates wait for an explicit project sync', async () 
   expect(screen.getByText(/不会自动运行或改变定时任务/)).toBeInTheDocument();
 });
 
+test('bulk editor adds plain values, deletes removed rows, and retains masked secrets', async () => {
+  mocks.settingsService.getGlobalEnv.mockResolvedValue({ env: loaded });
+  mocks.settingsService.updateGlobalEnv.mockResolvedValue({ env: [
+    ...loaded, { name: 'NEW_TOKEN', value: 'visible-for-now', secret: false },
+  ] });
+  render(GlobalEnvPanel);
+  await fireEvent.click(await screen.findByRole('button', { name: '批量添加' }));
+  expect(screen.getByText(/新增变量默认均为非敏感变量/)).toBeInTheDocument();
+  expect(screen.getByLabelText('环境变量配置')).toHaveValue('REGION=east\nZONE=one\nTOKEN=••••••••');
+  await fireEvent.input(screen.getByLabelText('环境变量配置'), { target: { value: 'REGION=east\nTOKEN=••••••••\nNEW_TOKEN=visible-for-now' } });
+  await fireEvent.click(screen.getByRole('button', { name: '保存' }));
+  await waitFor(() => expect(mocks.settingsService.updateGlobalEnv).toHaveBeenCalledOnce());
+  const env = mocks.settingsService.updateGlobalEnv.mock.calls[0][0].env;
+  expect(env.find((item: { name: string }) => item.name === 'TOKEN').value).toBeUndefined();
+  expect(env.find((item: { name: string }) => item.name === 'NEW_TOKEN')).toMatchObject({ value: 'visible-for-now', secret: false });
+  expect(env.some((item: { name: string }) => item.name === 'ZONE')).toBe(false);
+});
+
+test('copies every textarea row from the bulk editor and explains the secret mask', async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  mocks.settingsService.getGlobalEnv.mockResolvedValue({ env: loaded });
+  render(GlobalEnvPanel);
+  await fireEvent.click(await screen.findByRole('button', { name: '批量添加' }));
+  expect(screen.getByText(/敏感变量无法复制原值/)).toBeInTheDocument();
+  expect(screen.getByLabelText('环境变量配置')).toHaveValue('REGION=east\nZONE=one\nTOKEN=••••••••');
+  await fireEvent.click(screen.getByRole('button', { name: '复制全部变量' }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith('REGION=east\nZONE=one\nTOKEN=••••••••'));
+  expect(screen.getByRole('dialog', { name: '批量添加环境变量' })).toBeInTheDocument();
+});
+
+test('falls back to selection-based copy when the Clipboard API is unavailable', async () => {
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+  const execCommand = vi.fn().mockReturnValue(true);
+  Object.defineProperty(document, 'execCommand', { configurable: true, value: execCommand });
+  mocks.settingsService.getGlobalEnv.mockResolvedValue({ env: loaded.slice(0, 1) });
+  render(GlobalEnvPanel);
+  await fireEvent.click(await screen.findByRole('button', { name: '批量添加' }));
+  await fireEvent.click(screen.getByRole('button', { name: '复制全部变量' }));
+  expect(execCommand).toHaveBeenCalledWith('copy');
+  expect(screen.queryByText(/复制失败/)).not.toBeInTheDocument();
+});
+
+test('replaces an existing secret only when its mask is changed to a real value', async () => {
+  mocks.settingsService.getGlobalEnv.mockResolvedValue({ env: [loaded[2]] });
+  mocks.settingsService.updateGlobalEnv.mockResolvedValue({ env: [loaded[2]] });
+  render(GlobalEnvPanel);
+  await fireEvent.click(await screen.findByRole('button', { name: '批量添加' }));
+  await fireEvent.input(screen.getByLabelText('环境变量配置'), { target: { value: 'TOKEN=replacement-secret' } });
+  await fireEvent.click(screen.getByRole('button', { name: '保存' }));
+  await waitFor(() => expect(mocks.settingsService.updateGlobalEnv).toHaveBeenCalledOnce());
+  expect(mocks.settingsService.updateGlobalEnv.mock.calls[0][0].env[0]).toMatchObject({
+    name: 'TOKEN', value: 'replacement-secret', secret: true,
+  });
+});
+
 test('appends an empty row from the dialog add button', async () => {
   mocks.settingsService.getGlobalEnv.mockResolvedValue({ env: [loaded[0]] });
   render(GlobalEnvPanel);

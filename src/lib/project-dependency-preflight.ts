@@ -31,7 +31,10 @@ function dockerImageAgents(spec: Pick<ProjectSpec, 'agents'>): Map<string, strin
   for (const agent of spec.agents) {
     const isDocker = agent.driver?.docker !== undefined || agent.driver?.name.trim().toLowerCase() === 'docker';
     const image = agent.image.trim();
-    if (!isDocker || !image) continue;
+    // A configured build is allowed to produce an image that does not exist
+    // yet. Its validity and execution are handled by the build-plan step that
+    // follows project preview; blocking here would make that step unreachable.
+    if (!isDocker || !image || agent.build !== undefined) continue;
     const agents = images.get(image) ?? [];
     agents.push(agent.name.trim() || '未命名 Agent');
     images.set(image, agents);

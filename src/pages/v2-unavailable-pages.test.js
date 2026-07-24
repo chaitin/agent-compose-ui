@@ -26,6 +26,7 @@ test('Dashboard uses the direct V2 overview service', () => {
 
 test('SystemSettings uses the direct V2 settings and capability panels', () => {
   const source = readFileSync(new URL('SystemSettings.svelte', import.meta.url), 'utf8');
+  expect(source).toContain('showPullAction={false}');
   expect(source).toContain('CapabilityGatewayPanel');
   expect(source).toContain('CapabilityCatalogPanel');
   expect(source).toContain('GlobalEnvPanel');

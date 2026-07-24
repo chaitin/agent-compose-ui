@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   AgentSpec,
   BoxliteDriverSpec,
+  BuildSpec,
   DockerDriverSpec,
   DriverSpec,
   type InspectImageRequest,
@@ -64,6 +65,21 @@ describe('project dependency image preflight', () => {
 
     expect(inspectImage).toHaveBeenCalledTimes(1);
     expect(inspectImage.mock.calls[0]![0].imageRef).toBe('registry.example/named:v1');
+  });
+
+  test('does not require an image to exist when the agent configures a build', async () => {
+    const inspectImage = vi.fn(async (_request: InspectImageRequest): Promise<unknown> => {
+      throw new ConnectError('No such image', Code.NotFound);
+    });
+    const agent = dockerAgent('builder', 'registry.example/not-built-yet:v1');
+    agent.build = new BuildSpec({ context: '.', dockerfile: 'Dockerfile.guest' });
+
+    await checkProjectDependencies({
+      spec: new ProjectSpec({ agents: [agent] }),
+      ...clients(inspectImage),
+    });
+
+    expect(inspectImage).not.toHaveBeenCalled();
   });
 
   test('blocks with the missing image and every affected agent', async () => {
