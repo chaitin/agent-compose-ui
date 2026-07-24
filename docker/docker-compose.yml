@@ -32,11 +32,10 @@ services:
       TOKEN_DB_PATH: /data/api/tokens.db
     volumes:
       - api-token-data:/data/api
+      - ${PROJECT_WORK_DIR:-./data/work}:/data/work
     extra_hosts:
       # Lets the container reach a host-exposed agent-compose via host.docker.internal.
       - "host.docker.internal:host-gateway"
-    volumes:
-      - ${PROJECT_WORK_DIR:-./data/work}:/data/work
     depends_on:
       - scripts
     restart: unless-stopped
