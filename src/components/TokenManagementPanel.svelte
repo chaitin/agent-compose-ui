@@ -16,6 +16,7 @@
   let loading = true;
   let unavailable = false;
   let error = '';
+  let guideOpen = false;
   let createOpen = false;
   let name = '';
   let role: ApiTokenRole = 'read-only-admin';
@@ -138,7 +139,10 @@
       <h2>API Token</h2>
       <p>为远程 CLI 和自动化调用创建受角色约束的凭据。Token 明文只显示一次。</p>
     </div>
-    <button class="primary" on:click={openCreate} disabled={unavailable}>创建 Token</button>
+    <div class="token-head-actions">
+      <button on:click={() => guideOpen = true}>使用说明</button>
+      <button class="primary" on:click={openCreate} disabled={unavailable}>创建 Token</button>
+    </div>
   </div>
 
   {#if loading}
@@ -182,6 +186,37 @@
   {/if}
 </section>
 
+{#if guideOpen}
+  <div class="token-modal-mask">
+    <div class="token-modal token-guide" role="dialog" aria-modal="true" aria-labelledby="token-guide-title">
+      <div class="token-modal-head">
+        <h2 id="token-guide-title">API Token 使用说明</h2>
+        <button class="ghost" aria-label="关闭" on:click={() => guideOpen = false}>关闭</button>
+      </div>
+      <div class="proxy-port">
+        <span>当前 Token Proxy 监听端口</span>
+        <strong>8081</strong>
+      </div>
+      <ol>
+        <li>创建 Token 后立即复制并安全保存，关闭创建结果弹窗后无法再次查看明文。</li>
+        <li>将 Agent Compose API 地址设置为 <code>http://&lt;服务器地址&gt;:8081</code>。</li>
+        <li>每次请求携带 Header：<code>Authorization: Bearer &lt;API_TOKEN&gt;</code>。</li>
+      </ol>
+      <div>
+        <b>curl 示例</b>
+        <pre>curl -H 'Authorization: Bearer &lt;API_TOKEN&gt;' \
+  http://&lt;服务器地址&gt;:8081/api/version</pre>
+      </div>
+      <div class="role-help">
+        <p><code>read-only-admin</code> 仅允许已登记的查询接口，适合巡检和只读自动化。</p>
+        <p><code>admin</code> 允许代理所有 API，请仅授予可信调用方。</p>
+      </div>
+      <div class="alert warning">容器内监听端口固定为 8081；如果部署时映射到其他宿主机端口，请使用实际映射端口。跨主机访问应通过 TLS、VPN 或隧道保护。</div>
+      <div class="token-modal-actions"><button class="primary" on:click={() => guideOpen = false}>知道了</button></div>
+    </div>
+  </div>
+{/if}
+
 {#if createOpen}
   <div class="token-modal-mask">
     <form class="token-modal" on:submit|preventDefault={createToken} aria-labelledby="create-token-title">
@@ -223,6 +258,7 @@
   .token-card { overflow: auto; }
   .panel-head > div { min-width: 0; }
   .panel-head p { margin: 5px 0 0; color: var(--muted); }
+  .token-head-actions { display: flex; align-items: center; gap: 8px; }
   .token-unavailable { display: grid; gap: 5px; padding: 18px; border: 1px dashed var(--line-strong); border-radius: 6px; background: var(--surface-2); color: var(--muted); }
   .token-table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
   .token-table { width: 100%; min-width: 900px; border-collapse: collapse; }
@@ -239,6 +275,15 @@
   .token-modal-head, .token-modal-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .token-modal-head h2 { margin: 0; font-size: var(--font-size-lg); }
   .token-modal-actions { justify-content: flex-end; }
+  .token-guide { width: min(620px, 100%); }
+  .token-guide ol { display: grid; gap: 8px; margin: 0; padding-left: 22px; color: var(--muted); }
+  .token-guide code { font-family: var(--mono); color: var(--text); }
+  .token-guide pre { margin: 8px 0 0; padding: 12px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); color: var(--text); font-family: var(--mono); line-height: 1.5; }
+  .proxy-port { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--primary-weak); }
+  .proxy-port span { color: var(--muted); }
+  .proxy-port strong { color: var(--primary); font-family: var(--mono); font-size: var(--font-size-xl); }
+  .role-help { display: grid; gap: 6px; }
+  .role-help p { margin: 0; }
   .token-warning { display: grid; gap: 4px; padding: 12px; border: 1px solid #f3d28a; border-radius: 6px; background: var(--amber-weak); color: #92400e; }
   .raw-token { padding: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); overflow-wrap: anywhere; user-select: all; }
   @media (max-width: 700px) { .token-card > .panel-head { align-items: flex-start; flex-direction: column; } }
