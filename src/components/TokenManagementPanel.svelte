@@ -212,7 +212,7 @@
         <p><code>read-only-admin</code> 仅允许已登记的查询接口，适合巡检和只读自动化。</p>
         <p><code>admin</code> 允许代理所有 API，请仅授予可信调用方。</p>
       </div>
-      <div class="alert warning">请仅通过受信任且加密的网络连接传输 Token，不要直接连接未受 Token/RBAC 保护的 daemon API。</div>
+      <div class="alert warning">Token 属于敏感凭据，请仅通过管理员提供的 API Base URL 使用，切勿泄露或发送到其他地址。</div>
       <div class="token-modal-actions"><button class="primary" on:click={() => guideOpen = false}>知道了</button></div>
     </div>
   </div>
