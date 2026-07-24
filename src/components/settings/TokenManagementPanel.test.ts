@@ -22,6 +22,16 @@ test('shows the disabled state for a 503 response', async () => {
   expect(screen.getByRole('button', { name: '创建 Token' })).toBeDisabled();
 });
 
+test('shows API Token usage instructions', async () => {
+  render(TokenManagementPanel);
+  await fireEvent.click(screen.getByRole('button', { name: '使用说明' }));
+  expect(screen.getByRole('dialog', { name: 'API Token 使用说明' })).toBeInTheDocument();
+  expect(screen.getByText('8081')).toBeInTheDocument();
+  expect(screen.getAllByText(/Authorization: Bearer/)).toHaveLength(2);
+  await fireEvent.click(screen.getByRole('button', { name: '知道了' }));
+  expect(screen.queryByRole('dialog', { name: 'API Token 使用说明' })).not.toBeInTheDocument();
+});
+
 test('shows a created token once, copies it, then clears it', async () => {
   mocks.create.mockResolvedValue({ id: 'id', name: 'ci', role: 'read-only-admin', createdAt: '2026-07-23T00:00:00Z', expiresAt: '2026-10-21T00:00:00Z', token: 'acp_once' });
   mocks.copy.mockResolvedValue(undefined);
