@@ -44,8 +44,10 @@ created. The database stores a non-recoverable digest. When `TOKEN_DB_PATH` is
 unset, the browser UI remains available while Token management and port `8081`
 return HTTP 503.
 
-The UI server accepts `AGENT_COMPOSE_URL` to override the default daemon URL
-`http://agent-compose:7410`. The daemon must not use
+The UI server accepts `LISTEN_ADDR` to override its default browser API address
+`127.0.0.1:8080` and `AGENT_COMPOSE_URL` to override the default daemon URL
+`http://agent-compose:7410`. The Token API listener remains fixed at `8081`.
+The daemon must not use
 `AGENT_COMPOSE_AUTH_TOKEN` with this proxy: managed API Tokens are removed
 before requests are forwarded upstream.
 

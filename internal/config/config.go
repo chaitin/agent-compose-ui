@@ -25,5 +25,8 @@ func LoadFromEnv() Config {
 	if backendURL := strings.TrimSpace(os.Getenv("AGENT_COMPOSE_URL")); backendURL != "" {
 		cfg.BackendURL = backendURL
 	}
+	if listenAddr := strings.TrimSpace(os.Getenv("LISTEN_ADDR")); listenAddr != "" {
+		cfg.ListenAddr = listenAddr
+	}
 	return cfg
 }
