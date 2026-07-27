@@ -1,5 +1,5 @@
-# Full stack: web (nginx SPA + reverse proxy) + script-service + agent-compose backend.
-# The web container talks to agent-compose over the internal network.
+# Full stack: web (nginx SPA + Go gateway + Bun script-service) + agent-compose
+# backend. The web container talks to agent-compose over the internal network.
 #
 # Usage:
 #   cp .env.example .env                            # set SCRIPT_SERVICE_TOKEN, etc.
@@ -16,7 +16,7 @@ services:
   web:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.web
+      dockerfile: docker/Dockerfile
     ports:
       - "${WEB_PORT:-8080}:80"
       - "${TOKEN_RBAC_API_PORT:-8081}:8081"
@@ -26,7 +26,11 @@ services:
       UI_STATE_DB_PATH: /data/ui/project-env.db
       PROJECT_STORAGE_ROOT: /data/work/projects
       LEGACY_PROJECT_STORAGE_ROOT: ${LEGACY_PROJECT_STORAGE_ROOT:-}
-      SCRIPT_SERVICE_URL: http://scripts:7420
+      # script-service runs in the same container, loopback only.
+      SCRIPT_SERVICE_URL: http://127.0.0.1:7420
+      SCRIPT_SERVICE_HOST: 127.0.0.1
+      SCRIPT_SERVICE_PORT: "7420"
+      SCRIPT_DATA_DIR: /data/scripts
       SCRIPT_SERVICE_TOKEN: ${SCRIPT_SERVICE_TOKEN:?set SCRIPT_SERVICE_TOKEN in .env}
       AUTH_MODE: ${AUTH_MODE:-disabled}
       AUTH_USERNAME: ${AUTH_USERNAME:-admin}
@@ -43,23 +47,9 @@ services:
       # Reference-only project shadows and pending-sync state.
       - ui-state:/data/ui
       - api-token-data:/data/api
-    depends_on:
-      - scripts
-      - agent-compose
-    restart: unless-stopped
-    networks:
-      - agent-web-net
-
-  scripts:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.scripts
-    environment:
-      SCRIPT_SERVICE_TOKEN: ${SCRIPT_SERVICE_TOKEN:?set SCRIPT_SERVICE_TOKEN in .env}
-      SCRIPT_SERVICE_PORT: "7420"
-      SCRIPT_DATA_DIR: /data/scripts
-    volumes:
       - script-data:/data/scripts
+    depends_on:
+      - agent-compose
     restart: unless-stopped
     networks:
       - agent-web-net

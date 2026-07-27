@@ -1,23 +1,23 @@
-# Agent Compose Web — Docker 启动
+# Agent Compose Web - Docker 启动
 
 提供两个 compose 文件，均可通过 `docker compose up --build` 一键构建并运行：
 
 | 文件 | 包含服务 | 适用场景 |
 | --- | --- | --- |
-| `docker-compose.yml` | web + script-service | 纯前端，连接**外部**已运行的 agent-compose |
-| `docker-compose.full.yml` | web + script-service + agent-compose 后端 | 前后端一体，单栈拉起 |
+| `docker-compose.yml` | web（含 nginx + Go 网关 + script-service） | 纯前端，连接**外部**已运行的 agent-compose |
+| `docker-compose.full.yml` | web + agent-compose 后端 | 前后端一体，单栈拉起 |
 
-## 服务说明
+两个 compose 都构建同一个镜像 `docker/Dockerfile`。镜像内由 s6-overlay 监督三个进程：
 
-- **web**：nginx 既托管 SPA 静态文件，又把 API 路径反代到后端。
-  - `/agentcompose.v1./v2.`、`/health.v1.`、`/api/`、`/script-api/` → UI 认证网关
-  - 其余路径 → SPA（`try_files` 回退 `index.html`，支持 hash 路由与 `/events/<id>` 真实路径）
-- **scripts**：bun 运行的脚本文件服务（无外部依赖），脚本文件存于命名卷 `script-data`。
-- **agent-compose**（仅 full）：后端 daemon，挂载宿主 `docker.sock`、后端 `data/` 与 `.env`。
+- **nginx**：托管 SPA 静态文件，把 `/agentcompose.v1./v2.`、`/health.v1.`、`/api/`、`/script-api/`、`/ui-api/` 反代到容器内 Go 网关 `127.0.0.1:8080`。
+- **agent-compose-ui-server**（Go 网关）：认证、daemon 转发、脚本令牌注入、Token RBAC API（监听 `:8081`）。
+- **script-service**（Bun）：脚本文件 manifest 服务，监听容器内 `127.0.0.1:7420`，脚本文件存于命名卷 `script-data`。
+
+任一进程崩溃由 s6-overlay 自动重启，不再像旧版那样"任一退出整容器退出"。容器对外的健康检查通过 nginx 转发到网关的 `/health.v1.HealthService/Check`。
 
 ## 前置准备
 
-1. 已安装 Docker 与 Docker Compose。
+1. 已安装 Docker（≥ 20.10，需支持 BuildKit 多阶段构建）与 Docker Compose v2。
 2. `cp .env.example .env`，并设置 `SCRIPT_SERVICE_TOKEN`（示例文件留空，未设置则 `docker compose up` 会直接报错退出）：`openssl rand -hex 32`。
 3. （仅 full 模式）`cp agent-compose.env.example agent-compose.env`，按需编辑后端 daemon 配置；保持注释即用镜像默认值。
 
@@ -53,11 +53,32 @@ docker compose -f docker-compose.full.yml up --build
 
 full 模式已让 web 的 `${AGENT_COMPOSE_DATA_DIR}/work` 与 agent-compose 的 `/data/work` 指向同一宿主目录，并设置 `PROJECT_STORAGE_ROOT=/data/work/projects`。旧 `/agent-compose-ui/projects` 数据只有在管理员额外挂载旧目录并设置绝对的 `LEGACY_PROJECT_STORAGE_ROOT` 时才会自动复制；迁移不会删除旧文件。
 
+### 不用 Compose：docker run 一条命令
+
+镜像自包含 nginx + Go 网关 + Bun script-service，可直接 `docker run`：
+
+```bash
+docker run -d --name agent-compose-web \
+  -p 8080:80 -p 8081:8081 \
+  -e AGENT_COMPOSE_URL=http://host.docker.internal:7410 \
+  -e SCRIPT_SERVICE_TOKEN="$(openssl rand -hex 32)" \
+  -v agent-compose-scripts:/data/scripts \
+  -v agent-compose-tokens:/data/api \
+  --add-host=host.docker.internal:host-gateway \
+  ghcr.io/chaitin/agent-compose-ui:latest
+```
+
+- `host.docker.internal:host-gateway` 让容器能访问宿主上 7410 的 daemon（Linux 上需要 `--add-host`，Mac/Windows Docker Desktop 默认支持）。
+- 镜像内 script-service 默认监听 `127.0.0.1:7420`，无需在宿主暴露。
+- Token 数据库持久化到 `agent-compose-tokens` 卷；脚本文件持久化到 `agent-compose-scripts` 卷。
+- 密码认证：追加 `-e AUTH_MODE=password -e AUTH_PASSWORD=<强密码> -e AUTH_SECRET="$(openssl rand -hex 32)"`。
+- 公司内网默认 `AUTH_MODE=disabled`，仅限可信网络使用。
+
 ## YAML 全局变量引用
 
-full 模式默认启用服务端 `${VAR}` 解析：web 网关只读挂载 daemon 数据目录，并把引用原文、依赖关系和“待同步”状态保存到独立的 `ui-state` 卷。浏览器始终保留 `${VAR}`，不会收到已保存的密钥；普通字面量不变，`Bearer ${TOKEN}` 仅替换引用部分。解析会递归处理项目配置中的全部字符串值，但任何层级中键名精确为 `script` 的字段会被整体跳过，脚本内容中的 `${...}` 不会替换、记录依赖或产生缺失变量警告。
+full 模式默认启用服务端 `${VAR}` 解析：web 网关只读挂载 daemon 数据目录，并把引用原文、依赖关系和"待同步"状态保存到独立的 `ui-state` 卷。浏览器始终保留 `${VAR}`，不会收到已保存的密钥；普通字面量不变，`Bearer ${TOKEN}` 仅替换引用部分。解析会递归处理项目配置中的全部字符串值，但任何层级中键名精确为 `script` 的字段会被整体跳过，脚本内容中的 `${...}` 不会替换、记录依赖或产生缺失变量警告。
 
-修改全局变量只会把相关项目标记为“变量已更新，待同步”，不会自动 Apply、运行、启停或改动调度。用户下次明确保存、启用或同步项目时才使用新值，已有延时与定时任务保持不变。受 daemon 无法修改的限制，解析后的明文仍会持久化在 daemon 数据库中；请同时保护和备份 daemon 数据目录与 `ui-state` 卷。
+修改全局变量只会把相关项目标记为"变量已更新，待同步"，不会自动 Apply、运行、启停或改动调度。用户下次明确保存、启用或同步项目时才使用新值，已有延时与定时任务保持不变。受 daemon 无法修改的限制，解析后的明文仍会持久化在 daemon 数据库中；请同时保护和备份 daemon 数据目录与 `ui-state` 卷。
 
 纯前端模式默认不启用解析，因为 web 容器看不到外部 daemon 数据库。如需启用，必须通过自有 Compose override 将 daemon 数据目录只读挂载到 web，并同时设置不同的 `AGENT_COMPOSE_DB_PATH` 与 `UI_STATE_DB_PATH`；不要把数据库文件或 `ui-state` 目录暴露给浏览器静态服务。
 
@@ -66,7 +87,7 @@ full 模式默认启用服务端 `${VAR}` 解析：web 网关只读挂载 daemon
 - 公司内网共享测试环境可保留 `AUTH_MODE=disabled`（默认值）。此模式不要求登录，必须限制在可信公司网络或 VPN 内。
 - 密码部署需在 `.env` 设置 `AUTH_MODE=password`、`AUTH_PASSWORD=<强密码>`、`AUTH_SECRET=<持久随机签名密钥>`。`AUTH_USERNAME` 默认 `admin`，`AUTH_SESSION_TTL` 默认 `24h`；可用 `openssl rand -hex 32` 生成 `AUTH_SECRET`，部署重启时不要重新生成。
 - 登录成功后浏览器获得 HttpOnly 签名会话 Cookie；注销会清除 Cookie，会话超过 `AUTH_SESSION_TTL` 后须重新登录。所有已认证用户都拥有 UI 暴露的完整操作能力，本功能不提供角色或细粒度授权。
-- `SCRIPT_SERVICE_TOKEN` 是网关与 script-service 之间的内部共享令牌，不会下发到浏览器。
+- `SCRIPT_SERVICE_TOKEN` 是网关与 script-service 之间的内部共享令牌，不会下发到浏览器。镜像内部默认 `SCRIPT_SERVICE_URL=http://127.0.0.1:7420`，部署侧无需也无法跨容器寻址 script-service。
 - 认证网关完全属于 `agent-compose-ui`，不会修改 agent-compose daemon 的认证或其他行为。
 - 公司网络之外仍必须通过 HTTPS 暴露 UI；互联网部署还应按组织要求在入口增加限流或 SSO。
 
@@ -76,18 +97,24 @@ full 模式默认启用服务端 `${VAR}` 解析：web 网关只读挂载 daemon
 
 | 端口 | 服务 | 默认 |
 | --- | --- | --- |
-| `WEB_PORT` | web UI | 8080 → 80 |
-| `TOKEN_RBAC_API_PORT` | Token 保护的 daemon API（部署端口；API Base URL 由管理员提供） | 8081 → 8081 |
-| `AGENT_COMPOSE_PORT`（仅 full） | agent-compose | 127.0.0.1:7410 → 7410 |
+| `WEB_PORT` | web UI（nginx 入口） | 8080 -> 80 |
+| `TOKEN_RBAC_API_PORT` | Token 保护的 daemon API（部署端口；API Base URL 由管理员提供） | 8081 -> 8081 |
+| `AGENT_COMPOSE_PORT`（仅 full） | agent-compose | 127.0.0.1:7410 -> 7410 |
 
 ## 构建说明
 
-- web 镜像为多阶段构建：`node:22-alpine` 执行 `npm install` + `npm run build`（即 `vite build`），产物拷入 `nginx:1.27-alpine`。用 npm 而非 bun 安装依赖，是因为 bun 自带的 BoringSSL CA 在有 TLS 拦截的网络里无法校验 registry 证书，而 npm 用系统/Node 的 OpenSSL 信任库可正常工作。
-- scripts 镜像基于 `oven/bun:1-alpine`，无 `install` 步骤（script-service 仅用 Node 内置模块），不受上述问题影响。
-- web 构建用 `npm install`（容忍 `package-lock.json` 与 `package.json` 的轻微不同步）；如需可复现构建，提交同步后的 `package-lock.json` 后可改为 `npm ci`。
+- 单一 Dockerfile `docker/Dockerfile` 为多阶段构建：
+  1. `node:22-alpine` 执行 `npm ci`（要求 `package-lock.json` 与 `package.json` 同步）+ `npm run build`（即 `vite build`），产物 `/build/dist`。
+  2. `golang:1.24-alpine` 执行 `go test ./...` 与 `CGO_ENABLED=0 go build -trimpath -ldflags="-s -w"`，产物 `/out/agent-compose-ui-server`。
+  3. `nginx:1.27-alpine` 为运行时基础镜像：注入 s6-overlay（noarch + TARGETARCH 对应二进制），从 `oven/bun:1-alpine` `COPY --from` 拷贝 Bun 二进制，复制 SPA、Go 二进制、`script-service/*.mjs`、nginx 模板和 s6 服务定义。
+- 用 npm 而非 bun 安装依赖，是因为 bun 自带的 BoringSSL CA 在有 TLS 拦截的网络里无法校验 registry 证书，而 npm 用系统/Node 的 OpenSSL 信任库可正常工作。
+- `npm ci` 替代了旧版的 `npm install`，构建可复现。如修改了 `package.json`，请同步更新 `package-lock.json` 后再构建。
+- s6-overlay v3 监督 nginx / Go 网关 / Bun script-service 三个 longrun 服务，任一进程崩溃自动重启。配置文件位于镜像内 `/etc/s6-overlay/s6-rc.d/`，源在仓库 `docker/s6/services/`。
+- 多架构构建：CI 通过 `docker/setup-qemu-action` + `buildx` 同时推送 `linux/amd64` 与 `linux/arm64`。s6-overlay 的架构二进制在构建时按 `TARGETARCH` 选择。
 
 ## 常见问题
 
 - **web 打开但数据为空/报错**：检查 agent-compose 是否可达。纯前端模式下确认 `AGENT_COMPOSE_URL` 指向正确地址且 daemon 已启动；full 模式下查看 `agent-compose` 容器日志。
 - **端口冲突**：调整 `.env` 中的 `WEB_PORT`、`TOKEN_RBAC_API_PORT` 或 `AGENT_COMPOSE_PORT`。
-- **脚本引用功能不可用**：确认 `scripts` 容器正常运行，且 `SCRIPT_SERVICE_TOKEN` 在 web 与 scripts 间一致（compose 已保证）。
+- **脚本引用功能不可用**：进入 web 容器查看 s6 日志（`docker compose exec web s6-rc log scripts` 或 `docker logs <web-container>`），确认 Bun script-service 进程已启动且 `SCRIPT_SERVICE_TOKEN` 与 Go 网关一致（compose 已保证）。
+- **从旧版双镜像升级**：旧的 `agent-compose-scripts` 镜像不再发布新版本；升级后 `docker compose up --build` 会自动构建新的统一镜像，旧的 scripts 容器可安全删除。`script-data` 卷可继续复用以保留已上传的脚本文件。

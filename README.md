@@ -75,8 +75,8 @@ bun run dev:scripts  # 仅脚本服务，监听 127.0.0.1:7420
 
 | 文件 | 包含服务 | 适用场景 |
 | --- | --- | --- |
-| `docker-compose.yml` | web + script-service | 纯前端，连接**外部**已运行的 agent-compose |
-| `docker-compose.full.yml` | web + script-service + agent-compose 后端 | 前后端一体，单栈拉起 |
+| `docker-compose.yml` | web（nginx + Go 网关 + script-service，s6-overlay 监督） | 纯前端，连接**外部**已运行的 agent-compose |
+| `docker-compose.full.yml` | web + agent-compose 后端 | 前后端一体，单栈拉起 |
 
 ```bash
 cd docker
@@ -88,7 +88,9 @@ docker compose up --build
 docker compose -f docker-compose.full.yml up --build
 ```
 
-启动后打开 <http://localhost:8080>（端口可在 `.env` 的 `WEB_PORT` 调整）。部署侧默认将 Token RBAC API 的容器端口 `8081` 映射到宿主机 `8081`，可用 `TOKEN_RBAC_API_PORT` 调整宿主端口。该端口映射不等同于调用方可访问的 API 地址；具体 API Base URL 由部署管理员提供。Docker 构建使用 `node:22-alpine` + `npm install`（不用 Bun，原因见 docker/README.md）。
+启动后打开 <http://localhost:8080>（端口可在 `.env` 的 `WEB_PORT` 调整）。部署侧默认将 Token RBAC API 的容器端口 `8081` 映射到宿主机 `8081`，可用 `TOKEN_RBAC_API_PORT` 调整宿主端口。该端口映射不等同于调用方可访问的 API 地址；具体 API Base URL 由部署管理员提供。
+
+镜像自包含 nginx + Go 网关 + Bun script-service，也支持不用 compose 的 `docker run` 一条命令启动，详见 [`docker/README.md`](docker/README.md#不用-compose-docker-run-一条命令)。Docker 构建使用 `node:22-alpine` + `npm ci`（可复现，不用 Bun，原因见 docker/README.md），运行时基于 `nginx:1.27-alpine` + s6-overlay 监督三进程。
 
 ### 方式三：生产构建
 

@@ -18,18 +18,8 @@ concurrency:
 
 jobs:
   image:
-    name: Build and push ${{ matrix.suffix }} image
+    name: Build and push image
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # The deployable stack (docker/docker-compose*.yml) builds both images;
-        # publish them so deployments can pull instead of building locally.
-        include:
-          - dockerfile: docker/Dockerfile.web
-            suffix: agent-compose-ui
-          - dockerfile: docker/Dockerfile.scripts
-            suffix: agent-compose-scripts
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -39,7 +29,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.suffix }}
+          images: ghcr.io/${{ github.repository_owner }}/agent-compose-ui
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -57,10 +47,10 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.suffix }}
-          cache-to: type=gha,scope=${{ matrix.suffix }},mode=max
+          cache-from: type=gha,scope=agent-compose-ui
+          cache-to: type=gha,scope=agent-compose-ui,mode=max
