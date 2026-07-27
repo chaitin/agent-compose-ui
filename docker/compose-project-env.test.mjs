@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const full = readFileSync(new URL('./docker-compose.full.yml', import.meta.url), 'utf8');
 const external = readFileSync(new URL('./docker-compose.yml', import.meta.url), 'utf8');
-const dockerfile = readFileSync(new URL('./Dockerfile.web', import.meta.url), 'utf8');
+const dockerfile = readFileSync(new URL('./Dockerfile', import.meta.url), 'utf8');
 
 describe('server-side project environment deployment', () => {
   test('full stack gives the gateway read-only daemon data and separate writable UI state', () => {

@@ -58,8 +58,5 @@ jobs:
       - name: Build SPA
         run: npm run build
 
-      - name: Build web image
-        run: docker build -f docker/Dockerfile.web -t agent-compose-web:ci .
-
-      - name: Build scripts image
-        run: docker build -f docker/Dockerfile.scripts -t agent-compose-scripts:ci .
+      - name: Build image
+        run: docker build -f docker/Dockerfile -t agent-compose-ui:ci .
