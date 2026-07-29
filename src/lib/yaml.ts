@@ -70,7 +70,10 @@ export function yamlToSpec(yamlText: string): { spec: ProjectSpec; error?: strin
     const obj = parseYamlObject(yamlText);
     convertCanonicalMapsToArrays(obj);
     convertAgentsMapToArray(obj);
-    const spec = ProjectSpec.fromJson(obj as unknown as JsonObject);
+    // Project YAML may contain forward-compatible extension fields that the
+    // currently generated protobuf does not know yet. Preserve them in YAML
+    // workflows while still validating all fields known by this UI version.
+    const spec = ProjectSpec.fromJson(obj as unknown as JsonObject, { ignoreUnknownFields: true });
     return { spec };
   } catch (e) {
     return { spec: new ProjectSpec(), error: String(e) };
