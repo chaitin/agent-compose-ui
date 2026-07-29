@@ -129,6 +129,52 @@ func TestProjectViewIncludesStoppedRuntimePolicy(t *testing.T) {
 	}
 }
 
+func TestProjectYAMLIsReadableAndRedacted(t *testing.T) {
+	fixture := projectFixture(false)
+	project := objectValue(fixture["project"])
+	spec := objectValue(project["spec"])
+	spec["variables"] = append(arrayValue(spec["variables"]), map[string]any{
+		"name": "PRIVATE_TOKEN", "value": "top-secret", "secret": true,
+	}, map[string]any{
+		"name": "OPENAI_API_KEY", "value": "unflagged-secret", "secret": false,
+	})
+	worker := objectValue(arrayValue(spec["agents"])[0])
+	worker["mcpServers"] = []any{map[string]any{
+		"name": "private", "url": "https://user:password@example.com/mcp?token=query-secret",
+		"headers": map[string]any{"Authorization": "Bearer header-secret"},
+	}}
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/agentcompose.v2.ProjectService/GetProject" {
+			t.Fatalf("unexpected backend path %s", r.URL.Path)
+		}
+		writeJSON(w, http.StatusOK, fixture)
+	}))
+	defer backend.Close()
+
+	response := performJSON(t, New(mustURL(t, backend.URL)), http.MethodGet, "/api/ui/v1/projects/project-1/yaml", nil, "local:admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("response = %d: %s", response.Code, response.Body.String())
+	}
+	var body struct {
+		ProjectName string `json:"projectName"`
+		Revision    string `json:"revision"`
+		YAML        string `json:"yaml"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.ProjectName != "demo" || body.Revision != "7" || !strings.Contains(body.YAML, "stopped_runtime_policy: retain") ||
+		!strings.Contains(body.YAML, "mcp_servers:") || !strings.Contains(body.YAML, redactedSecret) {
+		t.Fatalf("project YAML response = %#v", body)
+	}
+	for _, secret := range []string{"top-secret", "unflagged-secret", "password", "query-secret", "header-secret"} {
+		if strings.Contains(body.YAML, secret) {
+			t.Fatalf("project YAML exposed %q: %s", secret, body.YAML)
+		}
+	}
+}
+
 func TestPreviewRejectsInvalidStoppedRuntimePolicy(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatalf("backend must not be called for invalid input: %s", r.URL.Path)

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { Button } from '$lib/components/ui/button';
+  import { fullscreenPortal } from '$lib/fullscreen-portal';
   import { loadMonaco } from '$lib/monaco';
   import Expand from '@lucide/svelte/icons/expand';
   import Minimize2 from '@lucide/svelte/icons/minimize-2';
@@ -74,8 +75,10 @@
     if (!fullscreen) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    requestAnimationFrame(() => editor?.layout());
     return () => {
       document.body.style.overflow = previous;
+      requestAnimationFrame(() => editor?.layout());
     };
   });
 
@@ -135,18 +138,24 @@
 />
 
 <div
+  use:fullscreenPortal={fullscreen}
+  data-code-editor
+  data-fullscreen={fullscreen || undefined}
   data-scroll-surface
   class:fixed={fullscreen}
-  class:z-50={fullscreen}
+  class:z-[100]={fullscreen}
   class="flex min-h-[16rem] flex-col overflow-hidden rounded-lg border border-input bg-background shadow-sm {fullscreen
-    ? 'inset-0 h-dvh sm:inset-3 sm:h-[calc(100dvh-1.5rem)]'
+    ? 'inset-0 h-dvh rounded-none border-0'
     : ''}"
   style:height={fullscreen ? undefined : height}
   style:resize={fullscreen ? 'none' : 'vertical'}
 >
   <div class="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-2">
     <span class="text-xs font-medium">{t(title)}</span>
-    <span class="text-[11px] text-muted-foreground">{language} · Shift+Alt+F {t('格式化')}</span>
+    <span class="text-[11px] text-muted-foreground"
+      >{language}{#if formatEnabled && !readOnly}
+        · Shift+Alt+F {t('格式化')}{/if}</span
+    >
     {#if formatError}<span class="min-w-0 truncate text-xs text-destructive" title={formatError}>{formatError}</span
       >{/if}
     <div class="ml-auto flex gap-1">

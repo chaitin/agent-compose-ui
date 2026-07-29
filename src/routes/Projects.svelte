@@ -6,12 +6,14 @@
   import { Textarea } from '$lib/components/ui/textarea';
   import PageHeader from '$lib/components/page-header.svelte';
   import AgentEnvironmentEditor from '$lib/components/agent-environment-editor.svelte';
+  import ProjectYamlDialog from '$lib/components/project-yaml-dialog.svelte';
   import StatusBadge from '$lib/components/status-badge.svelte';
   import TechnicalDetails from '$lib/components/technical-details.svelte';
   import { runStreams } from '$lib/run-stream.svelte';
   import { navigate, router } from '$lib/router.svelte';
   import {
     applyProjectPreview,
+    getProjectYAML,
     listProjectViews,
     previewProjectMutation,
     type AgentEditableSpec,
@@ -20,11 +22,13 @@
     type ProjectDeploymentPreview,
     type ProjectMutation,
     type ProjectView,
+    type ProjectYAML,
   } from '../api/projects';
   import { listCapabilitySets, listWorkspacePresets, type CapabilitySet, type WorkspacePreset } from '../api/config';
   import ArrowLeft from '@lucide/svelte/icons/arrow-left';
   import Bot from '@lucide/svelte/icons/bot';
   import FileCode from '@lucide/svelte/icons/file-code-2';
+  import FileText from '@lucide/svelte/icons/file-text';
   import FolderKanban from '@lucide/svelte/icons/folder-kanban';
   import Pencil from '@lucide/svelte/icons/pencil';
   import Play from '@lucide/svelte/icons/play';
@@ -83,6 +87,10 @@
   let projectVariables = $state<ProjectAgentEnv[]>([]);
   let editorBaseline = $state('');
   let preview = $state<ProjectDeploymentPreview | null>(null);
+  let yamlOpen = $state(false);
+  let yamlLoading = $state(false);
+  let yamlError = $state('');
+  let yamlConfig = $state<ProjectYAML | null>(null);
 
   const pathParts = $derived(router.path.split('/').filter(Boolean));
   const legacyPath = $derived(pathParts[0] === 'agents');
@@ -149,6 +157,20 @@
       error = errorMessage(cause);
     } finally {
       loading = false;
+    }
+  }
+
+  async function showProjectYAML(project: ProjectView): Promise<void> {
+    yamlOpen = true;
+    yamlLoading = true;
+    yamlError = '';
+    yamlConfig = { projectName: project.name, revision: project.currentRevision, yaml: '' };
+    try {
+      yamlConfig = await getProjectYAML(project.projectId);
+    } catch (cause) {
+      yamlError = errorMessage(cause);
+    } finally {
+      yamlLoading = false;
     }
   }
 
@@ -698,7 +720,11 @@
                 </div>
               </div>
             </div>
-            {#if selectedProject.editable}<div class="flex flex-wrap gap-2">
+            <div class="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onclick={() => void showProjectYAML(selectedProject)}
+                ><FileText class="size-3.5" />{t('查看 YAML')}</Button
+              >
+              {#if selectedProject.editable}
                 <Button variant="outline" size="sm" onclick={() => beginProjectVariableEdit(selectedProject)}
                   ><Settings2 class="size-3.5" />{t('项目变量')}
                   {#if selectedProject.variables.length}<span class="text-muted-foreground"
@@ -708,7 +734,8 @@
                 <Button size="sm" onclick={() => beginAgentCreate(selectedProject)}
                   ><Plus class="size-3.5" />{t('新增智能体')}</Button
                 >
-              </div>{/if}
+              {/if}
+            </div>
           </div>
 
           {#if selectedProject.blockedReasons.length}<div
@@ -968,3 +995,13 @@
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>
+
+<ProjectYamlDialog
+  open={yamlOpen}
+  projectName={yamlConfig?.projectName ?? selectedProject?.name ?? ''}
+  revision={yamlConfig?.revision ?? selectedProject?.currentRevision ?? ''}
+  yaml={yamlConfig?.yaml ?? ''}
+  loading={yamlLoading}
+  error={yamlError}
+  onOpenChange={(open) => (yamlOpen = open)}
+/>

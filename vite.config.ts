@@ -15,7 +15,11 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ['monaco-editor/editor/editor.api', 'monaco-editor/languages/definitions/javascript/register'],
+    include: [
+      'monaco-editor/editor/editor.api',
+      'monaco-editor/languages/definitions/javascript/register',
+      'monaco-editor/languages/definitions/yaml/register',
+    ],
   },
   build: {
     outDir: 'dist',

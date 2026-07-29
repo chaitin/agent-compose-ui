@@ -108,6 +108,12 @@ export type ProjectDeploymentPreview = {
   mutation: { kind: ProjectMutation['kind']; agentName?: string };
 };
 
+export type ProjectYAML = {
+  projectName: string;
+  revision: string;
+  yaml: string;
+};
+
 export async function listProjectViews(): Promise<ProjectView[]> {
   return normalizeProjects((await apiFetchJson<{ projects?: ProjectView[] }>('/api/ui/v1/projects')).projects ?? []);
 }
@@ -115,6 +121,10 @@ export async function listProjectViews(): Promise<ProjectView[]> {
 export async function getProjectView(projectId: string): Promise<ProjectView> {
   const response = await apiFetchJson<{ project: ProjectView }>(`/api/ui/v1/projects/${encodeURIComponent(projectId)}`);
   return normalizeProject(response.project);
+}
+
+export async function getProjectYAML(projectId: string): Promise<ProjectYAML> {
+  return apiFetchJson<ProjectYAML>(`/api/ui/v1/projects/${encodeURIComponent(projectId)}/yaml`);
 }
 
 export async function previewProjectMutation(mutation: ProjectMutation): Promise<ProjectDeploymentPreview> {

@@ -176,6 +176,15 @@
     line-height: 1.5;
   }
 
+  body:has(> [data-code-editor][data-fullscreen='true']) [data-slot='dialog-overlay'],
+  body:has(> [data-code-editor][data-fullscreen='true']) [data-slot='dialog-content'] {
+    pointer-events: none;
+  }
+
+  body > [data-code-editor][data-fullscreen='true'] {
+    pointer-events: auto;
+  }
+
   #app {
     height: 100%;
   }

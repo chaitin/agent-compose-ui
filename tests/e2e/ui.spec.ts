@@ -560,6 +560,59 @@ test('selects the first project and opens the first execution environment', asyn
   await expect(page.locator('[data-sandbox-workbench] h2')).not.toHaveText('');
 });
 
+test('previews the deployed project YAML without edit actions', async ({ page }) => {
+  await login(page);
+  await navigateInApp(page, '/projects');
+  await page.locator('[data-page-frame] aside button').filter({ hasText: 'ui-agents' }).click();
+  await page.getByRole('button', { name: '查看 YAML', exact: true }).click();
+
+  const dialog = page.locator('[data-project-yaml-dialog]');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: '当前配置' })).toBeVisible();
+  await expect(dialog.getByText('只读 YAML', { exact: false })).toBeVisible();
+  await expect(dialog.locator('.monaco-editor')).toBeVisible({ timeout: 15_000 });
+  await expect(dialog.getByRole('button', { name: /保存|部署|编辑/ })).toHaveCount(0);
+  await expect
+    .poll(() =>
+      dialog
+        .locator('.view-lines span[class^="mtk"]')
+        .evaluateAll((tokens) => new Set(tokens.map((token) => token.className)).size),
+    )
+    .toBeGreaterThan(1);
+
+  await dialog.getByRole('button', { name: '全屏', exact: true }).click();
+  const fullscreenEditor = page.locator('[data-code-editor][data-fullscreen="true"]');
+  await expect(fullscreenEditor).toBeVisible();
+  await expect.poll(() => fullscreenEditor.evaluate((element) => element.parentElement === document.body)).toBe(true);
+  const fullscreenBounds = await fullscreenEditor.boundingBox();
+  const viewport = page.viewportSize();
+  expect(fullscreenBounds).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(fullscreenBounds!.width).toBeGreaterThanOrEqual(viewport!.width - 1);
+  expect(fullscreenBounds!.height).toBeGreaterThanOrEqual(viewport!.height - 1);
+  await fullscreenEditor.getByRole('button', { name: '退出全屏', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: '全屏', exact: true })).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const dialogBounds = await dialog.boundingBox();
+  expect(dialogBounds).not.toBeNull();
+  expect(dialogBounds!.width).toBeLessThanOrEqual(390);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await dialog.getByRole('button', { name: '复制 YAML', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: '已复制', exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('agents:');
+  const copiedYAML = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copiedYAML).not.toMatch(/sk-[a-zA-Z0-9_-]{16,}/);
+
+  const download = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: '下载 YAML', exact: true }).click();
+  expect((await download).suggestedFilename()).toBe('ui-agents.yaml');
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+});
+
 test('compacts execution environment metadata without altering output', async ({ page }) => {
   test.skip(!retainedSandboxId, 'requires a retained execution environment');
   await login(page);

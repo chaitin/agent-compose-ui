@@ -141,6 +141,7 @@ func New(backend *url.URL) *Handler {
 		mux:      http.NewServeMux(),
 	}
 	h.mux.HandleFunc("GET /api/ui/v1/projects", h.listProjects)
+	h.mux.HandleFunc("GET /api/ui/v1/projects/{projectID}/yaml", h.getProjectYAML)
 	h.mux.HandleFunc("GET /api/ui/v1/projects/{projectID}", h.getProject)
 	h.mux.HandleFunc("POST /api/ui/v1/project-deployment-previews", h.preview)
 	h.mux.HandleFunc("POST /api/ui/v1/project-deployment-previews/{previewID}/apply", h.apply)
@@ -175,6 +176,30 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"project": projectView(project)})
+}
+
+func (h *Handler) getProjectYAML(w http.ResponseWriter, r *http.Request) {
+	project, err := h.loadProject(r.Context(), r.PathValue("projectID"))
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	spec := objectValue(project["spec"])
+	if len(spec) == 0 {
+		writeAPIError(w, http.StatusNotFound, "project_spec_not_found", "项目配置不存在")
+		return
+	}
+	content, err := marshalProjectYAML(spec)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "project_yaml_failed", "项目配置无法转换为 YAML")
+		return
+	}
+	summary := objectValue(project["summary"])
+	writeJSON(w, http.StatusOK, map[string]any{
+		"projectName": firstNonEmpty(stringValue(summary["name"]), stringValue(spec["name"])),
+		"revision":    fmt.Sprint(summary["currentRevision"]),
+		"yaml":        content,
+	})
 }
 
 func (h *Handler) preview(w http.ResponseWriter, r *http.Request) {

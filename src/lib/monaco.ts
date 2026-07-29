@@ -7,9 +7,10 @@ export function loadMonaco(): Promise<Monaco> {
   monacoPromise = Promise.all([
     import('monaco-editor/editor/editor.api'),
     import('monaco-editor/languages/definitions/javascript/register'),
+    import('monaco-editor/languages/definitions/yaml/register'),
     import('monaco-editor/editor/editor.worker?worker'),
   ])
-    .then(([monaco, , worker]) => {
+    .then(([monaco, , , worker]) => {
       globalThis.MonacoEnvironment = { getWorker: () => new worker.default() };
       return monaco;
     })

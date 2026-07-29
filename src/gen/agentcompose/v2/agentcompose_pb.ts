@@ -3478,9 +3478,9 @@ export class SchedulerRunPruneStats extends Message<SchedulerRunPruneStats> {
   runs = protoInt64.zero;
 
   /**
-   * @generated from field: uint64 loader_events = 2;
+   * @generated from field: uint64 scheduler_events = 2;
    */
-  loaderEvents = protoInt64.zero;
+  schedulerEvents = protoInt64.zero;
 
   /**
    * @generated from field: uint64 event_deliveries = 3;
@@ -3511,7 +3511,7 @@ export class SchedulerRunPruneStats extends Message<SchedulerRunPruneStats> {
   static readonly typeName = "agentcompose.v2.SchedulerRunPruneStats";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "runs", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
-    { no: 2, name: "loader_events", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
+    { no: 2, name: "scheduler_events", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
     { no: 3, name: "event_deliveries", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
     { no: 4, name: "event_sandbox_links", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
     { no: 5, name: "artifact_dirs", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
@@ -3540,9 +3540,9 @@ export class SchedulerRunPruneStats extends Message<SchedulerRunPruneStats> {
  */
 export class SchedulerRunPruneResidue extends Message<SchedulerRunPruneResidue> {
   /**
-   * @generated from field: string loader_id = 1;
+   * @generated from field: string scheduler_id = 1;
    */
-  loaderId = "";
+  schedulerId = "";
 
   /**
    * @generated from field: string run_id = 2;
@@ -3567,7 +3567,7 @@ export class SchedulerRunPruneResidue extends Message<SchedulerRunPruneResidue> 
   static readonly runtime: typeof proto3 = proto3;
   static readonly typeName = "agentcompose.v2.SchedulerRunPruneResidue";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
-    { no: 1, name: "loader_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 1, name: "scheduler_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "run_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 3, name: "path", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 4, name: "error", kind: "scalar", T: 9 /* ScalarType.STRING */ },
