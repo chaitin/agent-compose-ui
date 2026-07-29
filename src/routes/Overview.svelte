@@ -7,11 +7,11 @@
   import CopyableText from '$lib/components/copyable-text.svelte';
   import Timestamp from '$lib/components/timestamp.svelte';
   import { navigate } from '$lib/router.svelte';
-  import { getDashboardOverview } from '../api/dashboard';
   import { getHealthStatus } from '../api/health';
   import { durationName, listRuns, runStatusName } from '../api/runs';
   import { RunStatus } from '../gen/agentcompose/v2/agentcompose_pb.js';
   import { timestampToISOString } from '../model/timestamps';
+  import { compactIdentifier } from '../model/identifiers';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import Terminal from '@lucide/svelte/icons/terminal';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
@@ -24,7 +24,7 @@
     id: string;
     fullId: string;
     agent: string;
-    status: 'running' | 'success' | 'failed' | 'skipped' | 'pending';
+    status: 'running' | 'success' | 'failed' | 'skipped' | 'stopped' | 'pending';
     duration: string;
     startedAt: string;
   };
@@ -34,13 +34,13 @@
     success: 'bg-success',
     failed: 'bg-destructive',
     skipped: 'bg-muted-foreground/40',
+    stopped: 'bg-muted-foreground/40',
     pending: 'bg-muted-foreground/40',
   };
 
   let runs = $state<RunView[]>([]);
   let attention = $state<Attention[]>([]);
   let health = $state({ status: '连接中', cpu: '—', rss: '—' });
-  let dashboard = $state({ runningCount: 0, recentCount: 0, attentionCount: 0, updatedAt: '' });
   let error = $state('');
   let refreshTimer = 0;
 
@@ -59,15 +59,14 @@
   async function load(): Promise<void> {
     error = '';
     try {
-      const [runningItems, recentItems, dashboardValue, healthValue] = await Promise.all([
+      const [runningItems, recentItems, healthValue] = await Promise.all([
         listRuns({ status: RunStatus.RUNNING, limit: 6 }),
         listRuns({ limit: 12 }),
-        getDashboardOverview(),
         getHealthStatus(),
       ]);
       const runItems = [...new Map([...runningItems, ...recentItems].map((run) => [run.runId, run])).values()];
       runs = runItems.map((run) => ({
-        id: run.runShortId || run.runId,
+        id: run.runShortId || compactIdentifier(run.runId),
         fullId: run.runId,
         agent: run.agentName,
         status: runStatusName(run.status),
@@ -83,7 +82,6 @@
             runId: run.fullId,
           })),
       ];
-      dashboard = dashboardValue;
       health = {
         status: `v${healthValue.version}`,
         cpu: `${healthValue.processCpuPercent.toFixed(0)}%`,
@@ -102,7 +100,10 @@
     {/snippet}
   </PageHeader>
 
-  <div class="flex min-h-0 flex-1 flex-col gap-3 px-4 py-4 sm:px-5 lg:overflow-hidden xl:px-6">
+  <div
+    data-page-frame
+    class="mx-auto flex min-h-0 w-full max-w-[112rem] flex-1 flex-col gap-3 px-4 py-4 sm:px-5 lg:overflow-hidden xl:px-6"
+  >
     {#if error}<div class="shrink-0 rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>{/if}
 
     <div class="grid shrink-0 grid-cols-2 gap-2 lg:grid-cols-4">
@@ -116,7 +117,7 @@
         >
         <span class="min-w-0"
           ><span class="block text-xs text-muted-foreground">{t('运行中')}</span><span
-            class="block text-xl font-semibold tabular-nums text-info">{dashboard.runningCount}</span
+            class="block text-xl font-semibold tabular-nums text-info">{running.length}</span
           ></span
         >
       </button>
@@ -144,7 +145,7 @@
         >
         <span class="min-w-0"
           ><span class="block text-xs text-muted-foreground">{t('近期运行')}</span><span
-            class="block text-xl font-semibold tabular-nums">{dashboard.recentCount}</span
+            class="block text-xl font-semibold tabular-nums">{recent.length}</span
           ></span
         >
       </button>
@@ -234,7 +235,7 @@
         <Card.Root size="sm" class="min-h-0 gap-0 py-0">
           <Card.Header class="flex-row items-center justify-between border-b border-border py-2.5">
             <Card.Title class="flex items-center gap-2 text-info"><Activity class="size-4" />{t('运行中')}</Card.Title>
-            <span class="text-xs font-semibold tabular-nums text-info">{dashboard.runningCount}</span>
+            <span class="text-xs font-semibold tabular-nums text-info">{running.length}</span>
           </Card.Header>
           <Card.Content class="min-h-0 flex-1 overflow-hidden p-1.5">
             {#each runningPreview as item (item.fullId)}
@@ -250,7 +251,7 @@
                 ><StatusBadge status="running" />
               </button>
             {:else}<p class="grid h-full place-items-center text-sm text-muted-foreground">
-                {t(dashboard.runningCount > 0 ? '运行记录正在同步' : '当前没有运行中的任务')}
+                {t('当前没有运行中的任务')}
               </p>{/each}
           </Card.Content>
         </Card.Root>

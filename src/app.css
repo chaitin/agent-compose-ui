@@ -214,6 +214,18 @@
     background-clip: padding-box;
   }
 
+  [data-tab-scroll] {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  [data-tab-scroll]::-webkit-scrollbar {
+    display: none;
+  }
+
   ::selection {
     background: color-mix(in oklch, var(--primary) 28%, transparent);
   }

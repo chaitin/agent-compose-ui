@@ -3,6 +3,7 @@
   import * as Command from '$lib/components/ui/command';
   import { navGroups } from '$lib/nav';
   import { t } from '$lib/i18n.svelte';
+  import { compactIdentifier } from '../../model/identifiers';
   import { navigate } from '$lib/router.svelte';
   import { command } from '$lib/command.svelte';
   import { listAgentDefinitions, type AgentDefinition } from '../../api/agents';
@@ -85,9 +86,13 @@
     {/if}
     <Command.Group heading={t('智能体')}>
       {#each agents as a (a.id)}
-        <Command.Item value={`agent ${a.id}`} onSelect={() => go(`/agents/${a.id}`)}>
+        <Command.Item
+          value={`agent ${a.projectName} ${a.id}`}
+          onSelect={() =>
+            go(`/projects/${encodeURIComponent(a.projectId || '')}/agents/${encodeURIComponent(a.agentName)}`)}
+        >
           <span class="font-mono text-xs text-muted-foreground">agent</span>
-          <span>{a.name}</span>
+          <span>{a.projectName} / {a.name}</span>
         </Command.Item>
       {/each}
     </Command.Group>
@@ -95,7 +100,7 @@
       {#each runs as r (r.runId)}
         <Command.Item value={`run ${r.runId}`} onSelect={() => go(`/runs/${r.runId}`)}>
           <span class="font-mono text-xs text-muted-foreground">run</span>
-          <span>{r.runShortId || r.runId}</span>
+          <span>{r.runShortId || compactIdentifier(r.runId)}</span>
         </Command.Item>
       {/each}
     </Command.Group>

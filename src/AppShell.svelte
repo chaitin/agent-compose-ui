@@ -9,11 +9,13 @@
   import { i18n, t } from '$lib/i18n.svelte';
 
   import Overview from './routes/Overview.svelte';
-  import Agents from './routes/Agents.svelte';
+  import Projects from './routes/Projects.svelte';
   import Automations from './routes/Automations.svelte';
   import AutomationRunDetail from './routes/AutomationRunDetail.svelte';
-  import Runs from './routes/Runs.svelte';
+  import Sandboxes from './routes/Sandboxes.svelte';
+  import SandboxDetail from './routes/SandboxDetail.svelte';
   import RunDetail from './routes/RunDetail.svelte';
+  import UnlinkedRuns from './routes/UnlinkedRuns.svelte';
   import Settings from './routes/Settings.svelte';
   import Images from './routes/Images.svelte';
   import Capabilities from './routes/Capabilities.svelte';
@@ -21,9 +23,9 @@
   import Caches from './routes/Caches.svelte';
   import EventDetail from './routes/EventDetail.svelte';
   import Events from './routes/Events.svelte';
-  import Conversations from './routes/Conversations.svelte';
   import Login from './routes/Login.svelte';
   import Audit from './routes/Audit.svelte';
+  import AccountTokens from './routes/AccountTokens.svelte';
   import { getAuthStatus, logout, type AuthStatus } from './api/auth';
   import { getHealthStatus, type HealthStatus } from './api/health';
 
@@ -57,6 +59,7 @@
     let target = '';
     if (path === '/ui' || path === '/workbench') target = '/';
     else if (path === '/automation-tasks') target = '/automations';
+    else if (path === '/agents') target = '/projects';
     else if (path.startsWith('/debug/runs/')) target = `/runs/${path.slice('/debug/runs/'.length)}/terminal`;
     if (target) router.replace(target);
   }
@@ -111,6 +114,7 @@
 
   const p = $derived(router.path);
   const runDetailId = $derived(matchDetail('/runs', p));
+  const sandboxDetailId = $derived(matchDetail('/sandboxes', p));
 
   $effect(() => {
     void p;
@@ -185,8 +189,8 @@
       >
         {#if p === '/'}
           <Overview />
-        {:else if p.startsWith('/agents')}
-          <Agents />
+        {:else if p.startsWith('/projects') || p.startsWith('/agents')}
+          <Projects />
         {:else if p.startsWith('/automation-runs/')}
           <AutomationRunDetail />
         {:else if p.startsWith('/automations')}
@@ -195,16 +199,20 @@
           <EventDetail />
         {:else if p.startsWith('/events')}
           <Events />
-        {:else if p.startsWith('/conversations')}
-          <Conversations />
+        {:else if sandboxDetailId}
+          <SandboxDetail />
+        {:else if p.startsWith('/sandboxes')}
+          <Sandboxes />
+        {:else if p === '/runs/unlinked'}
+          <UnlinkedRuns />
         {:else if runDetailId}
           <RunDetail />
-        {:else if p.startsWith('/runs')}
-          <Runs />
         {:else if p.startsWith('/settings/caches')}
           <Caches />
         {:else if p.startsWith('/audit')}
           <Audit />
+        {:else if p.startsWith('/account/tokens')}
+          <AccountTokens />
         {:else if p.startsWith('/settings')}
           <Settings />
         {:else if p.startsWith('/images')}

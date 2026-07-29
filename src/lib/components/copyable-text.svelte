@@ -5,10 +5,11 @@
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import { copyText } from '$lib/clipboard';
   import { t } from '$lib/i18n.svelte';
+  import { compactIdentifier } from '../../model/identifiers';
 
   let {
     value,
-    display = value,
+    display,
     label = '内容',
     class: className = '',
   }: {
@@ -20,6 +21,7 @@
 
   let status = $state<'idle' | 'copied' | 'error'>('idle');
   let resetTimer = 0;
+  const visibleValue = $derived(display ?? compactIdentifier(value));
 
   function showStatus(nextStatus: 'copied' | 'error'): void {
     status = nextStatus;
@@ -42,7 +44,7 @@
 </script>
 
 <span class={`group/copy relative inline-flex min-w-0 items-center gap-1 ${className}`}>
-  <span class="min-w-0 truncate" title={value}>{display}</span>
+  <span class="min-w-0 truncate" title={value}>{visibleValue}</span>
   <button
     type="button"
     class="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-60 transition hover:bg-accent hover:text-foreground group-hover/copy:opacity-100"

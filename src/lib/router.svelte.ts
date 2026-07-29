@@ -23,6 +23,8 @@ class Router {
   path = $state(stripBase(window.location.pathname));
   private currentLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   private readonly scrollPositions = new Map<string, number>();
+  private readonly paneScrollPositions = new Map<string, Map<string, number>>();
+  private navigationGuard: ((to: string) => boolean) | undefined;
 
   constructor() {
     window.history.scrollRestoration = 'manual';
@@ -38,11 +40,19 @@ class Router {
     const target = withBase(to);
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     if (target === current) return;
+    if (this.navigationGuard && !this.navigationGuard(to)) return;
     this.saveScrollPosition();
     window.history.pushState({}, '', withBase(to));
     this.currentLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     this.path = pathFromTarget(to);
     this.scrollTo(0);
+  };
+
+  setNavigationGuard = (guard: (to: string) => boolean): (() => void) => {
+    this.navigationGuard = guard;
+    return () => {
+      if (this.navigationGuard === guard) this.navigationGuard = undefined;
+    };
   };
 
   replace = (to: string): void => {
@@ -62,6 +72,14 @@ class Router {
   private saveScrollPosition(): void {
     const root = document.querySelector<HTMLElement>('[data-scroll-root]');
     if (root) this.scrollPositions.set(this.currentLocation, root.scrollTop);
+    // This is an internal snapshot, not reactive UI state.
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
+    const panes = new Map<string, number>();
+    for (const pane of document.querySelectorAll<HTMLElement>('[data-route-scroll]')) {
+      const key = pane.dataset.routeScroll;
+      if (key && pane.offsetParent) panes.set(key, pane.scrollTop);
+    }
+    if (panes.size) this.paneScrollPositions.set(this.currentLocation, panes);
   }
 
   private scrollTo(top: number): void {
@@ -70,18 +88,32 @@ class Router {
 
   private restoreScrollPosition(location: string): void {
     const top = this.scrollPositions.get(location) ?? 0;
+    const panePositions = this.paneScrollPositions.get(location) ?? new Map<string, number>();
     let attempts = 0;
     let stableAttempts = 0;
     const restore = (): void => {
       if (this.currentLocation !== location) return;
       const root = document.querySelector<HTMLElement>('[data-scroll-root]');
       if (!root) return;
+      let panesReady = true;
       if (root.scrollHeight - root.clientHeight >= top - 1) {
         root.scrollTo({ top });
-        stableAttempts = Math.abs(root.scrollTop - top) <= 1 ? stableAttempts + 1 : 0;
       } else {
-        stableAttempts = 0;
+        panesReady = false;
       }
+      for (const [key, paneTop] of panePositions) {
+        const pane = [...document.querySelectorAll<HTMLElement>('[data-route-scroll]')].find(
+          (item) => item.dataset.routeScroll === key && item.offsetParent,
+        );
+        if (!pane || pane.scrollHeight - pane.clientHeight < paneTop - 1) {
+          panesReady = false;
+          continue;
+        }
+        pane.scrollTo({ top: paneTop });
+        if (Math.abs(pane.scrollTop - paneTop) > 1) panesReady = false;
+      }
+      const rootReady = Math.abs(root.scrollTop - top) <= 1;
+      stableAttempts = rootReady && panesReady ? stableAttempts + 1 : 0;
       if (stableAttempts >= 3 || attempts >= 100) return;
       attempts += 1;
       window.setTimeout(restore, 50);

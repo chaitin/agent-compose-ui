@@ -107,12 +107,13 @@
     </div>
 
     <!-- 用户 -->
-    {#if username}<div
-        class="flex size-7 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary"
-        title={username}
-      >
-        {username.slice(0, 1).toUpperCase()}
-      </div>{/if}
+    {#if username}<button
+        type="button"
+        class="flex size-7 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary hover:bg-primary/15"
+        title={t('管理个人 API 令牌')}
+        aria-label={t('管理个人 API 令牌')}
+        onclick={() => navigate('/account/tokens')}>{username.slice(0, 1).toUpperCase()}</button
+      >{/if}
     {#if onLogout}<Button variant="ghost" size="icon" onclick={onLogout} title={t('退出登录')}
         ><LogOut class="size-4" /></Button
       >{/if}

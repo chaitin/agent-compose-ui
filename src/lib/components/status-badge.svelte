@@ -49,7 +49,7 @@
 <span
   data-semantic-status={semanticStatus}
   class={cn(
-    'inline-flex h-5 items-center gap-1 rounded-full border px-2 text-[11px] font-semibold',
+    'inline-flex h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 text-[11px] font-semibold',
     tone[semanticStatus],
     className,
   )}

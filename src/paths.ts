@@ -3,7 +3,7 @@ const rootBasePath = rawBase === '/' ? '' : rawBase.replace(/\/$/, '');
 
 export function apiPath(path: string): string {
   const normalized = path.startsWith('/') ? path : `/${path}`;
-  return `${rootBasePath}${normalized}` || '/';
+  return `${rootBasePath}${normalized}`;
 }
 
 export function connectBaseUrl(): string {
@@ -13,7 +13,7 @@ export function connectBaseUrl(): string {
 export function appPath(path: string): string {
   const normalized = path.startsWith('/') ? path : `/${path}`;
   if (normalized === '/') {
-    return `${rootBasePath}/` || '/';
+    return `${rootBasePath}/`;
   }
   return `${rootBasePath}${normalized}`;
 }
