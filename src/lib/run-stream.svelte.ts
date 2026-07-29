@@ -1,9 +1,10 @@
 import {
-  RunAgentStreamEventType,
+  StreamAgentRunEventType,
   RunSandboxCleanupPolicy,
   RunSource,
   RunStatus,
   StdioStream,
+  type TranscriptEvent,
 } from '../gen/agentcompose/v2/agentcompose_pb.js';
 import { streamAgentRun } from '../api/run-stream';
 import { createOperationId } from './id';
@@ -20,6 +21,14 @@ export type AgentStreamRequest = {
 };
 
 export type AgentStreamPhase = 'starting' | 'streaming' | 'completed' | 'failed' | 'canceled';
+export type AgentTranscriptItem = {
+  id: string;
+  stream: StdioStream;
+  text: string;
+  name: string;
+  payloadJson: string;
+  createdAt: string;
+};
 
 export class AgentStreamState {
   readonly operationId = createOperationId();
@@ -32,6 +41,7 @@ export class AgentStreamState {
   output = $state('');
   stdout = $state('');
   stderr = $state('');
+  transcript = $state<AgentTranscriptItem[]>([]);
   phase = $state<AgentStreamPhase>('starting');
   error = $state('');
   startedAt = $state('');
@@ -106,21 +116,22 @@ class RunStreamCoordinator {
           state.sandboxId = event.run.sandboxId;
           this.bySandbox.set(event.run.sandboxId, state);
         }
-        if (event.eventType === RunAgentStreamEventType.STARTED) {
+        if (event.eventType === StreamAgentRunEventType.STARTED) {
           state.phase = 'streaming';
           state.startedAt = new Date().toISOString();
           this.touch();
           onStarted?.(state);
-        } else if (event.eventType === RunAgentStreamEventType.OUTPUT && event.chunk) {
+        } else if (event.eventType === StreamAgentRunEventType.OUTPUT && event.chunk) {
           if (!state.firstChunkAt) state.firstChunkAt = new Date().toISOString();
           state.output += event.chunk;
           if (event.stream === StdioStream.STDERR) state.stderr += event.chunk;
           else state.stdout += event.chunk;
-        } else if (event.eventType === RunAgentStreamEventType.COMPLETED) {
+        } else if (event.eventType === StreamAgentRunEventType.COMPLETED) {
           state.phase = event.run?.status === RunStatus.SUCCEEDED ? 'completed' : 'failed';
           state.error = event.run?.error ?? '';
           state.completedAt = new Date().toISOString();
         }
+        if (event.transcript) state.transcript = [...state.transcript, transcriptItem(event.transcript, event.runId)];
       }
       if (state.running) {
         state.phase = 'failed';
@@ -157,6 +168,18 @@ class RunStreamCoordinator {
       if (this.byOperation.get(state.operationId) === state && !state.running) this.dismiss(state);
     }, 10 * 60_000);
   }
+}
+
+function transcriptItem(event: TranscriptEvent, runId: string): AgentTranscriptItem {
+  const createdAt = event.createdAt?.toDate().toISOString() ?? new Date().toISOString();
+  return {
+    id: `${runId}:${createdAt}:${event.name}:${event.text.length}`,
+    stream: event.stream,
+    text: event.text,
+    name: event.name,
+    payloadJson: event.payloadJson,
+    createdAt,
+  };
 }
 
 const globalStreams = globalThis as typeof globalThis & {

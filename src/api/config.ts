@@ -204,7 +204,7 @@ export async function createWorkspacePreset(input: WorkspacePresetInput): Promis
     comment: input.comment.trim(),
   });
   if (!response.preset) {
-    throw new Error('Workspace 配置保存失败');
+    throw new Error('工作目录配置保存失败');
   }
   return workspaceFromResponse(response.preset);
 }
@@ -218,7 +218,7 @@ export async function updateWorkspacePreset(id: string, input: WorkspacePresetIn
     comment: input.comment.trim(),
   });
   if (!response.preset) {
-    throw new Error('Workspace 配置保存失败');
+    throw new Error('工作目录配置保存失败');
   }
   return workspaceFromResponse(response.preset);
 }

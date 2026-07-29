@@ -1,6 +1,8 @@
-import { RunEventKind, type Sandbox } from '../gen/agentcompose/v2/agentcompose_pb.js';
+import { RunEventKind, type RunEvent, type Sandbox } from '../gen/agentcompose/v2/agentcompose_pb.js';
 import { runClient, sandboxClient } from './client';
+import { presentAgentOutput } from '../model/agent-output';
 import { timestampToISOString as timestampString } from '../model/timestamps';
+import { sandboxStatusFromString, sandboxStatusToString } from './proto-enums';
 
 export enum CellType {
   UNSPECIFIED = 0,
@@ -14,6 +16,8 @@ export type SandboxContext = {
   title: string;
   status: string;
   driver: string;
+  projectId: string;
+  agentName: string;
   guestImage: string;
   workspacePath: string;
   triggerSource: string;
@@ -21,9 +25,11 @@ export type SandboxContext = {
   updatedAt: string;
   cellCount: number;
   eventCount: number;
+  notebookUrl: string;
+  proxyPath: string;
   tags: Array<{ name: string; value: string }>;
 };
-export type SandboxContextDetail = SandboxContext & { proxyPath: string; notebookUrl: string };
+export type SandboxContextDetail = SandboxContext;
 export type SandboxHistoryCell = {
   id: string;
   runId?: string;
@@ -60,27 +66,19 @@ export const getSandboxRunTarget = getWorkSessionRunTarget;
 export async function listWorkSessions(
   limit = 50,
   offset = 0,
+  filter: { projectId?: string; status?: string[] } = {},
 ): Promise<{ sessions: WorkSession[]; hasMore: boolean; totalCount: number }> {
-  let token = '';
-  let skipped = 0;
-  const sessions: WorkSession[] = [];
-  for (;;) {
-    const response = await sandboxClient.listSandboxes({ limit: Math.min(500, limit + offset), cursor: token });
-    const pageStartCount = sessions.length;
-    let usablePageCount = 0;
-    for (const item of response.sandboxes) {
-      if (skipped++ < offset) continue;
-      usablePageCount++;
-      if (sessions.length < limit) sessions.push(sessionFromSandbox(item));
-    }
-    token = response.nextCursor;
-    if (!token || sessions.length >= limit)
-      return {
-        sessions,
-        hasMore: Boolean(token) || usablePageCount > limit - pageStartCount,
-        totalCount: offset + sessions.length + (token ? 1 : 0),
-      };
-  }
+  const response = await sandboxClient.listSandboxes({
+    limit: Math.min(500, limit),
+    offset,
+    projectId: filter.projectId,
+    status: (filter.status ?? []).map(sandboxStatusFromString),
+  });
+  return {
+    sessions: response.sandboxes.map(sessionFromSandbox),
+    hasMore: offset + response.sandboxes.length < response.total,
+    totalCount: response.total,
+  };
 }
 export async function getWorkSession(
   id: string,
@@ -129,6 +127,18 @@ export async function listWorkSessionEvents(id: string): Promise<WorkSessionEven
   return (await workSessionHistory(id)).events;
 }
 
+export async function listSandboxExecutionEvents(id: string): Promise<RunEvent[]> {
+  const events: RunEvent[] = [];
+  let offset = 0;
+  for (;;) {
+    const response = await runClient.listSandboxRunEvents({ sandboxId: id, limit: 500, offset });
+    events.push(...response.events);
+    if (offset + response.events.length >= response.total || response.events.length === 0) break;
+    offset += response.events.length;
+  }
+  return events;
+}
+
 function workSessionHistory(id: string): Promise<WorkSessionHistory> {
   const existing = historyRequests.get(id);
   if (existing) return existing;
@@ -150,9 +160,10 @@ async function loadWorkSessionHistory(id: string): Promise<WorkSessionHistory> {
   const cells: WorkSessionCell[] = [];
   const events: WorkSessionEvent[] = [];
   const historyAvailableRunIds = new Set<string>();
-  let cursor = '';
-  do {
-    const response = await runClient.listSandboxRunEvents({ sandboxId: id, limit: 500, cursor });
+  const runIdByLegacyCellId = new Map<string, string>();
+  let offset = 0;
+  for (;;) {
+    const response = await runClient.listSandboxRunEvents({ sandboxId: id, limit: 500, offset });
     for (const runId of response.historyAvailableRunIds) historyAvailableRunIds.add(runId);
     for (const item of response.events) {
       if (item.kind === RunEventKind.USER_MESSAGE || item.kind === RunEventKind.AGENT_MESSAGE)
@@ -160,17 +171,19 @@ async function loadWorkSessionHistory(id: string): Promise<WorkSessionHistory> {
           id: item.id,
           runId: item.runId,
           source: item.kind === RunEventKind.USER_MESSAGE ? item.text : '',
-          output: item.kind === RunEventKind.AGENT_MESSAGE ? item.text : '',
+          output: item.kind === RunEventKind.AGENT_MESSAGE ? presentAgentOutput(item.text) : '',
           type: CellType.AGENT,
           exitCode: item.exitCode,
           success: item.success,
           createdAt: timestampString(item.createdAt),
           agent: item.agent,
           agentSessionId: '',
-          stopReason: item.stopReason,
+          stopReason: item.success || item.stopReason === 'completed' ? '' : item.stopReason,
           running: false,
         });
-      else if (item.kind === RunEventKind.STATUS)
+      else if (item.kind === RunEventKind.STATUS) {
+        const legacyCellId = statusCellId(item.payloadJson);
+        if (legacyCellId) runIdByLegacyCellId.set(legacyCellId, item.runId);
         events.push({
           id: item.id,
           type: 'run.status',
@@ -178,9 +191,12 @@ async function loadWorkSessionHistory(id: string): Promise<WorkSessionHistory> {
           message: item.stopReason || item.payloadJson,
           createdAt: timestampString(item.createdAt),
         });
+      }
     }
-    cursor = response.nextCursor;
-  } while (cursor);
+    const next = offset + response.events.length;
+    if (next >= response.total || response.events.length === 0) break;
+    offset = next;
+  }
   for (const run of runs) {
     if (!historyAvailableRunIds.has(run.runId)) {
       let logs = '';
@@ -207,11 +223,50 @@ async function loadWorkSessionHistory(id: string): Promise<WorkSessionHistory> {
         });
     }
   }
+  mergeLegacyRunOutputs(cells, legacyHistory.cells, runIdByLegacyCellId);
   cells.push(...legacyHistory.cells.filter((cell) => isBeforeV2History(cell.createdAt, firstV2RunAt)));
   events.push(...legacyHistory.events.filter((event) => isBeforeV2History(event.createdAt, firstV2RunAt)));
   cells.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   events.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   return { cells, events };
+}
+
+function statusCellId(payloadJson: string): string {
+  if (!payloadJson.trim()) return '';
+  try {
+    const payload = JSON.parse(payloadJson) as { cellId?: unknown };
+    return typeof payload.cellId === 'string' ? payload.cellId.trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+function mergeLegacyRunOutputs(
+  cells: WorkSessionCell[],
+  legacyCells: WorkSessionCell[],
+  runIdByLegacyCellId: Map<string, string>,
+): void {
+  for (const legacyCell of legacyCells) {
+    const runId = runIdByLegacyCellId.get(legacyCell.id);
+    if (!runId) continue;
+    const runCells = cells.filter((cell) => cell.runId === runId);
+    const hasSource = runCells.some((cell) => cell.source.trim());
+    const outputCell = runCells.find((cell) => cell.output.trim());
+    const hasOutput = Boolean(outputCell);
+    if (
+      outputCell &&
+      legacyCell.output.length > outputCell.output.length &&
+      legacyCell.output.includes(outputCell.output)
+    )
+      outputCell.output = legacyCell.output;
+    if ((hasSource || !legacyCell.source.trim()) && (hasOutput || !legacyCell.output.trim())) continue;
+    cells.push({
+      ...legacyCell,
+      runId,
+      source: hasSource ? '' : legacyCell.source,
+      output: hasOutput ? '' : legacyCell.output,
+    });
+  }
 }
 export async function getWorkSessionRunTarget(id: string): Promise<WorkSessionRunTarget | undefined> {
   const run = await latestRunForSandbox(id);
@@ -269,14 +324,14 @@ function historyFromSandboxResponse(
     cells: response.cells.map((item) => ({
       id: item.id,
       source: item.source,
-      output: item.output || [item.stdout, item.stderr].filter(Boolean).join('\n'),
+      output: presentAgentOutput(item.output || [item.stdout, item.stderr].filter(Boolean).join('\n')),
       type: legacyCellType(item.type),
       exitCode: item.exitCode,
       success: item.success,
       createdAt: timestampString(item.createdAt),
       agent: item.agent,
       agentSessionId: item.agentThreadId,
-      stopReason: item.stopReason || '旧 Sandbox 历史',
+      stopReason: item.success ? '' : item.stopReason || '旧 Sandbox 历史',
       running: item.running,
     })),
     events: response.events.map((item) => ({
@@ -295,15 +350,14 @@ function runTimeValue(value: string): number {
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? 0 : parsed;
 }
-function tagValue(tags: Array<{ name: string; value: string }>, name: string): string {
-  return tags.find((tag) => tag.name.trim() === name)?.value.trim() ?? '';
-}
 function sessionFromSandbox(item: Sandbox): WorkSession {
   return {
     id: item.sandboxId,
     title: item.title,
-    status: item.status,
+    status: sandboxStatusToString(item.status),
     driver: item.driver,
+    projectId: item.projectId,
+    agentName: item.agentName,
     guestImage: item.image,
     workspacePath: item.workspacePath,
     triggerSource: item.triggerSource,
@@ -311,6 +365,8 @@ function sessionFromSandbox(item: Sandbox): WorkSession {
     updatedAt: timestampString(item.updatedAt),
     cellCount: item.cellCount,
     eventCount: item.eventCount,
+    notebookUrl: item.notebookUrl,
+    proxyPath: item.proxyPath,
     tags: item.tags.map((v) => ({ name: v.name, value: v.value })),
   };
 }

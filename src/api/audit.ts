@@ -32,6 +32,9 @@ export type AuditFilter = {
   limit?: number;
 };
 export type AuditPage = { items: AuditEvent[]; nextCursor: string; hasMore: boolean };
+type RawAuditPrincipal = Partial<AuditPrincipal>;
+type RawAuditEvent = Partial<Omit<AuditEvent, 'actor'>> & { actor?: RawAuditPrincipal };
+type RawAuditPage = { items?: RawAuditEvent[]; nextCursor?: string; hasMore?: boolean };
 
 function queryString(filter: AuditFilter, includeCursor = true): string {
   const query = new URLSearchParams();
@@ -42,8 +45,40 @@ function queryString(filter: AuditFilter, includeCursor = true): string {
   return query.toString();
 }
 
-export function listAuditEvents(filter: AuditFilter): Promise<AuditPage> {
-  return apiFetchJson<AuditPage>(`/api/ui/v1/audit/events?${queryString(filter)}`);
+export async function listAuditEvents(filter: AuditFilter): Promise<AuditPage> {
+  const page = await apiFetchJson<RawAuditPage>(`/api/ui/v1/audit/events?${queryString(filter)}`);
+  return {
+    items: (page.items ?? []).map(normalizeAuditEvent),
+    nextCursor: page.nextCursor ?? '',
+    hasMore: Boolean(page.hasMore),
+  };
+}
+
+function normalizeAuditEvent(item: RawAuditEvent): AuditEvent {
+  return {
+    id: item.id ?? '',
+    occurredAt: item.occurredAt ?? '',
+    finishedAt: item.finishedAt,
+    actor: {
+      id: item.actor?.id ?? '',
+      source: item.actor?.source ?? '',
+      username: item.actor?.username ?? '',
+      displayName: item.actor?.displayName ?? '',
+      authMethod: item.actor?.authMethod ?? '',
+    },
+    category: item.category ?? '',
+    action: item.action ?? '',
+    resourceType: item.resourceType ?? '',
+    resourceId: item.resourceId ?? '',
+    method: item.method ?? '',
+    path: item.path ?? '',
+    outcome: item.outcome ?? '',
+    status: item.status ?? 0,
+    durationMs: item.durationMs ?? 0,
+    requestId: item.requestId ?? '',
+    remoteIp: item.remoteIp ?? '',
+    userAgent: item.userAgent ?? '',
+  };
 }
 
 export function downloadAuditEvents(format: 'json' | 'csv', filter: AuditFilter): void {

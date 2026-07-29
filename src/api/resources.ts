@@ -2,6 +2,7 @@ import {
   CacheStatus,
   AgentSpec,
   MCPServerSpec,
+  ProjectSpec,
   ResourceKind,
   SkillSpec,
   type CacheItem,
@@ -10,7 +11,8 @@ import {
   type ResourceTarget,
 } from '../gen/agentcompose/v2/agentcompose_pb.js';
 import { cacheClient, imageClient, projectClient, resourceClient } from './client';
-import { projectSpecForUpdate } from './project-spec';
+import { applyProjectSpecUpdate, projectSpecForUpdate } from './project-spec';
+import { nextPageOffset, projectById } from './project-ref';
 
 export type ImagePage = {
   images: Image[];
@@ -26,9 +28,9 @@ export async function listImages(query = '', offset = 0, limit = 100): Promise<I
   const response = await imageClient.listImages({ query, offset, limit, all: true, includeCacheStatus: true });
   return {
     images: response.images,
-    totalCount: response.totalCount,
-    hasMore: response.hasMore,
-    nextOffset: response.nextOffset,
+    totalCount: response.total,
+    hasMore: offset + response.images.length < response.total,
+    nextOffset: offset + response.images.length,
     available: response.storeStatus?.available ?? false,
     endpoint: response.storeStatus?.endpoint ?? '',
     error: response.storeStatus?.error ?? '',
@@ -52,16 +54,6 @@ export async function removeImage(imageRef: string, force = false): Promise<stri
   return [...response.untaggedRefs, ...response.deletedIds, ...response.warnings];
 }
 
-export async function buildImage(
-  input: { contextDir: string; dockerfile: string; tags: string[] },
-  onEvent: (line: string) => void,
-  signal?: AbortSignal,
-): Promise<void> {
-  for await (const event of imageClient.buildImage({ ...input, pull: true }, { signal })) {
-    onEvent([event.stage, event.message, ...event.warnings].filter(Boolean).join(' · '));
-  }
-}
-
 export async function listCaches(): Promise<{ items: CacheItem[]; warnings: string[] }> {
   const response = await cacheClient.listCaches({});
   return { items: response.caches, warnings: response.warnings };
@@ -81,7 +73,10 @@ export async function resolveResource(id: string): Promise<{ targets: ResourceTa
 }
 
 export function routeForTarget(target: ResourceTarget): string | null {
-  if (target.kind === ResourceKind.AGENT) return `/agents/${encodeURIComponent(target.id)}`;
+  if (target.kind === ResourceKind.AGENT)
+    return target.projectId && target.agentName
+      ? `/projects/${encodeURIComponent(target.projectId)}/agents/${encodeURIComponent(target.agentName)}`
+      : `/agents/${encodeURIComponent(target.id)}`;
   if (target.kind === ResourceKind.RUN) return `/runs/${encodeURIComponent(target.id)}`;
   if (target.kind === ResourceKind.SANDBOX) return `/runs?sandboxId=${encodeURIComponent(target.id)}`;
   if (target.kind === ResourceKind.IMAGE) return `/images?q=${encodeURIComponent(target.id)}`;
@@ -113,12 +108,13 @@ export async function listSpecResources(kind: 'mcp' | 'skills'): Promise<SpecRes
   for (;;) {
     const page = await projectClient.listProjects({ limit: 200, offset });
     for (const summary of page.projects) {
-      const project = (await projectClient.getProject({ project: { projectId: summary.projectId }, includeSpec: true }))
+      const project = (await projectClient.getProject({ project: projectById(summary.projectId), includeSpec: true }))
         .project;
       if (project) projects.push(project);
     }
-    if (!page.hasMore) break;
-    offset = page.nextOffset;
+    const next = nextPageOffset(offset, page.projects.length, page.total);
+    if (next === undefined) break;
+    offset = next;
   }
   const result: SpecResource[] = [];
   for (const project of projects) {
@@ -183,11 +179,11 @@ export async function saveSpecResource(
         target.agentName,
         (agent) => new AgentSpec({ ...agent, mcpServers: replaceNamedResource(agent.mcpServers, originalName, item) }),
       );
-      await projectClient.applyProject({ spec: { ...spec, agents } });
+      await applyProjectSpecUpdate(new ProjectSpec({ ...spec, agents }));
     } else {
-      await projectClient.applyProject({
-        spec: { ...spec, mcpServers: replaceNamedResource(spec.mcpServers, originalName, item) },
-      });
+      await applyProjectSpecUpdate(
+        new ProjectSpec({ ...spec, mcpServers: replaceNamedResource(spec.mcpServers, originalName, item) }),
+      );
     }
     return;
   }
@@ -200,16 +196,16 @@ export async function saveSpecResource(
     target.agentName,
     (agent) => new AgentSpec({ ...agent, skills: replaceNamedResource(agent.skills, originalName, item) }),
   );
-  await projectClient.applyProject({ spec: { ...spec, agents } });
+  await applyProjectSpecUpdate(new ProjectSpec({ ...spec, agents }));
 }
 
 export async function removeSpecResource(kind: 'mcp' | 'skills', item: SpecResource): Promise<void> {
   const project = await getProjectWithSpec(item.projectId);
   const spec = projectSpecForUpdate(project.spec);
   if (kind === 'mcp' && !item.agentName) {
-    await projectClient.applyProject({
-      spec: { ...spec, mcpServers: spec.mcpServers.filter((value) => value.name !== item.name) },
-    });
+    await applyProjectSpecUpdate(
+      new ProjectSpec({ ...spec, mcpServers: spec.mcpServers.filter((value) => value.name !== item.name) }),
+    );
     return;
   }
   const agents = replaceAgentResource(spec.agents, item.agentName, (agent) =>
@@ -217,7 +213,7 @@ export async function removeSpecResource(kind: 'mcp' | 'skills', item: SpecResou
       ? new AgentSpec({ ...agent, mcpServers: agent.mcpServers.filter((value) => value.name !== item.name) })
       : new AgentSpec({ ...agent, skills: agent.skills.filter((value) => value.name !== item.name) }),
   );
-  await projectClient.applyProject({ spec: { ...spec, agents } });
+  await applyProjectSpecUpdate(new ProjectSpec({ ...spec, agents }));
 }
 
 function replaceAgentResource(agents: AgentSpec[], name: string, update: (agent: AgentSpec) => AgentSpec): AgentSpec[] {
@@ -250,13 +246,14 @@ async function listProjectsWithSpecs(): Promise<Project[]> {
   for (;;) {
     const page = await projectClient.listProjects({ limit: 200, offset });
     for (const summary of page.projects) projects.push(await getProjectWithSpec(summary.projectId));
-    if (!page.hasMore) return projects;
-    offset = page.nextOffset;
+    const next = nextPageOffset(offset, page.projects.length, page.total);
+    if (next === undefined) return projects;
+    offset = next;
   }
 }
 
 async function getProjectWithSpec(projectId: string): Promise<Project> {
-  const project = (await projectClient.getProject({ project: { projectId }, includeSpec: true })).project;
+  const project = (await projectClient.getProject({ project: projectById(projectId), includeSpec: true })).project;
   if (!project) throw new Error(`项目 ${projectId} 不存在`);
   return project;
 }

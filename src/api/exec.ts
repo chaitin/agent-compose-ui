@@ -3,9 +3,9 @@ import {
   AttachStdin,
   AttachStdinEOF,
   AttachTerminalSize,
-  ExecAttachRequest,
-  ExecAttachResponse,
-  ExecAttachStart,
+  AttachExecRequest,
+  AttachExecResponse,
+  AttachExecStart,
   ExecCommand,
   ExecRequest,
 } from '../gen/agentcompose/v2/agentcompose_pb.js';
@@ -19,9 +19,16 @@ export type InteractiveTerminal = {
   close(): void;
 };
 
+const TERMINAL_CONNECT_TIMEOUT_MS = 8_000;
+
 export function openInteractiveTerminal(
   sandboxId: string,
-  handlers: { onData: (data: string) => void; onState: (state: string) => void; onError: (message: string) => void },
+  handlers: {
+    onData: (data: string) => void;
+    onState: (state: string) => void;
+    onError: (message: string) => void;
+    onClose?: () => void;
+  },
 ): InteractiveTerminal {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
@@ -33,18 +40,32 @@ export function openInteractiveTerminal(
   const pending: Uint8Array[] = [];
   let frame = 0;
   let ended = false;
+  let connected = false;
+  let closeNotified = false;
+  const notifyClose = (): void => {
+    if (closeNotified) return;
+    closeNotified = true;
+    handlers.onClose?.();
+  };
+  const connectTimer = window.setTimeout(() => {
+    if (connected || ended) return;
+    ended = true;
+    handlers.onError('终端连接超时，后端未响应');
+    socket.close();
+    notifyClose();
+  }, TERMINAL_CONNECT_TIMEOUT_MS);
 
-  const enqueue = (request: ExecAttachRequest): void => {
+  const enqueue = (request: AttachExecRequest): void => {
     request.clientFrameId = `ui-${++frame}`;
     const payload = request.toBinary();
     if (socket.readyState === WebSocket.OPEN) socket.send(payload);
     else if (socket.readyState === WebSocket.CONNECTING) pending.push(payload);
   };
   enqueue(
-    new ExecAttachRequest({
+    new AttachExecRequest({
       frame: {
         case: 'start',
-        value: new ExecAttachStart({
+        value: new AttachExecStart({
           request: new ExecRequest({
             target: { case: 'sandboxId', value: sandboxId },
             command: new ExecCommand({ command: 'sh', args: ['-l'] }),
@@ -67,42 +88,53 @@ export function openInteractiveTerminal(
         handlers.onError(event.data);
         return;
       }
-      const response = ExecAttachResponse.fromBinary(new Uint8Array(event.data as ArrayBuffer));
-      if (response.frame.case === 'started') handlers.onState('已连接');
-      else if (response.frame.case === 'output')
+      const response = AttachExecResponse.fromBinary(new Uint8Array(event.data as ArrayBuffer));
+      if (response.frame.case === 'started') {
+        connected = true;
+        window.clearTimeout(connectTimer);
+        handlers.onState('已连接');
+      } else if (response.frame.case === 'output')
         handlers.onData(decoder.decode(response.frame.value.data, { stream: true }));
       else if (response.frame.case === 'error') handlers.onError(response.frame.value.message);
       else if (response.frame.case === 'result') {
         ended = true;
+        window.clearTimeout(connectTimer);
         handlers.onState(`已结束 · exit ${response.frame.value.exitCode}`);
+        notifyClose();
       }
     } catch (cause) {
       handlers.onError(cause instanceof Error ? cause.message : '无法解析交互终端响应');
     }
   };
-  socket.onerror = () => handlers.onError('交互终端 WebSocket 连接失败');
+  socket.onerror = () => {
+    window.clearTimeout(connectTimer);
+    handlers.onError('交互终端 WebSocket 连接失败');
+  };
   socket.onclose = () => {
+    window.clearTimeout(connectTimer);
     if (!ended) handlers.onState('已断开');
+    notifyClose();
   };
 
   return {
     send(data) {
       enqueue(
-        new ExecAttachRequest({ frame: { case: 'stdin', value: new AttachStdin({ data: encoder.encode(data) }) } }),
+        new AttachExecRequest({ frame: { case: 'stdin', value: new AttachStdin({ data: encoder.encode(data) }) } }),
       );
     },
     resize(cols, rows) {
       enqueue(
-        new ExecAttachRequest({
+        new AttachExecRequest({
           frame: { case: 'resize', value: new AttachResize({ terminalSize: new AttachTerminalSize({ cols, rows }) }) },
         }),
       );
     },
     eof() {
-      enqueue(new ExecAttachRequest({ frame: { case: 'stdinEof', value: new AttachStdinEOF() } }));
+      enqueue(new AttachExecRequest({ frame: { case: 'stdinEof', value: new AttachStdinEOF() } }));
     },
     close() {
       ended = true;
+      window.clearTimeout(connectTimer);
       socket.close();
     },
   };

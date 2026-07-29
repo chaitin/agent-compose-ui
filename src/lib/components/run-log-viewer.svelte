@@ -8,62 +8,61 @@
     query,
     content,
     lineCount,
-    following,
-    wrap,
     onQuery,
-    onToggleFollow,
-    onFollowingChange,
-    onToggleWrap,
     onDownload,
   }: {
     query: string;
     content: string;
     lineCount: number;
-    following: boolean;
-    wrap: boolean;
     onQuery: (value: string) => void;
-    onToggleFollow: () => void;
-    onFollowingChange: (value: boolean) => void;
-    onToggleWrap: () => void;
     onDownload: () => void;
   } = $props();
 
   let logNode = $state<HTMLElement | null>(null);
+  let followsLatest = $state(true);
+
+  const visibleLineCount = $derived(content ? content.split('\n').length : 0);
 
   $effect(() => {
-    const updateKey = `${following}:${content.length}`;
-    if (updateKey && following) void scrollToLatest();
+    const updateKey = content.length;
+    if (updateKey && followsLatest) void scrollToLatest();
   });
 
   function trackScroll(): void {
-    if (!logNode || !following) return;
-    if (logNode.scrollHeight - logNode.scrollTop - logNode.clientHeight >= 72) onFollowingChange(false);
+    if (!logNode) return;
+    followsLatest = logNode.scrollHeight - logNode.scrollTop - logNode.clientHeight < 72;
   }
 
-  async function scrollToLatest(): Promise<void> {
+  async function scrollToLatest(force = false): Promise<void> {
     await tick();
+    if (force) followsLatest = true;
     logNode?.scrollTo({ top: logNode.scrollHeight });
   }
 </script>
 
-<div class="flex h-full min-h-0 flex-col overflow-hidden">
+<div class="relative flex h-full min-h-0 flex-col overflow-hidden">
   <div class="mb-2 flex shrink-0 flex-wrap items-center gap-2">
     <Input
       value={query}
       oninput={(event) => onQuery(event.currentTarget.value)}
       class="min-w-[14rem] flex-1 sm:max-w-sm"
-      placeholder={t('搜索原始日志')}
+      placeholder={t('筛选日志')}
     />
-    <span class="text-xs text-muted-foreground">{lineCount} {t('行')}</span>
-    <Button variant="outline" onclick={onToggleFollow}>{t(following ? '暂停跟随' : '恢复跟随')}</Button>
-    <Button variant="outline" onclick={onToggleWrap}>{t(wrap ? '关闭换行' : '自动换行')}</Button>
+    <span class="text-xs text-muted-foreground"
+      >{query.trim() ? `${visibleLineCount} / ${lineCount}` : lineCount} {t('行')}</span
+    >
     <Button variant="outline" onclick={onDownload}>{t('下载原始日志')}</Button>
   </div>
+  {#if !followsLatest}<Button
+      class="absolute bottom-4 right-4 z-10 shadow"
+      size="sm"
+      variant="outline"
+      onclick={() => void scrollToLatest(true)}>{t('回到最新')}</Button
+    >{/if}
   <pre
     bind:this={logNode}
     data-scroll-surface
     onscroll={trackScroll}
-    class="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-700 bg-[#0b1018] p-4 font-mono text-xs leading-5 text-[#cdd6e3]"
-    class:whitespace-pre-wrap={wrap}
-    class:whitespace-pre={!wrap}>{content || t('暂无日志')}</pre>
+    class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-slate-700 bg-[#0b1018] p-4 font-mono text-xs leading-5 text-[#cdd6e3]">{content ||
+      t('暂无日志')}</pre>
 </div>

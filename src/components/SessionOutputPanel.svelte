@@ -263,7 +263,7 @@
 
   {#if visibleCells.length > 0}
     <div class="cell-list message-stack" bind:this={cellListElement}>
-      {#each visibleCells as cell}
+      {#each visibleCells as cell (cell.id)}
         {@const source = sessionMessageSource(cell)}
         {@const output = sessionMessageOutput(cell)}
         {@const sourceMatch = sectionMatch(search.matches[search.currentIndex], cell.id, 'source')}
@@ -277,7 +277,7 @@
               <div class="message-cell-meta"><span>{formatTime(cell.createdAt)}</span></div>
             </div>
             <pre
-              class="message-source">{#if sourceMatch}{#each sessionOutputMatchParts(source, sourceMatch) as part}{#if part.matched}<mark
+              class="message-source">{#if sourceMatch}{#each sessionOutputMatchParts(source, sourceMatch) as part, index (index)}{#if part.matched}<mark
                       class="output-match"
                       use:registerCurrentMatch>{part.text}</mark
                     >{:else}{part.text}{/if}{/each}{:else}{source}{/if}</pre>
@@ -298,14 +298,14 @@
             {#if isAgentSessionCell(cell)}
               <div class="run-terminal-block" class:running={cell.running}>
                 <pre
-                  class="run-terminal-static">{#if outputMatch}{#each sessionOutputMatchParts(output, outputMatch) as part}{#if part.matched}<mark
+                  class="run-terminal-static">{#if outputMatch}{#each sessionOutputMatchParts(output, outputMatch) as part, index (index)}{#if part.matched}<mark
                           class="output-match"
                           use:registerCurrentMatch>{part.text}</mark
                         >{:else}{part.text}{/if}{/each}{:else}{output}{/if}</pre>
               </div>
             {:else}
               <pre
-                class="run-terminal-static">{#if outputMatch}{#each sessionOutputMatchParts(output, outputMatch) as part}{#if part.matched}<mark
+                class="run-terminal-static">{#if outputMatch}{#each sessionOutputMatchParts(output, outputMatch) as part, index (index)}{#if part.matched}<mark
                         class="output-match"
                         use:registerCurrentMatch>{part.text}</mark
                       >{:else}{part.text}{/if}{/each}{:else}{output}{/if}</pre>

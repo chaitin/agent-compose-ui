@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { Button } from '$lib/components/ui/button';
   import CodeEditor from '$lib/components/code-editor.svelte';
-  import CopyableText from '$lib/components/copyable-text.svelte';
+  import TechnicalDetails from '$lib/components/technical-details.svelte';
   import PageHeader from '$lib/components/page-header.svelte';
   import PageContent from '$lib/components/page-content.svelte';
   import { preloadMonaco } from '$lib/monaco';
@@ -109,7 +109,7 @@
 
 <PageHeader
   title={kind === 'mcp' ? 'MCP 服务' : 'Skills'}
-  description={kind === 'mcp' ? '管理项目级与智能体级 MCP 声明' : '管理智能体 Skill 来源'}
+  description={kind === 'mcp' ? '管理 MCP 服务配置' : '管理 Skill 来源'}
 >
   {#snippet actions()}<Button
       size="sm"
@@ -152,16 +152,15 @@
               <p class="text-xs text-muted-foreground">
                 {item.scope} · {item.projectName}{item.agentName ? ` / ${item.agentName}` : ''}
               </p>
-              <div class="mt-1 flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
-                <CopyableText value={item.key} label="资源 Key" class="max-w-full font-mono" />
-                <CopyableText value={item.projectId} label="Project ID" class="max-w-full font-mono" />
-              </div>
             </div>
             <div class="flex gap-1">
               {#if item.agentName}<Button
                   variant="ghost"
                   size="sm"
-                  onclick={() => navigate(`/agents/${encodeURIComponent(item.agentName)}`)}>{t('智能体')}</Button
+                  onclick={() =>
+                    navigate(
+                      `/projects/${encodeURIComponent(item.projectId)}/agents/${encodeURIComponent(item.agentName)}`,
+                    )}>{t('智能体')}</Button
                 >{/if}<Button
                 variant="ghost"
                 size="icon"
@@ -178,9 +177,18 @@
               >
             </div>
           </div>
-          <pre
-            data-scroll-surface
-            class="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-muted p-3 text-xs">{item.details}</pre>
+          <TechnicalDetails
+            title="配置详情"
+            class="mt-3"
+            items={[
+              { label: '资源 Key', value: item.key },
+              { label: '项目 ID', value: item.projectId },
+            ]}
+          >
+            <pre
+              data-scroll-surface
+              class="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-muted p-3 text-xs">{item.details}</pre>
+          </TechnicalDetails>
         </article>{:else}<p class="text-sm text-muted-foreground">
           {t(
             kind === 'mcp'

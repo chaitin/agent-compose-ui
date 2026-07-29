@@ -3,36 +3,95 @@ import {
   RunStatus,
   type RunDetail,
   type RunEvent,
-  type RunSummary,
+  RunSummary,
 } from '../gen/agentcompose/v2/agentcompose_pb.js';
-import { runClient } from './client';
+import type { JsonValue } from '@bufbuild/protobuf';
+import { projectClient, runClient } from './client';
 import { t } from '$lib/i18n.svelte';
+import { nextPageOffset, projectById } from './project-ref';
+import { apiFetchJson } from './http';
+import { isoStringToTimestamp } from '../model/timestamps';
 
 export type RunFilter = {
-  query?: string;
+  projectId?: string;
+  agentName?: string;
+  schedulerId?: string;
   sandboxId?: string;
   status?: RunStatus;
   source?: RunSource;
+  startedFrom?: string;
+  startedTo?: string;
   offset?: number;
   limit?: number;
 };
 
+export type RunActor = {
+  projectId: string;
+  projectName: string;
+  agentName: string;
+  agentLabel: string;
+};
+
 export async function listRuns(filter: RunFilter = {}): Promise<RunSummary[]> {
   const response = await runClient.listRuns({
+    projectId: filter.projectId,
+    agentName: filter.agentName,
+    schedulerId: filter.schedulerId,
     sandboxId: filter.sandboxId,
     status: filter.status,
     source: filter.source,
+    startedFrom: isoStringToTimestamp(filter.startedFrom),
+    startedTo: isoStringToTimestamp(filter.startedTo),
     offset: filter.offset ?? 0,
     limit: filter.limit ?? 200,
   });
-  const query = filter.query?.trim().toLowerCase();
-  return query
-    ? response.runs.filter((run) =>
-        `${run.runId} ${run.runShortId} ${run.agentName} ${run.projectName} ${run.sandboxId}`
-          .toLowerCase()
-          .includes(query),
-      )
-    : response.runs;
+  return response.runs;
+}
+
+export async function listUnlinkedRuns(
+  cursor = 0,
+  limit = 50,
+): Promise<{ runs: RunSummary[]; nextCursor: number; hasMore: boolean }> {
+  const response = await apiFetchJson<{ items?: JsonValue[]; nextCursor?: number; hasMore?: boolean }>(
+    `/api/ui/v1/runs/unlinked?cursor=${cursor}&limit=${limit}`,
+  );
+  return {
+    runs: (response.items ?? []).map((item) => RunSummary.fromJson(item)),
+    nextCursor: Number(response.nextCursor ?? cursor),
+    hasMore: Boolean(response.hasMore),
+  };
+}
+
+export async function listRunActors(): Promise<RunActor[]> {
+  const actors: RunActor[] = [];
+  let offset = 0;
+  for (;;) {
+    const page = await projectClient.listProjects({ limit: 200, offset });
+    const projects = await Promise.all(
+      page.projects.map((summary) =>
+        projectClient.getProject({ project: projectById(summary.projectId), includeSpec: false }),
+      ),
+    );
+    for (const response of projects) {
+      const project = response.project;
+      if (!project?.summary) continue;
+      for (const agent of project.agents) {
+        actors.push({
+          projectId: project.summary.projectId,
+          projectName: project.summary.name,
+          agentName: agent.agentName,
+          agentLabel: agent.displayName || agent.agentName,
+        });
+      }
+    }
+    const next = nextPageOffset(offset, page.projects.length, page.total);
+    if (next === undefined) break;
+    offset = next;
+  }
+  return actors.sort(
+    (left, right) =>
+      left.projectName.localeCompare(right.projectName) || left.agentLabel.localeCompare(right.agentLabel),
+  );
 }
 
 export async function getRun(runId: string): Promise<RunDetail> {
@@ -52,11 +111,9 @@ export async function followRunLogs(
   runId: string,
   onChunk: (data: string, final: boolean) => void,
   signal?: AbortSignal,
+  follow = true,
 ): Promise<void> {
-  for await (const chunk of runClient.followRunLogs(
-    { runId, tailLines: 1000, tailSet: true, follow: true, includeMetadata: true },
-    { signal },
-  ))
+  for await (const chunk of runClient.followRunLogs({ runId, follow, includeMetadata: true }, { signal }))
     onChunk(chunk.data, chunk.isFinal);
 }
 
@@ -68,10 +125,11 @@ export async function getProjectRunDebugTarget(runId: string): Promise<ProjectRu
   return { runId: summary.runId, sandboxId: summary.sandboxId };
 }
 
-export function runStatusName(status: RunStatus): 'running' | 'success' | 'failed' | 'skipped' | 'pending' {
+export function runStatusName(status: RunStatus): 'running' | 'success' | 'failed' | 'stopped' | 'pending' {
   if (status === RunStatus.RUNNING) return 'running';
   if (status === RunStatus.SUCCEEDED) return 'success';
-  if (status === RunStatus.FAILED || status === RunStatus.CANCELED) return 'failed';
+  if (status === RunStatus.FAILED) return 'failed';
+  if (status === RunStatus.CANCELED) return 'stopped';
   return 'pending';
 }
 
@@ -79,7 +137,7 @@ export function sourceName(source: RunSource): string {
   return source === RunSource.MANUAL
     ? t('手动')
     : source === RunSource.SCHEDULER
-      ? t('调度')
+      ? t('自动化')
       : source === RunSource.API
         ? 'API'
         : t('未知');

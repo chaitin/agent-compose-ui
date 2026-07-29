@@ -1,7 +1,5 @@
 import {
   AgentSpec,
-  DriverSpec,
-  EnvVarSpec,
   ProjectAgentAvailability,
   ProjectAgentHealth,
   RunSource,
@@ -13,7 +11,7 @@ import {
 import { timestampToISOString as timestampString } from '../model/timestamps';
 import { projectClient } from './client';
 import { listWorkspacePresets, type WorkspacePreset } from './config';
-import { projectSpecForUpdate } from './project-spec';
+import { nextPageOffset, projectById } from './project-ref';
 
 export type AgentWorkFiles = {
   source: 'empty' | 'file' | 'git';
@@ -53,29 +51,13 @@ export type AgentDefinition = {
   updatedAt: string;
   deletedAt: string;
   projectId?: string;
+  projectName: string;
 };
-export type AgentDefinitionInput = {
-  agentName: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  provider: string;
-  model: string;
-  systemPrompt: string;
-  runtimeImageId: string;
-  driver: string;
-  guestImage: string;
-  workspaceId: string;
-  envItems: AgentEnvItem[];
-  configJson: string;
-  capsetIds: string[];
-};
-
 export async function listAgentDefinitions(query = ''): Promise<AgentDefinition[]> {
   const [projects, presets] = await Promise.all([listProjects(), listWorkspacePresets()]);
   const result: AgentDefinition[] = [];
   for (const summary of projects) {
-    const response = await projectClient.getProject({ project: { projectId: summary.projectId }, includeSpec: true });
+    const response = await projectClient.getProject({ project: projectById(summary.projectId), includeSpec: true });
     const project = response.project;
     if (!project) continue;
     for (const agent of project.agents) {
@@ -92,142 +74,17 @@ export async function listAgentDefinitions(query = ''): Promise<AgentDefinition[
   return result;
 }
 
-export async function createAgentDefinition(input: AgentDefinitionInput): Promise<AgentDefinition> {
-  const normalized = requestFromInput(input);
-  const [existing, presets] = await Promise.all([findUIProject(), listWorkspacePresets()]);
-  const existingSpec = existing ? projectSpecForUpdate(existing.spec) : undefined;
-  const agentName = validateStableAgentName(normalized.agentName);
-  if ((existingSpec?.agents ?? []).some((value) => value.name === agentName)) {
-    throw new Error(`调用标识 ${agentName} 已存在`);
-  }
-  const agents = [...(existingSpec?.agents ?? []), specFromInput(normalized, agentName, existing, presets)];
-  const response = await projectClient.applyProject({
-    spec: { ...(existingSpec ?? {}), name: existingSpec?.name || 'ui-agents', agents },
-  });
-  const agent = response.project?.agents.find((value) => value.agentName === agentName);
-  if (!response.project || !agent) throw new Error('智能体保存失败');
-  return agentFromV2(
-    response.project,
-    agent,
-    response.project.spec?.agents.find((value) => value.name === agent.agentName),
-    presets,
-  );
-}
-
-export async function updateAgentDefinition(id: string, input: AgentDefinitionInput): Promise<AgentDefinition> {
-  const found = await findAgent(id);
-  if (!found) throw new Error('智能体不存在');
-  const normalized = requestFromInput(input);
-  const presets = await listWorkspacePresets();
-  const currentSpec = found.project.spec?.agents.find((value) => value.name === found.agent.agentName);
-  const nextSpec = specFromInput(normalized, found.agent.agentName, found.project, presets, currentSpec);
-  const agents = (found.project.spec?.agents ?? []).map((value) =>
-    value.name === found.agent.agentName ? nextSpec : value,
-  );
-  const response = await projectClient.applyProject({ spec: { ...projectSpecForUpdate(found.project.spec), agents } });
-  const agent = response.project?.agents.find((value) => value.agentName === found.agent.agentName);
-  if (!response.project || !agent) throw new Error('智能体保存失败');
-  return agentFromV2(
-    response.project,
-    agent,
-    response.project.spec?.agents.find((value) => value.name === agent.agentName),
-    presets,
-  );
-}
-export async function deleteAgentDefinition(id: string): Promise<void> {
-  const found = await findAgent(id);
-  if (!found) return;
-  const agents = (found.project.spec?.agents ?? []).filter((value) => value.name !== found.agent.agentName);
-  await projectClient.applyProject({ spec: { ...projectSpecForUpdate(found.project.spec), agents } });
-}
 async function listProjects() {
   const result = [];
   let offset = 0;
   for (;;) {
     const response = await projectClient.listProjects({ limit: 200, offset });
     result.push(...response.projects);
-    if (!response.hasMore) break;
-    offset = response.nextOffset;
+    const next = nextPageOffset(offset, response.projects.length, response.total);
+    if (next === undefined) break;
+    offset = next;
   }
   return result;
-}
-async function findUIProject(): Promise<Project | undefined> {
-  for (const summary of await listProjects()) {
-    if (summary.name === 'ui-agents') {
-      return (await projectClient.getProject({ project: { projectId: summary.projectId }, includeSpec: true })).project;
-    }
-  }
-  return undefined;
-}
-async function findAgent(id: string): Promise<{ project: Project; agent: ProjectAgent } | undefined> {
-  const target = parseAgentFallbackId(id);
-  for (const summary of await listProjects()) {
-    const project = (await projectClient.getProject({ project: { projectId: summary.projectId }, includeSpec: true }))
-      .project;
-    if (!project) continue;
-    if (target && project.summary?.projectId !== target.projectId) continue;
-    const agent = target
-      ? project.agents.find((value) => value.agentName === target.agentName)
-      : project.agents.find((value) => (Boolean(id) && value.managedAgentId === id) || value.agentName === id);
-    if (agent) return { project, agent };
-  }
-  return undefined;
-}
-function requestFromInput(input: AgentDefinitionInput): AgentDefinitionInput {
-  return {
-    ...input,
-    agentName: input.agentName.trim(),
-    name: input.name.trim(),
-    description: input.description.trim(),
-    provider: normalizeAgentProvider(input.provider),
-    model: input.model.trim(),
-    systemPrompt: input.systemPrompt.trim(),
-    driver: input.driver.trim(),
-    guestImage: input.guestImage.trim(),
-    workspaceId: input.workspaceId.trim(),
-    envItems: input.envItems.map((v) => ({ ...v, name: v.name.trim() })).filter((v) => v.name),
-    capsetIds: input.capsetIds.map((v) => v.trim()).filter(Boolean),
-  };
-}
-function specFromInput(
-  input: AgentDefinitionInput,
-  agentName: string,
-  project: Project | undefined,
-  presets: WorkspacePreset[],
-  existingSpec?: AgentSpec,
-): AgentSpec {
-  return new AgentSpec({
-    name: agentName,
-    displayName: input.name,
-    description: input.description,
-    provider: input.provider,
-    model: input.model,
-    systemPrompt: input.systemPrompt,
-    image: input.guestImage,
-    driver: input.driver ? new DriverSpec({ name: input.driver }) : undefined,
-    env: input.envItems.map((value) => new EnvVarSpec(value)),
-    workspace: workspaceSpecFromInput(input, project, presets, existingSpec),
-    capsetIds: input.capsetIds,
-    enabled: input.enabled,
-  });
-}
-
-function workspaceSpecFromInput(
-  input: AgentDefinitionInput,
-  project: Project | undefined,
-  presets: WorkspacePreset[],
-  existingSpec?: AgentSpec,
-): WorkspaceSpec | undefined {
-  if (!input.workspaceId) return undefined;
-  const preset = presets.find((value) => value.id === input.workspaceId);
-  if (!preset) throw new Error('Workspace 配置不存在');
-  if (project && existingSpec?.workspace) {
-    const current = resolveAgentWorkspace(project, existingSpec, presets);
-    if (current.preset?.id === preset.id) return new WorkspaceSpec(existingSpec.workspace);
-  }
-  const projectWorkspace = projectWorkspaceForPreset(project, preset);
-  if (projectWorkspace) return new WorkspaceSpec({ name: projectWorkspace.name });
-  return workspaceSpecFromPreset(preset);
 }
 
 function workspaceSpecFromPreset(preset: WorkspacePreset): WorkspaceSpec {
@@ -243,16 +100,6 @@ function workspaceSpecFromPreset(preset: WorkspacePreset): WorkspaceSpec {
     });
   }
   return new WorkspaceSpec({ name: preset.id, provider: 'local', path: stringValue(config.path) || preset.id });
-}
-
-function projectWorkspaceForPreset(project: Project | undefined, preset: WorkspacePreset) {
-  const workspaces = project?.spec?.workspaces ?? [];
-  const byID = workspaces.find((item) => item.name === preset.id);
-  if (byID) return byID;
-  const byDefinition = workspaces.filter((item) => workspaceMatchesPreset(item.workspace, preset));
-  if (byDefinition.length === 1) return byDefinition[0];
-  const byName = workspaces.filter((item) => item.name === preset.name.trim());
-  return byName.length === 1 ? byName[0] : undefined;
 }
 
 type AgentWorkspaceResolution = {
@@ -373,17 +220,6 @@ function jsonObject(value: string): Record<string, unknown> {
 function stringValue(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
-function validateStableAgentName(value: string): string {
-  const normalized = value.trim();
-  if (!/^[a-z][a-z0-9_-]*$/.test(normalized))
-    throw new Error('调用标识只能使用小写字母开头，并包含小写字母、数字、- 或 _');
-  return normalized;
-}
-function normalizeAgentProvider(value: string): string {
-  const provider = value.trim().toLowerCase();
-  if (['claude', 'gemini', 'codex', 'opencode', 'pi'].includes(provider)) return provider;
-  throw new Error(`不支持的智能体 Provider：${value || '-'}`);
-}
 function agentFromV2(
   project: Project,
   item: ProjectAgent,
@@ -471,14 +307,11 @@ function agentFromV2(
     updatedAt: '',
     deletedAt: '',
     projectId,
+    projectName: project.summary?.name ?? '',
   };
 }
 function agentIdFromV2(projectId: string, item: ProjectAgent): string {
   return (
     item.managedAgentId.trim() || `project:${encodeURIComponent(projectId)}:agent:${encodeURIComponent(item.agentName)}`
   );
-}
-function parseAgentFallbackId(id: string): { projectId: string; agentName: string } | undefined {
-  const match = /^project:([^:]+):agent:(.+)$/.exec(id);
-  return match ? { projectId: decodeURIComponent(match[1]), agentName: decodeURIComponent(match[2]) } : undefined;
 }

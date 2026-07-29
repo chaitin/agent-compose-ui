@@ -7,7 +7,7 @@
   import PageContent from '$lib/components/page-content.svelte';
   import Timestamp from '$lib/components/timestamp.svelte';
   import { timestampToISOString } from '../model/timestamps';
-  import { buildImage, inspectImage, listImages, pullImage, removeImage, type ImagePage } from '../api/resources';
+  import { inspectImage, listImages, pullImage, removeImage, type ImagePage } from '../api/resources';
   import type { Image } from '../gen/agentcompose/v2/agentcompose_pb.js';
   import { t } from '$lib/i18n.svelte';
 
@@ -18,10 +18,6 @@
   let busy = $state(false);
   let error = $state('');
   let messages = $state<string[]>([]);
-  let showBuild = $state(false);
-  let contextDir = $state('');
-  let dockerfile = $state('Dockerfile');
-  let tags = $state('');
 
   onMount(load);
   async function load() {
@@ -73,45 +69,11 @@
       busy = false;
     }
   }
-  async function build() {
-    if (!contextDir.trim() || !tags.trim()) {
-      error = t('构建目录和至少一个标签必填');
-      return;
-    }
-    busy = true;
-    messages = [];
-    error = '';
-    try {
-      await buildImage(
-        {
-          contextDir: contextDir.trim(),
-          dockerfile: dockerfile.trim(),
-          tags: tags
-            .split(',')
-            .map((v) => v.trim())
-            .filter(Boolean),
-        },
-        (line) => {
-          if (line) messages = [...messages, line];
-        },
-      );
-      showBuild = false;
-      await load();
-    } catch (e) {
-      error = message(e);
-    } finally {
-      busy = false;
-    }
-  }
   const message = (cause: unknown) => (cause instanceof Error ? cause.message : t('请求失败'));
   const bytes = (value: bigint) => (value > 0n ? `${(Number(value) / 1024 / 1024).toFixed(1)} MB` : '—');
 </script>
 
-<PageHeader title="镜像" description="Docker / OCI 镜像存储、拉取与构建">
-  {#snippet actions()}<Button variant="outline" size="sm" onclick={() => (showBuild = !showBuild)}
-      >{t('构建镜像')}</Button
-    >{/snippet}
-</PageHeader>
+<PageHeader title="镜像" description="管理 Docker / OCI 镜像" />
 <PageContent class="space-y-4">
   {#if error}<div class="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
       {error} <button class="ml-2 underline" onclick={load}>{t('重试')}</button>
@@ -128,19 +90,6 @@
       placeholder="例如 node:20"
     /><Button onclick={pull} disabled={busy}>{t('拉取')}</Button>
   </div>
-  {#if showBuild}<form
-      class="grid gap-2 rounded-lg border border-border bg-card p-4 md:grid-cols-3"
-      onsubmit={(e) => {
-        e.preventDefault();
-        void build();
-      }}
-    >
-      <Input bind:value={contextDir} placeholder={t('构建上下文绝对路径')} /><Input
-        bind:value={dockerfile}
-        placeholder="Dockerfile"
-      /><Input bind:value={tags} placeholder={t('标签，逗号分隔')} />
-      <div class="md:col-span-3"><Button type="submit" disabled={busy}>{t('开始构建')}</Button></div>
-    </form>{/if}
   {#if messages.length}<pre
       data-scroll-surface
       class="max-h-48 overflow-auto rounded-lg bg-muted p-3 text-xs">{messages.join('\n')}</pre>{/if}

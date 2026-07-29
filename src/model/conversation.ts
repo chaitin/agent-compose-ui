@@ -1,4 +1,4 @@
-import type { SandboxContext, SandboxHistoryCell } from '../api/sessions';
+import { CellType, type SandboxHistoryCell } from '../api/sessions';
 
 export type ConversationTurn = {
   id: string;
@@ -11,19 +11,6 @@ export type ConversationTurn = {
   stopReason?: string;
 };
 
-export type ConversationSummary = {
-  sandboxId: string;
-  title: string;
-  agentName: string;
-  status: string;
-  driver: string;
-  image: string;
-  createdAt: string;
-  updatedAt: string;
-  messageCount: number;
-  eventCount: number;
-};
-
 export type FailedConversationTurn = {
   id: string;
   runId: string;
@@ -33,10 +20,13 @@ export type FailedConversationTurn = {
   createdAt: string;
 };
 
+export type ConversationResponseState = 'streaming' | 'output' | 'error' | 'empty' | 'none';
+
 export function conversationTurns(cells: SandboxHistoryCell[]): ConversationTurn[] {
   const turns: ConversationTurn[] = [];
   const byRunId = new Map<string, ConversationTurn>();
   for (const cell of cells) {
+    if (cell.type !== CellType.AGENT) continue;
     // Runs without semantic message history may expose raw log fallback cells. They belong in Run logs, not chat.
     if (cell.stopReason === '旧运行：仅日志记录' && !cell.source) continue;
     const runId = cell.runId?.trim() ?? '';
@@ -93,21 +83,21 @@ export function withFailedConversationTurn(
   ];
 }
 
-export function conversationSummary(context: SandboxContext): ConversationSummary {
-  return {
-    sandboxId: context.id,
-    title: context.title || context.id,
-    agentName: tagValue(context.tags, 'agent_name') || tagValue(context.tags, 'agent') || '未标记智能体',
-    status: context.status,
-    driver: context.driver,
-    image: context.guestImage,
-    createdAt: context.createdAt,
-    updatedAt: context.updatedAt,
-    messageCount: context.cellCount,
-    eventCount: context.eventCount,
-  };
+export function isActiveConversationTurn(
+  turn: ConversationTurn,
+  activeRunId: string,
+  currentRunId: string,
+  activePrompt: string,
+): boolean {
+  if (!activePrompt) return false;
+  if (activeRunId) return turn.runId === activeRunId;
+  return turn.runId === currentRunId && turn.prompt === activePrompt;
 }
 
-function tagValue(tags: Array<{ name: string; value: string }>, name: string): string {
-  return tags.find((tag) => tag.name.trim() === name)?.value.trim() ?? '';
+export function conversationResponseState(status: string, output: string, error: string): ConversationResponseState {
+  if (status === 'running') return output ? 'output' : 'streaming';
+  if (status === 'failed' || error) return 'error';
+  if (output) return 'output';
+  if (status === 'success') return 'empty';
+  return 'none';
 }

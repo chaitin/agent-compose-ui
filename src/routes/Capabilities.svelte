@@ -3,6 +3,7 @@
   import PageHeader from '$lib/components/page-header.svelte';
   import PageContent from '$lib/components/page-content.svelte';
   import CopyableText from '$lib/components/copyable-text.svelte';
+  import TechnicalDetails from '$lib/components/technical-details.svelte';
   import { Button } from '$lib/components/ui/button';
   import {
     getCapabilityCatalog,
@@ -38,7 +39,7 @@
   }
 </script>
 
-<PageHeader title="能力集" description="能力网关状态、capset 与方法目录"
+<PageHeader title="能力集" description="查看能力集与可用方法"
   >{#snippet actions()}<Button variant="outline" size="sm" onclick={load}>{t('刷新')}</Button>{/snippet}</PageHeader
 >
 <PageContent class="space-y-4">
@@ -49,10 +50,11 @@
     </p>{:else}<div class="rounded-lg border border-border bg-card p-4 text-sm">
       <span class="mr-2 inline-block size-2 rounded-full {status?.ok ? 'bg-success' : 'bg-destructive'}"></span>{t(
         status?.ok ? '已连接' : '未连接',
-      )} · {status?.status || t('未配置')} · {status?.serviceCount ?? 0}
+      )} · {status?.serviceCount ?? 0}
       {t('个服务')}{#if status?.error}<p class="mt-2 text-destructive">
           {status.error}
         </p>{/if}
+      <TechnicalDetails title="诊断信息" class="mt-3" items={[{ label: '原始状态', value: status?.status || '' }]} />
     </div>
     <div class="grid gap-4 lg:grid-cols-[18rem_1fr]">
       <div class="space-y-1 rounded-lg border border-border p-2">
@@ -66,7 +68,7 @@
             <CopyableText
               value={set.id}
               display=""
-              label="Capability Set ID"
+              label="能力集 ID"
               class="absolute right-2 top-1/2 -translate-y-1/2"
             />
           </div>{:else}<p class="p-4 text-sm text-muted-foreground">{t('没有能力集')}</p>{/each}

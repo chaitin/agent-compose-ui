@@ -38,7 +38,7 @@
     }
   }
   async function prune() {
-    if (!confirm('确认清理 daemon 判定为未使用的缓存？')) return;
+    if (!confirm('确认清理未使用的缓存？')) return;
     try {
       const r = await pruneUnusedCaches(true);
       alert(`已删除 ${r.removed.length} 个，跳过 ${r.skipped.length} 个`);
@@ -50,7 +50,7 @@
   const size = (v: bigint) => `${(Number(v) / 1024 / 1024).toFixed(1)} MB`;
 </script>
 
-<PageHeader title="缓存" description="运行时、镜像与 Skill 缓存"
+<PageHeader title="缓存" description="管理运行与镜像缓存"
   >{#snippet actions()}<Button variant="outline" size="sm" onclick={prune}>{t('清理未使用缓存')}</Button><Button
       variant="outline"
       size="sm"

@@ -14,6 +14,7 @@
     height = '36rem',
     title = '代码编辑器',
     formatEnabled = true,
+    onChange,
   }: {
     value?: string;
     language?: string;
@@ -21,6 +22,7 @@
     height?: string;
     title?: string;
     formatEnabled?: boolean;
+    onChange?: (value: string) => void;
   } = $props();
 
   let container: HTMLDivElement;
@@ -102,6 +104,7 @@
         editor = createdEditor;
         createdEditor.onDidChangeModelContent(() => {
           value = createdEditor.getValue();
+          onChange?.(value);
         });
         createdEditor.addCommand(monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF, () => {
           void formatDocument();

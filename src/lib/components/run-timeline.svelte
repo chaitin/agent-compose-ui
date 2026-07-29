@@ -21,6 +21,10 @@
   }
 
   function eventText(event: RunEvent): string {
+    if (event.kind === RunEventKind.STATUS) {
+      if (event.success) return t('运行成功');
+      if (event.stopReason) return event.stopReason;
+    }
     return event.text || event.stopReason || event.name || event.agent || '';
   }
 
@@ -34,23 +38,23 @@
   }
 </script>
 
-<div class="relative space-y-0 pl-3">
-  <div class="absolute bottom-5 left-[1.55rem] top-5 w-px bg-border"></div>
+<div class="relative mx-auto max-w-5xl space-y-0 pl-1">
+  <div class="absolute bottom-4 left-[1.05rem] top-4 w-px bg-border"></div>
   {#each events as event, index (event.id)}
     {@const meta = metadata(event)}
     {@const Icon = meta.icon}
-    <article class="relative grid grid-cols-[2.75rem_1fr] gap-3 pb-5">
-      <div class="z-10 flex size-8 items-center justify-center rounded-full border {meta.tone}">
-        <Icon class="size-4" />
+    <article class="relative grid grid-cols-[2.1rem_1fr] gap-2 pb-3">
+      <div class="z-10 flex size-7 items-center justify-center rounded-full border {meta.tone}">
+        <Icon class="size-3.5" />
       </div>
-      <div class="min-w-0 rounded-lg border border-border bg-card p-3">
+      <div class="min-w-0 rounded-lg border border-border bg-card px-3 py-2.5">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div class="flex items-center gap-2">
             <span class="text-sm font-medium">{t(meta.label)}</span>
             <span class="font-mono text-[11px] text-muted-foreground">#{index + 1}</span>
             {#if event.agent}<span class="text-xs text-muted-foreground">{event.agent}</span>{/if}
           </div>
-          <Timestamp value={timestampToISOString(event.createdAt)} mode="full" class="text-xs" />
+          <Timestamp value={timestampToISOString(event.createdAt)} class="text-xs" />
         </div>
         {#if eventText(event)}<p class="mt-2 whitespace-pre-wrap text-sm leading-6">{eventText(event)}</p>{/if}
         {#if payload(event)}<details class="mt-2">

@@ -5,8 +5,10 @@
   import * as Dialog from '$lib/components/ui/dialog';
   import StatusBadge from '$lib/components/status-badge.svelte';
   import Timestamp from '$lib/components/timestamp.svelte';
+  import CopyableText from '$lib/components/copyable-text.svelte';
   import { t } from '$lib/i18n.svelte';
   import { copyText } from '$lib/clipboard';
+  import { compactIdentifier } from '../../model/identifiers';
   import {
     ApiTokenError,
     createApiToken,
@@ -41,7 +43,7 @@
       unavailable = false;
     } catch (cause) {
       unavailable = cause instanceof ApiTokenError && cause.status === 503;
-      if (!unavailable) error = message(cause, '加载 Token 失败');
+      if (!unavailable) error = message(cause, '加载 API 令牌失败');
     } finally {
       loading = false;
     }
@@ -57,7 +59,7 @@
 
   async function createToken(): Promise<void> {
     if (!name.trim()) {
-      error = 'Token 名称不能为空';
+      error = 'API 令牌名称不能为空';
       return;
     }
     saving = true;
@@ -68,7 +70,7 @@
       copied = false;
       await load();
     } catch (cause) {
-      error = message(cause, '创建 Token 失败');
+      error = message(cause, '创建 API 令牌失败');
     } finally {
       saving = false;
     }
@@ -80,7 +82,7 @@
       await copyText(created.token);
       copied = true;
     } catch {
-      error = '复制失败，请手动复制 Token';
+      error = '复制失败，请手动复制 API 令牌';
     }
   }
 
@@ -93,7 +95,7 @@
       revokeTarget = null;
       await load();
     } catch (cause) {
-      error = message(cause, '撤销 Token 失败');
+      error = message(cause, '撤销 API 令牌失败');
     } finally {
       saving = false;
     }
@@ -109,12 +111,12 @@
 <div class="flex min-h-0 flex-1 flex-col gap-4">
   <div class="flex shrink-0 flex-wrap items-start justify-between gap-3">
     <div>
-      <h2 class="text-sm font-medium">API Token</h2>
-      <p class="text-xs text-muted-foreground">{t('为远程 CLI 和自动化调用创建受角色约束的凭据，明文只显示一次。')}</p>
+      <h2 class="text-sm font-medium">{t('API 令牌')}</h2>
+      <p class="text-xs text-muted-foreground">{t('为 CLI 和 API 调用创建访问凭据')}</p>
     </div>
     <div class="flex gap-2">
       <Button variant="outline" size="sm" onclick={() => (guideOpen = true)}>{t('使用说明')}</Button>
-      <Button size="sm" disabled={unavailable} onclick={openCreate}>{t('创建 Token')}</Button>
+      <Button size="sm" disabled={unavailable} onclick={openCreate}>{t('创建令牌')}</Button>
     </div>
   </div>
 
@@ -123,11 +125,11 @@
     </div>{/if}
   {#if unavailable}
     <div class="rounded-lg border border-warning/35 bg-warning/10 p-4 text-sm">
-      <div class="font-medium">{t('Token 管理功能未启用')}</div>
-      <p class="mt-1 text-muted-foreground">{t('部署 UI server 时配置 TOKEN_DB_PATH 后启用，其他功能不受影响。')}</p>
+      <div class="font-medium">{t('API 令牌未启用')}</div>
+      <p class="mt-1 text-muted-foreground">{t('请联系管理员启用')}</p>
     </div>
   {:else if loading}
-    <p class="text-sm text-muted-foreground">{t('正在加载 Token…')}</p>
+    <p class="text-sm text-muted-foreground">{t('正在加载 API 令牌…')}</p>
   {:else}
     <div data-scroll-surface class="min-h-0 overflow-auto rounded-lg border border-border bg-card">
       <table class="w-full min-w-[52rem] text-left text-sm">
@@ -145,12 +147,17 @@
             <tr>
               <td class="p-3"
                 ><div class="font-medium">{item.name}</div>
-                <div class="font-mono text-[11px] text-muted-foreground">{item.id}</div></td
+                <CopyableText
+                  value={item.id}
+                  display={compactIdentifier(item.id)}
+                  label="Token ID"
+                  class="font-mono text-[11px] text-muted-foreground"
+                /></td
               >
               <td class="p-3 font-mono text-xs">{item.role}</td>
               <td class="p-3"><Timestamp value={item.createdAt} /></td>
               <td class="p-3"
-                >{#if item.expiresAt}<Timestamp value={item.expiresAt} />{:else}不过期（历史 Token）{/if}</td
+                >{#if item.expiresAt}<Timestamp value={item.expiresAt} />{:else}{t('不过期')}{/if}</td
               >
               <td class="p-3">
                 {#if item.revokedAt}<StatusBadge
@@ -172,7 +179,7 @@
               >
             </tr>
           {:else}
-            <tr><td colspan="6" class="p-8 text-center text-muted-foreground">尚未创建 API Token</td></tr>
+            <tr><td colspan="6" class="p-8 text-center text-muted-foreground">{t('尚未创建 API 令牌')}</td></tr>
           {/each}
         </tbody>
       </table>
@@ -183,7 +190,7 @@
 <Dialog.Root bind:open={guideOpen}>
   <Dialog.Content class="sm:max-w-xl">
     <Dialog.Header
-      ><Dialog.Title>API Token 使用说明</Dialog.Title><Dialog.Description
+      ><Dialog.Title>{t('API 令牌使用说明')}</Dialog.Title><Dialog.Description
         >调用地址由管理员提供，请勿直接将容器端口暴露到不可信网络。</Dialog.Description
       ></Dialog.Header
     >
@@ -206,8 +213,7 @@
 <Dialog.Root bind:open={createOpen}>
   <Dialog.Content>
     <Dialog.Header
-      ><Dialog.Title>创建 API Token</Dialog.Title><Dialog.Description
-        >Token 明文仅在创建成功后显示一次。</Dialog.Description
+      ><Dialog.Title>{t('创建 API 令牌')}</Dialog.Title><Dialog.Description>{t('令牌仅显示一次')}</Dialog.Description
       ></Dialog.Header
     >
     <form
@@ -247,7 +253,7 @@
 <Dialog.Root open={Boolean(created)} onOpenChange={(open) => !open && (created = null)}>
   <Dialog.Content class="sm:max-w-xl" showCloseButton={false}>
     <Dialog.Header
-      ><Dialog.Title>Token 已创建</Dialog.Title><Dialog.Description
+      ><Dialog.Title>{t('API 令牌已创建')}</Dialog.Title><Dialog.Description
         >请立即复制并安全保存，关闭后无法再次查看。</Dialog.Description
       ></Dialog.Header
     >
@@ -256,7 +262,7 @@
       </div>
       <p class="text-xs text-muted-foreground">有效期至：<Timestamp value={created.expiresAt} /></p>{/if}
     <Dialog.Footer
-      ><Button variant="outline" onclick={copyCreated}>{copied ? '已复制' : '复制 Token'}</Button><Button
+      ><Button variant="outline" onclick={copyCreated}>{copied ? t('已复制') : t('复制令牌')}</Button><Button
         onclick={() => (created = null)}>完成</Button
       ></Dialog.Footer
     >
@@ -266,7 +272,7 @@
 <Dialog.Root open={Boolean(revokeTarget)} onOpenChange={(open) => !open && (revokeTarget = null)}>
   <Dialog.Content>
     <Dialog.Header
-      ><Dialog.Title>撤销 API Token</Dialog.Title><Dialog.Description
+      ><Dialog.Title>{t('撤销 API 令牌')}</Dialog.Title><Dialog.Description
         >撤销后立即失效且无法恢复。确认撤销 {revokeTarget?.name}？</Dialog.Description
       ></Dialog.Header
     >

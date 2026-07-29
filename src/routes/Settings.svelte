@@ -8,7 +8,6 @@
   import PageHeader from '$lib/components/page-header.svelte';
   import PageContent from '$lib/components/page-content.svelte';
   import CopyableText from '$lib/components/copyable-text.svelte';
-  import TokenManagement from '$lib/components/token-management.svelte';
   import { navigate } from '$lib/router.svelte';
   import { t } from '$lib/i18n.svelte';
   import { getAuthStatus, type AuthStatus } from '../api/auth';
@@ -123,10 +122,10 @@
     try {
       JSON.parse(workspaceConfig || '{}');
     } catch {
-      error = t('Workspace 配置必须是有效 JSON');
+      error = t('工作目录配置必须是有效 JSON');
       return;
     }
-    await perform(t('Workspace 预设已创建'), async () => {
+    await perform(t('工作目录预设已创建'), async () => {
       const input = {
         name: workspaceName,
         type: workspaceType,
@@ -157,8 +156,8 @@
   }
 
   async function removeWorkspace(item: WorkspacePreset): Promise<void> {
-    if (!confirm(`确认删除 Workspace 预设 ${item.name}？`)) return;
-    await perform(t('Workspace 预设已删除'), async () => {
+    if (!confirm(`确认删除工作目录预设 ${item.name}？`)) return;
+    await perform(t('工作目录预设已删除'), async () => {
       await deleteWorkspacePreset(item.id);
       workspaces = await listWorkspacePresets();
     });
@@ -239,7 +238,7 @@
 </script>
 
 <div data-page-layout="workbench" class="flex h-full min-h-0 flex-col overflow-hidden">
-  <PageHeader title="设置" description="全局环境、能力网关、Webhook、Workspace、API Token 与鉴权" />
+  <PageHeader title="设置" description="管理全局配置与访问控制" />
   <PageContent class="flex min-h-0 flex-1 flex-col overflow-hidden">
     {#if error}<div class="mb-4 shrink-0 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
         {error}
@@ -249,15 +248,14 @@
       class="flex min-h-0 flex-1 flex-col overflow-hidden"
       value={activeTab}
       onValueChange={(value) => (activeTab = value)}
-      ><Tabs.List data-scroll-surface class="shrink-0 max-w-full justify-start overflow-x-auto"
+      ><Tabs.List data-tab-scroll class="shrink-0 justify-start"
         ><Tabs.Trigger value="env">{t('全局环境')}</Tabs.Trigger><Tabs.Trigger value="gateway"
           >{t('能力网关')}</Tabs.Trigger
         ><Tabs.Trigger value="webhook">Webhook</Tabs.Trigger><Tabs.Trigger
           value="workspace"
           onpointerenter={preloadMonaco}
-          onfocus={preloadMonaco}>{t('Workspace 预设')}</Tabs.Trigger
-        ><Tabs.Trigger value="tokens">API Token</Tabs.Trigger><Tabs.Trigger value="auth">{t('鉴权')}</Tabs.Trigger
-        ></Tabs.List
+          onfocus={preloadMonaco}>{t('工作目录')}</Tabs.Trigger
+        ><Tabs.Trigger value="auth">{t('鉴权')}</Tabs.Trigger></Tabs.List
       >
       <Tabs.Content data-scroll-pane value="env" class="mt-4 min-h-0 max-w-3xl flex-1 space-y-3 overflow-y-auto pr-1"
         >{#each envItems as item, index (index)}<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto_auto]">
@@ -275,7 +273,7 @@
                 type="checkbox"
                 checked={item.secret}
                 onchange={(event) => updateEnv(index, { secret: event.currentTarget.checked })}
-              />Secret</label
+              />{t('敏感值')}</label
             ><Button variant="ghost" size="sm" onclick={() => removeEnv(index)}>{t('移除')}</Button>
           </div>{/each}
         <div class="flex gap-2">
@@ -285,9 +283,6 @@
             onclick={saveEnv}>{t('保存')}</Button
           >
         </div></Tabs.Content
-      >
-      <Tabs.Content data-scroll-pane value="tokens" class="mt-4 min-h-0 flex-1 overflow-y-auto pr-1"
-        ><TokenManagement /></Tabs.Content
       >
       <Tabs.Content
         data-scroll-pane
@@ -304,13 +299,13 @@
         <label class="block space-y-1"
           ><span class="text-sm">{t('网关地址')}</span><Input bind:value={gatewayAddr} /></label
         ><label class="block space-y-1"
-          ><span class="text-sm">{t('访问 Token')}</span><Input
+          ><span class="text-sm">{t('访问令牌')}</span><Input
             bind:value={gatewayToken}
             type="password"
             placeholder={t(gatewayTokenSet ? '已设置；留空保持不变' : '可选')}
           /></label
         >{#if gatewayTokenSet}<label class="flex items-center gap-2 text-sm"
-            ><input type="checkbox" bind:checked={gatewayClearToken} />{t('清除已保存 Token')}</label
+            ><input type="checkbox" bind:checked={gatewayClearToken} />{t('清除已保存令牌')}</label
           >{/if}
         <div class="flex gap-2">
           <Button onclick={saveGateway} disabled={busy}>{t('保存网关')}</Button><Button
@@ -338,15 +333,15 @@
           <Input bind:value={webhookId} placeholder={t('唯一 ID')} disabled={editingWebhook} /><Input
             bind:value={webhookName}
             placeholder={t('名称')}
-          /><Input bind:value={webhookProvider} placeholder="Provider" /><Input
+          /><Input bind:value={webhookProvider} placeholder={t('来源')} /><Input
             bind:value={webhookTopic}
-            placeholder={t('Topic 前缀')}
-          /><Input bind:value={webhookToken} type="password" placeholder={t('访问 Token（留空保持）')} /><Input
+            placeholder={t('事件主题前缀')}
+          /><Input bind:value={webhookToken} type="password" placeholder={t('访问令牌（留空保持）')} /><Input
             bind:value={webhookSignatureType}
             placeholder={t('签名类型，如 hmac-sha256')}
           /><Input bind:value={webhookSignatureSecret} type="password" placeholder={t('签名密钥（留空保持）')} /><label
             class="flex items-center gap-2 text-sm"
-            ><span>{t('Body 上限')}</span><Input bind:value={webhookBodyLimit} type="number" /></label
+            ><span>{t('请求大小上限')}</span><Input bind:value={webhookBodyLimit} type="number" /></label
           ><label class="flex items-center gap-2 text-sm"
             ><input type="checkbox" bind:checked={webhookEnabled} />{t('启用')}</label
           >
@@ -395,7 +390,12 @@
               ><Input bind:value={workspaceComment} placeholder={t('备注')} />
             </div>
             <div class="min-h-[20rem] lg:min-h-0 lg:flex-1">
-              <CodeEditor bind:value={workspaceConfig} language="json" height="100%" title={t('Workspace 配置 JSON')} />
+              <CodeEditor
+                bind:value={workspaceConfig}
+                language="json"
+                height="100%"
+                title={t('工作目录配置（JSON）')}
+              />
             </div>
             <div class="flex shrink-0 gap-2">
               <Button type="submit">{t(editingWorkspaceId ? '保存修改' : '创建')}</Button
@@ -408,7 +408,7 @@
             <div class="flex items-center justify-between">
               <div>
                 <h2 class="text-sm font-medium">{t('已有预设')}</h2>
-                <p class="text-xs text-muted-foreground">{workspaces.length} 个 Workspace</p>
+                <p class="text-xs text-muted-foreground">{workspaces.length} {t('个预设')}</p>
               </div>
               {#if editingWorkspaceId}<Button variant="outline" size="sm" onclick={resetWorkspaceDraft}
                   >{t('新建')}</Button
@@ -420,7 +420,7 @@
                 <div>
                   <div class="font-medium">{item.name}</div>
                   <div class="flex items-center gap-1 text-xs text-muted-foreground">
-                    <span>{item.type} ·</span><CopyableText value={item.id} label="Workspace ID" class="max-w-56" />
+                    <span>{item.type} ·</span><CopyableText value={item.id} label="工作目录 ID" class="max-w-56" />
                   </div>
                   {#if item.comment}<div class="text-xs text-muted-foreground">{item.comment}</div>{/if}
                   <pre class="mt-2 whitespace-pre-wrap break-words text-xs">{item.configJson}</pre>
@@ -433,7 +433,7 @@
                     onclick={() => removeWorkspace(item)}>{t('删除')}</Button
                   >
                 </div>
-              </div>{:else}<p class="text-sm text-muted-foreground">{t('没有 Workspace 预设')}</p>{/each}
+              </div>{:else}<p class="text-sm text-muted-foreground">{t('没有工作目录预设')}</p>{/each}
           </aside>
         </div></Tabs.Content
       >
