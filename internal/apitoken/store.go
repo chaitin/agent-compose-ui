@@ -139,7 +139,8 @@ func (s *Store) Authenticate(ctx context.Context, raw string) (Identity, error) 
 	var digest []byte
 	var role Role
 	var expiresAt, revokedAt sql.NullInt64
-	err := s.db.QueryRowContext(ctx, `SELECT secret_hash, role, expires_at, revoked_at FROM api_token WHERE id=?`, lookupID).Scan(&digest, &role, &expiresAt, &revokedAt)
+	var name string
+	err := s.db.QueryRowContext(ctx, `SELECT secret_hash, role, name, expires_at, revoked_at FROM api_token WHERE id=?`, lookupID).Scan(&digest, &role, &name, &expiresAt, &revokedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		digest = dummyDigest[:]
 		role = RoleReadOnlyAdmin
@@ -152,7 +153,7 @@ func (s *Store) Authenticate(ctx context.Context, raw string) (Identity, error) 
 	if !valid {
 		return Identity{}, ErrInvalidToken
 	}
-	return Identity{ID: parsed.id, Role: role}, nil
+	return Identity{ID: parsed.id, Role: role, Name: name}, nil
 }
 
 func (s *Store) Close() error {

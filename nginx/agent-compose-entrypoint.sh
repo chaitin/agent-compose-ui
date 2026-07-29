@@ -3,6 +3,8 @@ set -eu
 
 : "${TOKEN_DB_PATH:=/data/api/tokens.db}"
 export TOKEN_DB_PATH
+: "${UI_STATE_DB_PATH:=$TOKEN_DB_PATH}"
+export UI_STATE_DB_PATH
 
 /usr/local/bin/agent-compose-ui-server &
 ui_server_pid=$!

@@ -55,7 +55,7 @@ func TestTokenManagementAndMachineProxyIntegration(t *testing.T) {
 	browser := do.MustInvoke[*http.Server](di).Handler
 	machine := do.MustInvokeNamed[*http.Server](di, "token").Handler
 
-	create := httptest.NewRequest(http.MethodPost, "/ui-api/v1/tokens", strings.NewReader(`{"name":"automation","role":"admin","expiresInDays":90}`))
+	create := httptest.NewRequest(http.MethodPost, "/api/ui/v1/tokens", strings.NewReader(`{"name":"automation","role":"admin","expiresInDays":90}`))
 	create.Header.Set("Content-Type", "application/json")
 	createdResponse := httptest.NewRecorder()
 	browser.ServeHTTP(createdResponse, create)
@@ -63,10 +63,16 @@ func TestTokenManagementAndMachineProxyIntegration(t *testing.T) {
 		t.Fatalf("create status = %d: %s", createdResponse.Code, createdResponse.Body.String())
 	}
 	var created struct {
+		ID    string `json:"id"`
 		Token string `json:"token"`
 	}
 	if err := json.Unmarshal(createdResponse.Body.Bytes(), &created); err != nil || created.Token == "" {
 		t.Fatalf("created response = %q, err = %v", createdResponse.Body.String(), err)
+	}
+	auditResponse := httptest.NewRecorder()
+	browser.ServeHTTP(auditResponse, httptest.NewRequest(http.MethodGet, "/api/ui/v1/audit/events", nil))
+	if auditResponse.Code != http.StatusOK || !strings.Contains(auditResponse.Body.String(), "POST /api/ui/v1/tokens") {
+		t.Fatalf("audit response = %d: %s", auditResponse.Code, auditResponse.Body.String())
 	}
 
 	request := httptest.NewRequest(http.MethodPatch, "/future/write-api", nil)
@@ -75,6 +81,12 @@ func TestTokenManagementAndMachineProxyIntegration(t *testing.T) {
 	machine.ServeHTTP(response, request)
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("proxy status = %d: %s", response.Code, response.Body.String())
+	}
+	auditResponse = httptest.NewRecorder()
+	browser.ServeHTTP(auditResponse, httptest.NewRequest(http.MethodGet, "/api/ui/v1/audit/events", nil))
+	if auditResponse.Code != http.StatusOK || !strings.Contains(auditResponse.Body.String(), `"id":"token:`+created.ID+`"`) ||
+		!strings.Contains(auditResponse.Body.String(), `"displayName":"automation"`) {
+		t.Fatalf("token audit attribution = %d: %s", auditResponse.Code, auditResponse.Body.String())
 	}
 }
 

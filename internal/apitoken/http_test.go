@@ -33,6 +33,7 @@ func TestCreateInputBoundary(t *testing.T) {
 		want                                       int
 	}{
 		{"valid default", `{"name":"ci","role":"read-only-admin"}`, "application/json", "http://example.com", "same-origin", http.StatusCreated},
+		{"same origin through proxy", `{"name":"ci","role":"read-only-admin"}`, "application/json", "http://localhost:5174", "same-origin", http.StatusCreated},
 		{"valid one year", `{"name":"ci","role":"admin","expiresInDays":365}`, "application/json", "", "", http.StatusCreated},
 		{"invalid validity", `{"name":"ci","role":"admin","expiresInDays":2}`, "application/json", "", "", http.StatusUnprocessableEntity},
 		{"unknown field", `{"name":"ci","role":"admin","extra":true}`, "application/json", "", "", http.StatusBadRequest},

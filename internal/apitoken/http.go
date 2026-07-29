@@ -29,9 +29,11 @@ type HTTPHandler struct {
 
 func NewHTTPHandler(store tokenStore) *HTTPHandler {
 	h := &HTTPHandler{store: store, mux: http.NewServeMux()}
-	h.mux.HandleFunc("GET /ui-api/v1/tokens", h.list)
-	h.mux.HandleFunc("POST /ui-api/v1/tokens", h.create)
-	h.mux.HandleFunc("DELETE /ui-api/v1/tokens/{id}", h.revoke)
+	for _, prefix := range []string{"/api/ui/v1/tokens", "/ui-api/v1/tokens"} {
+		h.mux.HandleFunc("GET "+prefix, h.list)
+		h.mux.HandleFunc("POST "+prefix, h.create)
+		h.mux.HandleFunc("DELETE "+prefix+"/{id}", h.revoke)
+	}
 	return h
 }
 
@@ -128,8 +130,15 @@ func validPublicID(value string) bool {
 }
 
 func sameOrigin(r *http.Request) bool {
-	if strings.EqualFold(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site")), "cross-site") {
+	fetchSite := strings.ToLower(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site")))
+	if fetchSite == "cross-site" {
 		return false
+	}
+	// Sec-Fetch-Site is a browser-controlled forbidden header. Prefer it when
+	// present so a same-origin request remains valid after a trusted development
+	// or deployment proxy rewrites Host.
+	if fetchSite == "same-origin" {
+		return true
 	}
 	rawOrigin := strings.TrimSpace(r.Header.Get("Origin"))
 	if rawOrigin == "" {

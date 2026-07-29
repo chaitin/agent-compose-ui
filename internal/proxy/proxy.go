@@ -33,6 +33,12 @@ func NewTokenBackendProxy(backend *url.URL) http.Handler {
 
 func newBackendProxy(backend *url.URL, transport http.RoundTripper, amend func(*http.Request)) http.Handler {
 	proxy := httputil.NewSingleHostReverseProxy(backend)
+	// Connect server streams use application/connect+proto or
+	// application/connect+json rather than text/event-stream. ReverseProxy's
+	// default streaming heuristic does not recognize those content types and
+	// can buffer small RunAgentStream messages until the request completes.
+	// Flush every write so STARTED/OUTPUT events reach the browser immediately.
+	proxy.FlushInterval = -1
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalHost := req.Host

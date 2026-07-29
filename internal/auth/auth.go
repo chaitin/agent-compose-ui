@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"agent-compose-ui/internal/audit"
+
 	"github.com/labstack/echo/v4"
 	"golang.org/x/oauth2"
 )
@@ -27,11 +29,13 @@ type Manager struct {
 	oauthEnabled  bool
 	oauthUser     string
 	oauthUserInfo string
+	oauthProvider string
 	oauth2Config  *oauth2.Config
 	oauthStateTTL time.Duration
+	auditStore    *audit.Store
 }
 
-func NewManagerFromEnv() *Manager {
+func NewManagerFromEnv(stores ...*audit.Store) *Manager {
 	ttl := 24 * time.Hour
 	if raw := strings.TrimSpace(os.Getenv("AUTH_SESSION_TTL")); raw != "" {
 		if parsed, err := time.ParseDuration(raw); err != nil {
@@ -52,6 +56,9 @@ func NewManagerFromEnv() *Manager {
 		password:      os.Getenv("AUTH_PASSWORD"),
 		ttl:           ttl,
 		oauthStateTTL: 5 * time.Minute,
+	}
+	if len(stores) > 0 {
+		manager.auditStore = stores[0]
 	}
 	manager.configureOAuth(username)
 	if !manager.enabled {
@@ -90,6 +97,7 @@ func (a *Manager) configureOAuth(username string) {
 		a.oauthUser = "oauth"
 	}
 	a.oauthUserInfo = oauthUserInfoURL
+	a.oauthProvider = firstNonEmpty(oauthBaseURL, oauthAuthURL)
 	authStyle := oauth2.AuthStyleInParams
 	clientSecret := os.Getenv("OAUTH_SECRET")
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("OAUTH_CLIENT_AUTH_METHOD"))) {
@@ -124,9 +132,11 @@ func (a *Manager) Protect(next echo.HandlerFunc) echo.HandlerFunc {
 		if !a.protectsPath(r.URL.Path, r.Header.Get("Accept")) {
 			return next(c)
 		}
-		if _, _, ok := a.validateRequest(r); ok {
+		if principal, _, ok := a.validateRequest(r); ok {
+			c.SetRequest(r.WithContext(audit.WithPrincipal(r.Context(), principal)))
 			return next(c)
 		}
+		a.record(r, audit.Input{Actor: audit.Principal{ID: "anonymous", Source: "anonymous", Username: "anonymous", DisplayName: "匿名", AuthMethod: "none"}, Category: "authentication", Action: "access.denied", Method: r.Method, Path: r.URL.Path, Outcome: "denied", Status: http.StatusUnauthorized})
 		if acceptsHTML(r) {
 			return c.Redirect(http.StatusFound, loginRedirectPath(r))
 		}
@@ -150,4 +160,16 @@ func (a *Manager) protectsPath(path string, accept string) bool {
 		return true
 	}
 	return strings.Contains(accept, "text/html")
+}
+
+func (a *Manager) record(r *http.Request, input audit.Input) {
+	if a.auditStore == nil {
+		return
+	}
+	input.RequestID = r.Header.Get("X-Request-ID")
+	input.RemoteIP = r.RemoteAddr
+	input.UserAgent = r.UserAgent()
+	if err := a.auditStore.Record(r.Context(), input); err != nil {
+		slog.ErrorContext(r.Context(), "audit write failed", "stage", "auth", "error", err)
+	}
 }

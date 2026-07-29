@@ -35,4 +35,5 @@ type Created struct {
 type Identity struct {
 	ID   string
 	Role Role
+	Name string
 }

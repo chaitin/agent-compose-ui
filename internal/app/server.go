@@ -14,9 +14,11 @@ import (
 	"time"
 
 	"agent-compose-ui/internal/apitoken"
+	"agent-compose-ui/internal/audit"
 	"agent-compose-ui/internal/auth"
 	"agent-compose-ui/internal/config"
 	"agent-compose-ui/internal/proxy"
+	"agent-compose-ui/internal/terminal"
 	"agent-compose-ui/internal/tokenproxy"
 
 	"github.com/labstack/echo/v4"
@@ -41,9 +43,31 @@ func Run() error {
 	browserServer := do.MustInvoke[*http.Server](di)
 	tokenServer := do.MustInvokeNamed[*http.Server](di, "token")
 	tokens := do.MustInvoke[*TokenRuntime](di)
+	audits := do.MustInvoke[*AuditRuntime](di)
+	if audits.Store != nil {
+		go func() {
+			ticker := time.NewTicker(24 * time.Hour)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if err := audits.Store.Cleanup(context.Background()); err != nil {
+						slog.Error("clean audit store", "error", err)
+					}
+				}
+			}
+		}()
+	}
 	defer func() {
 		if err := tokens.Close(); err != nil {
 			slog.Error("close token store", "error", err)
+		}
+	}()
+	defer func() {
+		if err := audits.Close(); err != nil {
+			slog.Error("close audit store", "error", err)
 		}
 	}()
 	logger := do.MustInvoke[*slog.Logger](di)
@@ -64,7 +88,9 @@ func Register(di do.Injector) {
 	do.Provide(di, NewEcho)
 	do.Provide(di, NewAuthManager)
 	do.Provide(di, NewBackendProxy)
+	do.Provide(di, NewAuditRuntime)
 	do.Provide(di, NewTokenRuntime)
+	do.Provide(di, NewTerminalBridge)
 	do.Provide(di, NewHTTPServer)
 	do.ProvideNamed(di, "token", NewTokenHTTPServer)
 }
@@ -92,18 +118,52 @@ func NewEcho(di do.Injector) (*echo.Echo, error) {
 	app := echo.New()
 	app.HideBanner = true
 	app.HidePort = true
+	app.Use(middleware.RequestID())
 	app.Use(middleware.RequestLogger())
 	app.Use(middleware.Recover())
-	registerRoutes(app, do.MustInvoke[*auth.Manager](di), do.MustInvoke[http.Handler](di), do.MustInvoke[*TokenRuntime](di).Management)
+	registerRoutes(
+		app,
+		do.MustInvoke[*auth.Manager](di),
+		do.MustInvoke[*terminal.Bridge](di),
+		do.MustInvoke[http.Handler](di),
+		do.MustInvoke[*TokenRuntime](di).Management,
+		do.MustInvoke[*AuditRuntime](di),
+	)
 	return app, nil
 }
 
 func NewAuthManager(di do.Injector) (*auth.Manager, error) {
-	return auth.NewManagerFromEnv(), nil
+	return auth.NewManagerFromEnv(do.MustInvoke[*AuditRuntime](di).Store), nil
 }
 
 func NewBackendProxy(di do.Injector) (http.Handler, error) {
 	return proxy.NewBackendProxy(do.MustInvoke[*url.URL](di)), nil
+}
+
+type AuditRuntime struct {
+	Management http.Handler
+	Middleware *audit.Middleware
+	Store      *audit.Store
+}
+
+func NewAuditRuntime(di do.Injector) (*AuditRuntime, error) {
+	cfg := do.MustInvoke[config.Config](di)
+	logger := do.MustInvoke[*slog.Logger](di)
+	if cfg.StateDBPath == "" {
+		return &AuditRuntime{Management: audit.UnavailableHandler(), Middleware: audit.NewMiddleware(nil, logger)}, nil
+	}
+	store, err := audit.OpenStore(cfg.StateDBPath, cfg.AuditRetentionDay)
+	if err != nil {
+		return nil, err
+	}
+	return &AuditRuntime{Management: audit.NewHTTPHandler(store), Middleware: audit.NewMiddleware(store, logger), Store: store}, nil
+}
+
+func (r *AuditRuntime) Close() error {
+	if r == nil || r.Store == nil {
+		return nil
+	}
+	return r.Store.Close()
 }
 
 type TokenRuntime struct {
@@ -126,10 +186,11 @@ func NewTokenRuntime(di do.Injector) (*TokenRuntime, error) {
 	}
 	return &TokenRuntime{
 		Management: apitoken.NewHTTPHandler(store),
-		Machine: tokenproxy.New(
+		Machine: tokenproxy.NewWithAudit(
 			store,
 			proxy.NewTokenBackendProxy(do.MustInvoke[*url.URL](di)),
 			do.MustInvoke[*slog.Logger](di),
+			do.MustInvoke[*AuditRuntime](di).Middleware,
 		),
 		store: store,
 	}, nil
@@ -140,6 +201,10 @@ func (r *TokenRuntime) Close() error {
 		return nil
 	}
 	return r.store.Close()
+}
+
+func NewTerminalBridge(di do.Injector) (*terminal.Bridge, error) {
+	return terminal.NewBridge(do.MustInvoke[*url.URL](di), do.MustInvoke[*AuditRuntime](di).Middleware), nil
 }
 
 func NewHTTPServer(di do.Injector) (*http.Server, error) {
@@ -161,7 +226,14 @@ func NewTokenHTTPServer(di do.Injector) (*http.Server, error) {
 	}, nil
 }
 
-func registerRoutes(app *echo.Echo, authManager *auth.Manager, backend, tokenManagement http.Handler) {
+func registerRoutes(
+	app *echo.Echo,
+	authManager *auth.Manager,
+	terminalBridge *terminal.Bridge,
+	backend http.Handler,
+	tokenManagement http.Handler,
+	audits *AuditRuntime,
+) {
 	app.GET("/api/auth/status", authManager.HandleStatus)
 	app.HEAD("/api/auth/status", authManager.HandleStatus)
 	app.POST("/api/auth/login", authManager.HandleLogin)
@@ -170,8 +242,14 @@ func registerRoutes(app *echo.Echo, authManager *auth.Manager, backend, tokenMan
 	app.HEAD("/oauth/authorize", authManager.HandleOAuthAuthorize)
 	app.GET("/oauth/callback", authManager.HandleOAuthCallback)
 	app.HEAD("/oauth/callback", authManager.HandleOAuthCallback)
-	app.Any("/ui-api/*", authManager.Protect(echo.WrapHandler(tokenManagement)))
-	app.Any("/*", authManager.Protect(echo.WrapHandler(backend)))
+	app.Any("/api/ui/v1/audit/*", authManager.Protect(echo.WrapHandler(audits.Management)))
+	app.Any("/api/ui/v1/tokens", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(tokenManagement))))
+	app.Any("/api/ui/v1/tokens/*", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(tokenManagement))))
+	// Deprecated compatibility endpoint. New UI-server APIs live under /api/ui/v1.
+	app.Any("/ui-api/v1/tokens", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(tokenManagement))))
+	app.Any("/ui-api/v1/tokens/*", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(tokenManagement))))
+	app.GET(terminal.AttachPath, authManager.Protect(echo.WrapHandler(terminalBridge)))
+	app.Any("/*", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(backend))))
 }
 
 func servePair(ctx context.Context, browser, token *http.Server) error {
