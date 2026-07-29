@@ -1,5 +1,6 @@
 import { capabilityClient, settingsClient } from './client';
 import { apiFetch, apiFetchJson } from './http';
+import { timestampToISOString as timestampString } from '../model/timestamps';
 
 export type CapabilityGatewayConfig = {
   addr: string;
@@ -24,8 +25,11 @@ export async function getCapabilityGatewayConfig(): Promise<CapabilityGatewayCon
 
 // updateCapabilityGatewayConfig saves the OctoBus connection. An empty token
 // clears the stored token.
-export async function updateCapabilityGatewayConfig(addr: string, token: string): Promise<CapabilityGatewayConfig> {
-  const response = await settingsClient.updateCapabilityGatewayConfig({ addr, token });
+export async function updateCapabilityGatewayConfig(addr: string, token?: string): Promise<CapabilityGatewayConfig> {
+  const response = await settingsClient.updateCapabilityGatewayConfig({
+    addr,
+    ...(token !== undefined ? { token } : {}),
+  });
   return { addr: response.config?.addr ?? '', tokenSet: response.config?.tokenSet ?? false };
 }
 
@@ -260,24 +264,21 @@ export async function listWebhookSources(): Promise<WebhookSource[]> {
 }
 
 export async function saveWebhookSource(id: string, input: WebhookSourceInput): Promise<WebhookSource> {
-  const response = await apiFetchJson<WebhookSourceResponse>(
-    `/api/webhook-sources/${encodeURIComponent(id)}`,
-    {
-      method: 'PUT',
-      body: JSON.stringify({
-        name: input.name.trim(),
-        enabled: input.enabled,
-        provider: input.provider.trim(),
-        topic_prefix: input.topicPrefix.trim(),
-        token: input.token,
-        clear_token: input.clearToken,
-        signature_type: input.signatureType.trim(),
-        signature_secret: input.signatureSecret,
-        clear_signature: input.clearSignature,
-        body_limit_bytes: input.bodyLimitBytes,
-      }),
-    },
-  );
+  const response = await apiFetchJson<WebhookSourceResponse>(`/api/webhook-sources/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      name: input.name.trim(),
+      enabled: input.enabled,
+      provider: input.provider.trim(),
+      topic_prefix: input.topicPrefix.trim(),
+      token: input.token,
+      clear_token: input.clearToken,
+      signature_type: input.signatureType.trim(),
+      signature_secret: input.signatureSecret,
+      clear_signature: input.clearSignature,
+      body_limit_bytes: input.bodyLimitBytes,
+    }),
+  });
   if (!response.source) {
     throw new Error('Webhook 来源保存失败');
   }
@@ -288,7 +289,9 @@ export async function deleteWebhookSource(id: string): Promise<void> {
   await apiFetch(`/api/webhook-sources/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
-function workspaceFromResponse(item: NonNullable<Awaited<ReturnType<typeof settingsClient.createWorkspacePreset>>['preset']>): WorkspacePreset {
+function workspaceFromResponse(
+  item: NonNullable<Awaited<ReturnType<typeof settingsClient.createWorkspacePreset>>['preset']>,
+): WorkspacePreset {
   return {
     id: item.id,
     name: item.name,
@@ -298,10 +301,6 @@ function workspaceFromResponse(item: NonNullable<Awaited<ReturnType<typeof setti
     createdAt: timestampString(item.createdAt),
     updatedAt: timestampString(item.updatedAt),
   };
-}
-
-function timestampString(value?: { seconds: bigint; nanos: number }): string {
-  return value ? new Date(Number(value.seconds) * 1000 + value.nanos / 1e6).toISOString() : '';
 }
 
 function webhookSourceFromResponse(item: WebhookSourceResponseItem): WebhookSource {

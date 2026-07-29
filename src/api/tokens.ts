@@ -16,7 +16,10 @@ export type CreatedApiToken = ApiTokenMetadata & {
 };
 
 export class ApiTokenError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
     super(message);
     this.name = 'ApiTokenError';
   }
@@ -36,7 +39,7 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
   if (response.ok) return response;
   let message = response.status === 503 ? 'Token 管理功能未启用' : `请求失败 (${response.status})`;
   try {
-    const body = await response.json() as { error?: string; message?: string };
+    const body = (await response.json()) as { error?: string; message?: string };
     message = body.error ?? body.message ?? message;
   } catch {
     // Keep the status-derived message for non-JSON gateway responses.
@@ -45,20 +48,24 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
 }
 
 export async function listApiTokens(): Promise<ApiTokenMetadata[]> {
-  const response = await request('/ui-api/v1/tokens');
-  const body = await response.json() as { items?: ApiTokenMetadata[] };
+  const response = await request('/api/ui/v1/tokens');
+  const body = (await response.json()) as { items?: ApiTokenMetadata[] };
   return Array.isArray(body.items) ? body.items : [];
 }
 
-export async function createApiToken(name: string, role: ApiTokenRole, expiresInDays: number): Promise<CreatedApiToken> {
-  const response = await request('/ui-api/v1/tokens', {
+export async function createApiToken(
+  name: string,
+  role: ApiTokenRole,
+  expiresInDays: number,
+): Promise<CreatedApiToken> {
+  const response = await request('/api/ui/v1/tokens', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, role, expiresInDays }),
   });
-  return await response.json() as CreatedApiToken;
+  return (await response.json()) as CreatedApiToken;
 }
 
 export async function revokeApiToken(id: string): Promise<void> {
-  await request(`/ui-api/v1/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  await request(`/api/ui/v1/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }

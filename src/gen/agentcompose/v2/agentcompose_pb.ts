@@ -223,32 +223,6 @@ proto3.util.setEnumType(SchedulerRunStatus, "agentcompose.v2.SchedulerRunStatus"
 ]);
 
 /**
- * @generated from enum agentcompose.v2.AgentStatus
- */
-export enum AgentStatus {
-  /**
-   * @generated from enum value: AGENT_STATUS_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
-
-  /**
-   * @generated from enum value: AGENT_STATUS_ENABLED = 1;
-   */
-  ENABLED = 1,
-
-  /**
-   * @generated from enum value: AGENT_STATUS_DISABLED = 2;
-   */
-  DISABLED = 2,
-}
-// Retrieve enum metadata with: proto3.getEnumType(AgentStatus)
-proto3.util.setEnumType(AgentStatus, "agentcompose.v2.AgentStatus", [
-  { no: 0, name: "AGENT_STATUS_UNSPECIFIED" },
-  { no: 1, name: "AGENT_STATUS_ENABLED" },
-  { no: 2, name: "AGENT_STATUS_DISABLED" },
-]);
-
-/**
  * @generated from enum agentcompose.v2.ProjectAgentAvailability
  */
 export enum ProjectAgentAvailability {
@@ -1645,19 +1619,19 @@ export class ProjectSummary extends Message<ProjectSummary> {
   latestRunId = "";
 
   /**
-   * @generated from field: string created_at = 10;
+   * @generated from field: google.protobuf.Timestamp created_at = 10;
    */
-  createdAt = "";
+  createdAt?: Timestamp;
 
   /**
-   * @generated from field: string updated_at = 11;
+   * @generated from field: google.protobuf.Timestamp updated_at = 11;
    */
-  updatedAt = "";
+  updatedAt?: Timestamp;
 
   /**
-   * @generated from field: string removed_at = 12;
+   * @generated from field: google.protobuf.Timestamp removed_at = 12;
    */
-  removedAt = "";
+  removedAt?: Timestamp;
 
   constructor(data?: PartialMessage<ProjectSummary>) {
     super();
@@ -1676,9 +1650,9 @@ export class ProjectSummary extends Message<ProjectSummary> {
     { no: 7, name: "scheduler_count", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
     { no: 8, name: "running_run_count", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
     { no: 9, name: "latest_run_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 10, name: "created_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 11, name: "updated_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 12, name: "removed_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 10, name: "created_at", kind: "message", T: Timestamp },
+    { no: 11, name: "updated_at", kind: "message", T: Timestamp },
+    { no: 12, name: "removed_at", kind: "message", T: Timestamp },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ProjectSummary {
@@ -1723,9 +1697,9 @@ export class ProjectRevision extends Message<ProjectRevision> {
   spec?: ProjectSpec;
 
   /**
-   * @generated from field: string created_at = 5;
+   * @generated from field: google.protobuf.Timestamp created_at = 5;
    */
-  createdAt = "";
+  createdAt?: Timestamp;
 
   constructor(data?: PartialMessage<ProjectRevision>) {
     super();
@@ -1739,7 +1713,7 @@ export class ProjectRevision extends Message<ProjectRevision> {
     { no: 2, name: "revision", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
     { no: 3, name: "spec_hash", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 4, name: "spec", kind: "message", T: ProjectSpec },
-    { no: 5, name: "created_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "created_at", kind: "message", T: Timestamp },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ProjectRevision {
@@ -2504,6 +2478,31 @@ export class SchedulerEvent extends Message<SchedulerEvent> {
    */
   createdAt?: Timestamp;
 
+  /**
+   * @generated from field: string agent_name = 9;
+   */
+  agentName = "";
+
+  /**
+   * @generated from field: string scheduler_id = 10;
+   */
+  schedulerId = "";
+
+  /**
+   * @generated from field: string linked_sandbox_id = 11;
+   */
+  linkedSandboxId = "";
+
+  /**
+   * @generated from field: string linked_cell_id = 12;
+   */
+  linkedCellId = "";
+
+  /**
+   * @generated from field: string linked_agent_thread_id = 13;
+   */
+  linkedAgentThreadId = "";
+
   constructor(data?: PartialMessage<SchedulerEvent>) {
     super();
     proto3.util.initPartial(data, this);
@@ -2520,6 +2519,11 @@ export class SchedulerEvent extends Message<SchedulerEvent> {
     { no: 6, name: "run_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 7, name: "trigger_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 8, name: "created_at", kind: "message", T: Timestamp },
+    { no: 9, name: "agent_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 10, name: "scheduler_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 11, name: "linked_sandbox_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 12, name: "linked_cell_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 13, name: "linked_agent_thread_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SchedulerEvent {
@@ -2579,6 +2583,214 @@ export class ListSchedulerEventsResponse extends Message<ListSchedulerEventsResp
 
   static equals(a: ListSchedulerEventsResponse | PlainMessage<ListSchedulerEventsResponse> | undefined, b: ListSchedulerEventsResponse | PlainMessage<ListSchedulerEventsResponse> | undefined): boolean {
     return proto3.util.equals(ListSchedulerEventsResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.ListProjectSchedulerEventsRequest
+ */
+export class ListProjectSchedulerEventsRequest extends Message<ListProjectSchedulerEventsRequest> {
+  /**
+   * @generated from field: agentcompose.v2.ProjectRef project = 1;
+   */
+  project?: ProjectRef;
+
+  /**
+   * @generated from field: string agent_name = 2;
+   */
+  agentName = "";
+
+  /**
+   * @generated from field: string trigger_id = 3;
+   */
+  triggerId = "";
+
+  /**
+   * @generated from field: string run_id = 4;
+   */
+  runId = "";
+
+  /**
+   * @generated from field: uint32 limit = 5;
+   */
+  limit = 0;
+
+  /**
+   * @generated from field: string cursor = 6;
+   */
+  cursor = "";
+
+  constructor(data?: PartialMessage<ListProjectSchedulerEventsRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.ListProjectSchedulerEventsRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "message", T: ProjectRef },
+    { no: 2, name: "agent_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "trigger_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "run_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "limit", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
+    { no: 6, name: "cursor", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListProjectSchedulerEventsRequest {
+    return new ListProjectSchedulerEventsRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ListProjectSchedulerEventsRequest {
+    return new ListProjectSchedulerEventsRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ListProjectSchedulerEventsRequest {
+    return new ListProjectSchedulerEventsRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ListProjectSchedulerEventsRequest | PlainMessage<ListProjectSchedulerEventsRequest> | undefined, b: ListProjectSchedulerEventsRequest | PlainMessage<ListProjectSchedulerEventsRequest> | undefined): boolean {
+    return proto3.util.equals(ListProjectSchedulerEventsRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.ListProjectSchedulerEventsResponse
+ */
+export class ListProjectSchedulerEventsResponse extends Message<ListProjectSchedulerEventsResponse> {
+  /**
+   * @generated from field: repeated agentcompose.v2.SchedulerEvent events = 1;
+   */
+  events: SchedulerEvent[] = [];
+
+  /**
+   * @generated from field: string next_cursor = 2;
+   */
+  nextCursor = "";
+
+  constructor(data?: PartialMessage<ListProjectSchedulerEventsResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.ListProjectSchedulerEventsResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "events", kind: "message", T: SchedulerEvent, repeated: true },
+    { no: 2, name: "next_cursor", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListProjectSchedulerEventsResponse {
+    return new ListProjectSchedulerEventsResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ListProjectSchedulerEventsResponse {
+    return new ListProjectSchedulerEventsResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ListProjectSchedulerEventsResponse {
+    return new ListProjectSchedulerEventsResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ListProjectSchedulerEventsResponse | PlainMessage<ListProjectSchedulerEventsResponse> | undefined, b: ListProjectSchedulerEventsResponse | PlainMessage<ListProjectSchedulerEventsResponse> | undefined): boolean {
+    return proto3.util.equals(ListProjectSchedulerEventsResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.InvokeSchedulerRequest
+ */
+export class InvokeSchedulerRequest extends Message<InvokeSchedulerRequest> {
+  /**
+   * @generated from field: agentcompose.v2.ProjectRef project = 1;
+   */
+  project?: ProjectRef;
+
+  /**
+   * @generated from field: string agent_name = 2;
+   */
+  agentName = "";
+
+  /**
+   * @generated from field: string payload_json = 3;
+   */
+  payloadJson = "";
+
+  constructor(data?: PartialMessage<InvokeSchedulerRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.InvokeSchedulerRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "message", T: ProjectRef },
+    { no: 2, name: "agent_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "payload_json", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): InvokeSchedulerRequest {
+    return new InvokeSchedulerRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): InvokeSchedulerRequest {
+    return new InvokeSchedulerRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): InvokeSchedulerRequest {
+    return new InvokeSchedulerRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: InvokeSchedulerRequest | PlainMessage<InvokeSchedulerRequest> | undefined, b: InvokeSchedulerRequest | PlainMessage<InvokeSchedulerRequest> | undefined): boolean {
+    return proto3.util.equals(InvokeSchedulerRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.InvokeSchedulerResponse
+ */
+export class InvokeSchedulerResponse extends Message<InvokeSchedulerResponse> {
+  /**
+   * @generated from field: string result_json = 1;
+   */
+  resultJson = "";
+
+  /**
+   * @generated from field: int64 duration_ms = 2;
+   */
+  durationMs = protoInt64.zero;
+
+  /**
+   * @generated from field: repeated string warnings = 3;
+   */
+  warnings: string[] = [];
+
+  constructor(data?: PartialMessage<InvokeSchedulerResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.InvokeSchedulerResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "result_json", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "duration_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 3, name: "warnings", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): InvokeSchedulerResponse {
+    return new InvokeSchedulerResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): InvokeSchedulerResponse {
+    return new InvokeSchedulerResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): InvokeSchedulerResponse {
+    return new InvokeSchedulerResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: InvokeSchedulerResponse | PlainMessage<InvokeSchedulerResponse> | undefined, b: InvokeSchedulerResponse | PlainMessage<InvokeSchedulerResponse> | undefined): boolean {
+    return proto3.util.equals(InvokeSchedulerResponse, a, b);
   }
 }
 
@@ -2870,6 +3082,16 @@ export class ListSchedulerRunsRequest extends Message<ListSchedulerRunsRequest> 
    */
   cursor = "";
 
+  /**
+   * @generated from field: string trigger_id = 5;
+   */
+  triggerId = "";
+
+  /**
+   * @generated from field: agentcompose.v2.SchedulerRunStatus status = 6;
+   */
+  status = SchedulerRunStatus.UNSPECIFIED;
+
   constructor(data?: PartialMessage<ListSchedulerRunsRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -2882,6 +3104,8 @@ export class ListSchedulerRunsRequest extends Message<ListSchedulerRunsRequest> 
     { no: 2, name: "agent_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 3, name: "limit", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
     { no: 4, name: "cursor", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "trigger_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 6, name: "status", kind: "enum", T: proto3.getEnumType(SchedulerRunStatus) },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListSchedulerRunsRequest {
@@ -2941,6 +3165,262 @@ export class ListSchedulerRunsResponse extends Message<ListSchedulerRunsResponse
 
   static equals(a: ListSchedulerRunsResponse | PlainMessage<ListSchedulerRunsResponse> | undefined, b: ListSchedulerRunsResponse | PlainMessage<ListSchedulerRunsResponse> | undefined): boolean {
     return proto3.util.equals(ListSchedulerRunsResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.PruneSchedulerRunsRequest
+ */
+export class PruneSchedulerRunsRequest extends Message<PruneSchedulerRunsRequest> {
+  /**
+   * @generated from field: agentcompose.v2.ProjectRef project = 1;
+   */
+  project?: ProjectRef;
+
+  /**
+   * @generated from field: string agent_name = 2;
+   */
+  agentName = "";
+
+  /**
+   * @generated from field: string trigger_id = 3;
+   */
+  triggerId = "";
+
+  /**
+   * @generated from field: repeated agentcompose.v2.SchedulerRunStatus status = 4;
+   */
+  status: SchedulerRunStatus[] = [];
+
+  /**
+   * @generated from field: uint64 older_than_seconds = 5;
+   */
+  olderThanSeconds = protoInt64.zero;
+
+  /**
+   * @generated from field: bool force = 6;
+   */
+  force = false;
+
+  constructor(data?: PartialMessage<PruneSchedulerRunsRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.PruneSchedulerRunsRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "message", T: ProjectRef },
+    { no: 2, name: "agent_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "trigger_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "status", kind: "enum", T: proto3.getEnumType(SchedulerRunStatus), repeated: true },
+    { no: 5, name: "older_than_seconds", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
+    { no: 6, name: "force", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): PruneSchedulerRunsRequest {
+    return new PruneSchedulerRunsRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): PruneSchedulerRunsRequest {
+    return new PruneSchedulerRunsRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): PruneSchedulerRunsRequest {
+    return new PruneSchedulerRunsRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: PruneSchedulerRunsRequest | PlainMessage<PruneSchedulerRunsRequest> | undefined, b: PruneSchedulerRunsRequest | PlainMessage<PruneSchedulerRunsRequest> | undefined): boolean {
+    return proto3.util.equals(PruneSchedulerRunsRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.SchedulerRunPruneStats
+ */
+export class SchedulerRunPruneStats extends Message<SchedulerRunPruneStats> {
+  /**
+   * @generated from field: uint64 runs = 1;
+   */
+  runs = protoInt64.zero;
+
+  /**
+   * @generated from field: uint64 loader_events = 2;
+   */
+  loaderEvents = protoInt64.zero;
+
+  /**
+   * @generated from field: uint64 event_deliveries = 3;
+   */
+  eventDeliveries = protoInt64.zero;
+
+  /**
+   * @generated from field: uint64 event_sandbox_links = 4;
+   */
+  eventSandboxLinks = protoInt64.zero;
+
+  /**
+   * @generated from field: uint64 artifact_dirs = 5;
+   */
+  artifactDirs = protoInt64.zero;
+
+  /**
+   * @generated from field: uint64 artifact_bytes = 6;
+   */
+  artifactBytes = protoInt64.zero;
+
+  constructor(data?: PartialMessage<SchedulerRunPruneStats>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.SchedulerRunPruneStats";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "runs", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
+    { no: 2, name: "loader_events", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
+    { no: 3, name: "event_deliveries", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
+    { no: 4, name: "event_sandbox_links", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
+    { no: 5, name: "artifact_dirs", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
+    { no: 6, name: "artifact_bytes", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SchedulerRunPruneStats {
+    return new SchedulerRunPruneStats().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): SchedulerRunPruneStats {
+    return new SchedulerRunPruneStats().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): SchedulerRunPruneStats {
+    return new SchedulerRunPruneStats().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: SchedulerRunPruneStats | PlainMessage<SchedulerRunPruneStats> | undefined, b: SchedulerRunPruneStats | PlainMessage<SchedulerRunPruneStats> | undefined): boolean {
+    return proto3.util.equals(SchedulerRunPruneStats, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.SchedulerRunPruneResidue
+ */
+export class SchedulerRunPruneResidue extends Message<SchedulerRunPruneResidue> {
+  /**
+   * @generated from field: string loader_id = 1;
+   */
+  loaderId = "";
+
+  /**
+   * @generated from field: string run_id = 2;
+   */
+  runId = "";
+
+  /**
+   * @generated from field: string path = 3;
+   */
+  path = "";
+
+  /**
+   * @generated from field: string error = 4;
+   */
+  error = "";
+
+  constructor(data?: PartialMessage<SchedulerRunPruneResidue>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.SchedulerRunPruneResidue";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "loader_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "run_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "path", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "error", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SchedulerRunPruneResidue {
+    return new SchedulerRunPruneResidue().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): SchedulerRunPruneResidue {
+    return new SchedulerRunPruneResidue().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): SchedulerRunPruneResidue {
+    return new SchedulerRunPruneResidue().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: SchedulerRunPruneResidue | PlainMessage<SchedulerRunPruneResidue> | undefined, b: SchedulerRunPruneResidue | PlainMessage<SchedulerRunPruneResidue> | undefined): boolean {
+    return proto3.util.equals(SchedulerRunPruneResidue, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.PruneSchedulerRunsResponse
+ */
+export class PruneSchedulerRunsResponse extends Message<PruneSchedulerRunsResponse> {
+  /**
+   * @generated from field: bool dry_run = 1;
+   */
+  dryRun = false;
+
+  /**
+   * @generated from field: agentcompose.v2.SchedulerRunPruneStats matched = 2;
+   */
+  matched?: SchedulerRunPruneStats;
+
+  /**
+   * @generated from field: agentcompose.v2.SchedulerRunPruneStats removed = 3;
+   */
+  removed?: SchedulerRunPruneStats;
+
+  /**
+   * @generated from field: uint64 skipped_runs = 4;
+   */
+  skippedRuns = protoInt64.zero;
+
+  /**
+   * @generated from field: repeated agentcompose.v2.SchedulerRunPruneResidue residues = 5;
+   */
+  residues: SchedulerRunPruneResidue[] = [];
+
+  /**
+   * @generated from field: repeated string warnings = 6;
+   */
+  warnings: string[] = [];
+
+  constructor(data?: PartialMessage<PruneSchedulerRunsResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.PruneSchedulerRunsResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "dry_run", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 2, name: "matched", kind: "message", T: SchedulerRunPruneStats },
+    { no: 3, name: "removed", kind: "message", T: SchedulerRunPruneStats },
+    { no: 4, name: "skipped_runs", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
+    { no: 5, name: "residues", kind: "message", T: SchedulerRunPruneResidue, repeated: true },
+    { no: 6, name: "warnings", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): PruneSchedulerRunsResponse {
+    return new PruneSchedulerRunsResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): PruneSchedulerRunsResponse {
+    return new PruneSchedulerRunsResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): PruneSchedulerRunsResponse {
+    return new PruneSchedulerRunsResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: PruneSchedulerRunsResponse | PlainMessage<PruneSchedulerRunsResponse> | undefined, b: PruneSchedulerRunsResponse | PlainMessage<PruneSchedulerRunsResponse> | undefined): boolean {
+    return proto3.util.equals(PruneSchedulerRunsResponse, a, b);
   }
 }
 
@@ -3120,6 +3600,11 @@ export class SchedulerRun extends Message<SchedulerRun> {
    */
   artifactsDir = "";
 
+  /**
+   * @generated from field: repeated string sandbox_ids = 17;
+   */
+  sandboxIds: string[] = [];
+
   constructor(data?: PartialMessage<SchedulerRun>) {
     super();
     proto3.util.initPartial(data, this);
@@ -3144,6 +3629,7 @@ export class SchedulerRun extends Message<SchedulerRun> {
     { no: 14, name: "payload_json", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 15, name: "source_script_sha256", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 16, name: "artifacts_dir", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 17, name: "sandbox_ids", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SchedulerRun {
@@ -3477,11 +3963,6 @@ export class ProjectSpec extends Message<ProjectSpec> {
   agents: AgentSpec[] = [];
 
   /**
-   * @generated from field: agentcompose.v2.NetworkSpec network = 5;
-   */
-  network?: NetworkSpec;
-
-  /**
    * @generated from field: repeated agentcompose.v2.ProjectVolumeSpec volumes = 6;
    */
   volumes: ProjectVolumeSpec[] = [];
@@ -3496,6 +3977,11 @@ export class ProjectSpec extends Message<ProjectSpec> {
    */
   mcpServers: MCPServerSpec[] = [];
 
+  /**
+   * @generated from field: repeated agentcompose.v2.OctoBusServerSpec octobus_servers = 9;
+   */
+  octobusServers: OctoBusServerSpec[] = [];
+
   constructor(data?: PartialMessage<ProjectSpec>) {
     super();
     proto3.util.initPartial(data, this);
@@ -3507,10 +3993,10 @@ export class ProjectSpec extends Message<ProjectSpec> {
     { no: 1, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "variables", kind: "message", T: EnvVarSpec, repeated: true },
     { no: 4, name: "agents", kind: "message", T: AgentSpec, repeated: true },
-    { no: 5, name: "network", kind: "message", T: NetworkSpec },
     { no: 6, name: "volumes", kind: "message", T: ProjectVolumeSpec, repeated: true },
     { no: 7, name: "workspaces", kind: "message", T: NamedWorkspaceSpec, repeated: true },
     { no: 8, name: "mcp_servers", kind: "message", T: MCPServerSpec, repeated: true },
+    { no: 9, name: "octobus_servers", kind: "message", T: OctoBusServerSpec, repeated: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ProjectSpec {
@@ -3653,9 +4139,9 @@ export class AgentSpec extends Message<AgentSpec> {
   skills: SkillSpec[] = [];
 
   /**
-   * @generated from field: agentcompose.v2.AgentStatus status = 16;
+   * @generated from field: optional bool enabled = 16;
    */
-  status = AgentStatus.UNSPECIFIED;
+  enabled?: boolean;
 
   /**
    * @generated from field: string display_name = 17;
@@ -3690,7 +4176,7 @@ export class AgentSpec extends Message<AgentSpec> {
     { no: 13, name: "volumes", kind: "message", T: VolumeMountSpec, repeated: true },
     { no: 14, name: "mcp_servers", kind: "message", T: MCPServerSpec, repeated: true },
     { no: 15, name: "skills", kind: "message", T: SkillSpec, repeated: true },
-    { no: 16, name: "status", kind: "enum", T: proto3.getEnumType(AgentStatus) },
+    { no: 16, name: "enabled", kind: "scalar", T: 8 /* ScalarType.BOOL */, opt: true },
     { no: 17, name: "display_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 18, name: "description", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
@@ -3788,6 +4274,55 @@ export class MCPServerSpec extends Message<MCPServerSpec> {
 
   static equals(a: MCPServerSpec | PlainMessage<MCPServerSpec> | undefined, b: MCPServerSpec | PlainMessage<MCPServerSpec> | undefined): boolean {
     return proto3.util.equals(MCPServerSpec, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.OctoBusServerSpec
+ */
+export class OctoBusServerSpec extends Message<OctoBusServerSpec> {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name = "";
+
+  /**
+   * @generated from field: string url = 2;
+   */
+  url = "";
+
+  /**
+   * @generated from field: string token = 3;
+   */
+  token = "";
+
+  constructor(data?: PartialMessage<OctoBusServerSpec>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.OctoBusServerSpec";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "url", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): OctoBusServerSpec {
+    return new OctoBusServerSpec().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): OctoBusServerSpec {
+    return new OctoBusServerSpec().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): OctoBusServerSpec {
+    return new OctoBusServerSpec().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: OctoBusServerSpec | PlainMessage<OctoBusServerSpec> | undefined, b: OctoBusServerSpec | PlainMessage<OctoBusServerSpec> | undefined): boolean {
+    return proto3.util.equals(OctoBusServerSpec, a, b);
   }
 }
 
@@ -4105,9 +4640,9 @@ export class WorkspaceSpec extends Message<WorkspaceSpec> {
   url = "";
 
   /**
-   * @generated from field: string branch = 3;
+   * @generated from field: string ref = 3;
    */
-  branch = "";
+  ref = "";
 
   /**
    * @generated from field: string path = 4;
@@ -4120,9 +4655,29 @@ export class WorkspaceSpec extends Message<WorkspaceSpec> {
   name = "";
 
   /**
-   * @generated from field: string commit = 6;
+   * @generated from field: string format = 6;
    */
-  commit = "";
+  format = "";
+
+  /**
+   * @generated from field: string target = 7;
+   */
+  target = "";
+
+  /**
+   * @generated from field: string username = 8;
+   */
+  username = "";
+
+  /**
+   * @generated from field: string password = 9;
+   */
+  password = "";
+
+  /**
+   * @generated from field: string token = 10;
+   */
+  token = "";
 
   constructor(data?: PartialMessage<WorkspaceSpec>) {
     super();
@@ -4134,10 +4689,14 @@ export class WorkspaceSpec extends Message<WorkspaceSpec> {
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "provider", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "url", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 3, name: "branch", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "ref", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 4, name: "path", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 5, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 6, name: "commit", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 6, name: "format", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 7, name: "target", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 8, name: "username", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 9, name: "password", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 10, name: "token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): WorkspaceSpec {
@@ -4154,43 +4713,6 @@ export class WorkspaceSpec extends Message<WorkspaceSpec> {
 
   static equals(a: WorkspaceSpec | PlainMessage<WorkspaceSpec> | undefined, b: WorkspaceSpec | PlainMessage<WorkspaceSpec> | undefined): boolean {
     return proto3.util.equals(WorkspaceSpec, a, b);
-  }
-}
-
-/**
- * @generated from message agentcompose.v2.NetworkSpec
- */
-export class NetworkSpec extends Message<NetworkSpec> {
-  /**
-   * @generated from field: string mode = 1;
-   */
-  mode = "";
-
-  constructor(data?: PartialMessage<NetworkSpec>) {
-    super();
-    proto3.util.initPartial(data, this);
-  }
-
-  static readonly runtime: typeof proto3 = proto3;
-  static readonly typeName = "agentcompose.v2.NetworkSpec";
-  static readonly fields: FieldList = proto3.util.newFieldList(() => [
-    { no: 1, name: "mode", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-  ]);
-
-  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): NetworkSpec {
-    return new NetworkSpec().fromBinary(bytes, options);
-  }
-
-  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): NetworkSpec {
-    return new NetworkSpec().fromJson(jsonValue, options);
-  }
-
-  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): NetworkSpec {
-    return new NetworkSpec().fromJsonString(jsonString, options);
-  }
-
-  static equals(a: NetworkSpec | PlainMessage<NetworkSpec> | undefined, b: NetworkSpec | PlainMessage<NetworkSpec> | undefined): boolean {
-    return proto3.util.equals(NetworkSpec, a, b);
   }
 }
 
@@ -4228,6 +4750,11 @@ export class SchedulerSpec extends Message<SchedulerSpec> {
    */
   description = "";
 
+  /**
+   * @generated from field: string concurrency_policy = 7;
+   */
+  concurrencyPolicy = "";
+
   constructor(data?: PartialMessage<SchedulerSpec>) {
     super();
     proto3.util.initPartial(data, this);
@@ -4242,6 +4769,7 @@ export class SchedulerSpec extends Message<SchedulerSpec> {
     { no: 4, name: "sandbox_policy", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 5, name: "display_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 6, name: "description", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 7, name: "concurrency_policy", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SchedulerSpec {
@@ -4749,9 +5277,9 @@ export class RunAgentStreamResponse extends Message<RunAgentStreamResponse> {
   stream = StdioStream.UNSPECIFIED;
 
   /**
-   * @generated from field: string created_at = 6;
+   * @generated from field: google.protobuf.Timestamp created_at = 6;
    */
-  createdAt = "";
+  createdAt?: Timestamp;
 
   /**
    * @generated from field: repeated string warnings = 7;
@@ -4776,7 +5304,7 @@ export class RunAgentStreamResponse extends Message<RunAgentStreamResponse> {
     { no: 3, name: "run_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 4, name: "chunk", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 5, name: "stream", kind: "enum", T: proto3.getEnumType(StdioStream) },
-    { no: 6, name: "created_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 6, name: "created_at", kind: "message", T: Timestamp },
     { no: 7, name: "warnings", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
     { no: 8, name: "transcript", kind: "message", T: TranscriptEvent },
   ]);
@@ -4899,9 +5427,9 @@ export class RunAttachResponse extends Message<RunAttachResponse> {
   serverFrameId = "";
 
   /**
-   * @generated from field: string created_at = 16;
+   * @generated from field: google.protobuf.Timestamp created_at = 16;
    */
-  createdAt = "";
+  createdAt?: Timestamp;
 
   /**
    * @generated from oneof agentcompose.v2.RunAttachResponse.frame
@@ -4953,7 +5481,7 @@ export class RunAttachResponse extends Message<RunAttachResponse> {
   static readonly typeName = "agentcompose.v2.RunAttachResponse";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 15, name: "server_frame_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 16, name: "created_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 16, name: "created_at", kind: "message", T: Timestamp },
     { no: 1, name: "started", kind: "message", T: AttachStarted, oneof: "frame" },
     { no: 2, name: "output", kind: "message", T: AttachOutput, oneof: "frame" },
     { no: 3, name: "agent_event", kind: "message", T: AttachAgentEvent, oneof: "frame" },
@@ -5065,9 +5593,9 @@ export class TranscriptEvent extends Message<TranscriptEvent> {
   payloadJson = "";
 
   /**
-   * @generated from field: string created_at = 6;
+   * @generated from field: google.protobuf.Timestamp created_at = 6;
    */
-  createdAt = "";
+  createdAt?: Timestamp;
 
   constructor(data?: PartialMessage<TranscriptEvent>) {
     super();
@@ -5081,7 +5609,7 @@ export class TranscriptEvent extends Message<TranscriptEvent> {
     { no: 2, name: "text", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 4, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 5, name: "payload_json", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 6, name: "created_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 6, name: "created_at", kind: "message", T: Timestamp },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): TranscriptEvent {
@@ -5338,6 +5866,18 @@ export class FollowRunLogsRequest extends Message<FollowRunLogsRequest> {
    */
   follow = false;
 
+  /**
+   * @generated from field: bool include_metadata = 6;
+   */
+  includeMetadata = false;
+
+  /**
+   * Distinguishes an explicit zero-line tail from the default full history.
+   *
+   * @generated from field: bool tail_set = 7;
+   */
+  tailSet = false;
+
   constructor(data?: PartialMessage<FollowRunLogsRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -5351,6 +5891,8 @@ export class FollowRunLogsRequest extends Message<FollowRunLogsRequest> {
     { no: 3, name: "tail_lines", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
     { no: 4, name: "start_offset", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
     { no: 5, name: "follow", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 6, name: "include_metadata", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 7, name: "tail_set", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): FollowRunLogsRequest {
@@ -5395,9 +5937,19 @@ export class RunLogChunk extends Message<RunLogChunk> {
   runStatus = RunStatus.UNSPECIFIED;
 
   /**
-   * @generated from field: string created_at = 5;
+   * @generated from field: google.protobuf.Timestamp created_at = 5;
    */
-  createdAt = "";
+  createdAt?: Timestamp;
+
+  /**
+   * @generated from field: agentcompose.v2.RunSummary run = 6;
+   */
+  run?: RunSummary;
+
+  /**
+   * @generated from field: string prompt = 7;
+   */
+  prompt = "";
 
   constructor(data?: PartialMessage<RunLogChunk>) {
     super();
@@ -5411,7 +5963,9 @@ export class RunLogChunk extends Message<RunLogChunk> {
     { no: 2, name: "offset", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
     { no: 3, name: "is_final", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 4, name: "run_status", kind: "enum", T: proto3.getEnumType(RunStatus) },
-    { no: 5, name: "created_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "created_at", kind: "message", T: Timestamp },
+    { no: 6, name: "run", kind: "message", T: RunSummary },
+    { no: 7, name: "prompt", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): RunLogChunk {
@@ -6328,6 +6882,26 @@ export class Sandbox extends Message<Sandbox> {
    */
   notebookUrl = "";
 
+  /**
+   * @generated from field: string workspace_reclamation_state = 17;
+   */
+  workspaceReclamationState = "";
+
+  /**
+   * @generated from field: google.protobuf.Timestamp workspace_reclamation_started_at = 18;
+   */
+  workspaceReclamationStartedAt?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp workspace_reclamation_completed_at = 19;
+   */
+  workspaceReclamationCompletedAt?: Timestamp;
+
+  /**
+   * @generated from field: string workspace_reclamation_last_error = 20;
+   */
+  workspaceReclamationLastError = "";
+
   constructor(data?: PartialMessage<Sandbox>) {
     super();
     proto3.util.initPartial(data, this);
@@ -6352,6 +6926,10 @@ export class Sandbox extends Message<Sandbox> {
     { no: 14, name: "cell_count", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
     { no: 15, name: "event_count", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
     { no: 16, name: "notebook_url", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 17, name: "workspace_reclamation_state", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 18, name: "workspace_reclamation_started_at", kind: "message", T: Timestamp },
+    { no: 19, name: "workspace_reclamation_completed_at", kind: "message", T: Timestamp },
+    { no: 20, name: "workspace_reclamation_last_error", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): Sandbox {
@@ -6428,6 +7006,16 @@ export class ListSandboxesRequest extends Message<ListSandboxesRequest> {
    */
   cursor = "";
 
+  /**
+   * @generated from field: string project_id = 3;
+   */
+  projectId = "";
+
+  /**
+   * @generated from field: repeated string status = 4;
+   */
+  status: string[] = [];
+
   constructor(data?: PartialMessage<ListSandboxesRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -6438,6 +7026,8 @@ export class ListSandboxesRequest extends Message<ListSandboxesRequest> {
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "limit", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
     { no: 2, name: "cursor", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "project_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "status", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListSandboxesRequest {
@@ -6755,9 +7345,9 @@ export class SandboxStats extends Message<SandboxStats> {
   driver = "";
 
   /**
-   * @generated from field: string sampled_at = 3;
+   * @generated from field: google.protobuf.Timestamp sampled_at = 3;
    */
-  sampledAt = "";
+  sampledAt?: Timestamp;
 
   /**
    * @generated from field: agentcompose.v2.MetricValue cpu_percent = 4;
@@ -6814,7 +7404,7 @@ export class SandboxStats extends Message<SandboxStats> {
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "sandbox_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "driver", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 3, name: "sampled_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "sampled_at", kind: "message", T: Timestamp },
     { no: 4, name: "cpu_percent", kind: "message", T: MetricValue },
     { no: 5, name: "memory_usage_bytes", kind: "message", T: MetricValue },
     { no: 6, name: "memory_limit_bytes", kind: "message", T: MetricValue },
@@ -6908,14 +7498,14 @@ export class RunSummary extends Message<RunSummary> {
   error = "";
 
   /**
-   * @generated from field: string started_at = 14;
+   * @generated from field: google.protobuf.Timestamp started_at = 14;
    */
-  startedAt = "";
+  startedAt?: Timestamp;
 
   /**
-   * @generated from field: string completed_at = 15;
+   * @generated from field: google.protobuf.Timestamp completed_at = 15;
    */
-  completedAt = "";
+  completedAt?: Timestamp;
 
   /**
    * @generated from field: int64 duration_ms = 16;
@@ -6923,14 +7513,14 @@ export class RunSummary extends Message<RunSummary> {
   durationMs = protoInt64.zero;
 
   /**
-   * @generated from field: string created_at = 17;
+   * @generated from field: google.protobuf.Timestamp created_at = 17;
    */
-  createdAt = "";
+  createdAt?: Timestamp;
 
   /**
-   * @generated from field: string updated_at = 18;
+   * @generated from field: google.protobuf.Timestamp updated_at = 18;
    */
-  updatedAt = "";
+  updatedAt?: Timestamp;
 
   /**
    * @generated from field: repeated string warnings = 19;
@@ -6972,11 +7562,11 @@ export class RunSummary extends Message<RunSummary> {
     { no: 10, name: "status", kind: "enum", T: proto3.getEnumType(RunStatus) },
     { no: 12, name: "exit_code", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
     { no: 13, name: "error", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 14, name: "started_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 15, name: "completed_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 14, name: "started_at", kind: "message", T: Timestamp },
+    { no: 15, name: "completed_at", kind: "message", T: Timestamp },
     { no: 16, name: "duration_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
-    { no: 17, name: "created_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 18, name: "updated_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 17, name: "created_at", kind: "message", T: Timestamp },
+    { no: 18, name: "updated_at", kind: "message", T: Timestamp },
     { no: 19, name: "warnings", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
     { no: 20, name: "sandbox_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 21, name: "run_short_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
@@ -7487,9 +8077,9 @@ export class ExecAttachResponse extends Message<ExecAttachResponse> {
   serverFrameId = "";
 
   /**
-   * @generated from field: string created_at = 16;
+   * @generated from field: google.protobuf.Timestamp created_at = 16;
    */
-  createdAt = "";
+  createdAt?: Timestamp;
 
   /**
    * @generated from oneof agentcompose.v2.ExecAttachResponse.frame
@@ -7541,7 +8131,7 @@ export class ExecAttachResponse extends Message<ExecAttachResponse> {
   static readonly typeName = "agentcompose.v2.ExecAttachResponse";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 15, name: "server_frame_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 16, name: "created_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 16, name: "created_at", kind: "message", T: Timestamp },
     { no: 1, name: "started", kind: "message", T: AttachStarted, oneof: "frame" },
     { no: 2, name: "output", kind: "message", T: AttachOutput, oneof: "frame" },
     { no: 3, name: "result", kind: "message", T: AttachResult, oneof: "frame" },
@@ -8041,9 +8631,9 @@ export class AttachAgentEvent extends Message<AttachAgentEvent> {
   payloadJson = "";
 
   /**
-   * @generated from field: string created_at = 4;
+   * @generated from field: google.protobuf.Timestamp created_at = 4;
    */
-  createdAt = "";
+  createdAt?: Timestamp;
 
   constructor(data?: PartialMessage<AttachAgentEvent>) {
     super();
@@ -8056,7 +8646,7 @@ export class AttachAgentEvent extends Message<AttachAgentEvent> {
     { no: 1, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "text", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 3, name: "payload_json", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 4, name: "created_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "created_at", kind: "message", T: Timestamp },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): AttachAgentEvent {
@@ -9466,9 +10056,9 @@ export class CacheItem extends Message<CacheItem> {
   blockedReasons: string[] = [];
 
   /**
-   * @generated from field: string last_used_at = 15;
+   * @generated from field: google.protobuf.Timestamp last_used_at = 15;
    */
-  lastUsedAt = "";
+  lastUsedAt?: Timestamp;
 
   /**
    * @generated from field: string last_used_source = 16;
@@ -9505,7 +10095,7 @@ export class CacheItem extends Message<CacheItem> {
     { no: 12, name: "status", kind: "enum", T: proto3.getEnumType(CacheStatus) },
     { no: 13, name: "removable", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 14, name: "blocked_reasons", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
-    { no: 15, name: "last_used_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 15, name: "last_used_at", kind: "message", T: Timestamp },
     { no: 16, name: "last_used_source", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 17, name: "references", kind: "message", T: CacheReference, repeated: true },
     { no: 18, name: "warnings", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
@@ -10090,14 +10680,14 @@ export class Volume extends Message<Volume> {
   projectId = "";
 
   /**
-   * @generated from field: string created_at = 7;
+   * @generated from field: google.protobuf.Timestamp created_at = 7;
    */
-  createdAt = "";
+  createdAt?: Timestamp;
 
   /**
-   * @generated from field: string updated_at = 8;
+   * @generated from field: google.protobuf.Timestamp updated_at = 8;
    */
-  updatedAt = "";
+  updatedAt?: Timestamp;
 
   constructor(data?: PartialMessage<Volume>) {
     super();
@@ -10113,8 +10703,8 @@ export class Volume extends Message<Volume> {
     { no: 4, name: "labels", kind: "map", K: 9 /* ScalarType.STRING */, V: {kind: "scalar", T: 9 /* ScalarType.STRING */} },
     { no: 5, name: "options", kind: "map", K: 9 /* ScalarType.STRING */, V: {kind: "scalar", T: 9 /* ScalarType.STRING */} },
     { no: 6, name: "project_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 7, name: "created_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 8, name: "updated_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 7, name: "created_at", kind: "message", T: Timestamp },
+    { no: 8, name: "updated_at", kind: "message", T: Timestamp },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): Volume {
@@ -10189,14 +10779,14 @@ export class Image extends Message<Image> {
   virtualSizeBytes = protoInt64.zero;
 
   /**
-   * @generated from field: string created_at = 11;
+   * @generated from field: google.protobuf.Timestamp created_at = 11;
    */
-  createdAt = "";
+  createdAt?: Timestamp;
 
   /**
-   * @generated from field: string inspected_at = 12;
+   * @generated from field: google.protobuf.Timestamp inspected_at = 12;
    */
-  inspectedAt = "";
+  inspectedAt?: Timestamp;
 
   /**
    * @generated from field: bool dangling = 13;
@@ -10241,8 +10831,8 @@ export class Image extends Message<Image> {
     { no: 8, name: "platform", kind: "message", T: ImagePlatform },
     { no: 9, name: "size_bytes", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
     { no: 10, name: "virtual_size_bytes", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
-    { no: 11, name: "created_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 12, name: "inspected_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 11, name: "created_at", kind: "message", T: Timestamp },
+    { no: 12, name: "inspected_at", kind: "message", T: Timestamp },
     { no: 13, name: "dangling", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 14, name: "container_count", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
     { no: 15, name: "docker", kind: "message", T: DockerImageStatus },
@@ -10742,9 +11332,9 @@ export class SkillSpec extends Message<SkillSpec> {
   name = "";
 
   /**
-   * @generated from field: string source = 2;
+   * @generated from field: string provider = 2;
    */
-  source = "";
+  provider = "";
 
   /**
    * @generated from field: string url = 3;
@@ -10776,6 +11366,11 @@ export class SkillSpec extends Message<SkillSpec> {
    */
   token = "";
 
+  /**
+   * @generated from field: string format = 9;
+   */
+  format = "";
+
   constructor(data?: PartialMessage<SkillSpec>) {
     super();
     proto3.util.initPartial(data, this);
@@ -10785,13 +11380,14 @@ export class SkillSpec extends Message<SkillSpec> {
   static readonly typeName = "agentcompose.v2.SkillSpec";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 2, name: "source", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "provider", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 3, name: "url", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 4, name: "path", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 5, name: "ref", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 6, name: "username", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 7, name: "password", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 8, name: "token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 9, name: "format", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SkillSpec {
@@ -12849,5 +13445,394 @@ export class GenerateLLMResponse extends Message<GenerateLLMResponse> {
 
   static equals(a: GenerateLLMResponse | PlainMessage<GenerateLLMResponse> | undefined, b: GenerateLLMResponse | PlainMessage<GenerateLLMResponse> | undefined): boolean {
     return proto3.util.equals(GenerateLLMResponse, a, b);
+  }
+}
+
+/**
+ * StreamProjectSchedulerEventsRequest describes a finite scan of scheduler
+ * trigger-run events. A zero tail returns the complete matching
+ * history; callers that want no events should avoid starting the stream.
+ *
+ * @generated from message agentcompose.v2.StreamProjectSchedulerEventsRequest
+ */
+export class StreamProjectSchedulerEventsRequest extends Message<StreamProjectSchedulerEventsRequest> {
+  /**
+   * @generated from field: agentcompose.v2.ProjectRef project = 1;
+   */
+  project?: ProjectRef;
+
+  /**
+   * @generated from field: string agent_name = 2;
+   */
+  agentName = "";
+
+  /**
+   * @generated from field: string trigger_id = 3;
+   */
+  triggerId = "";
+
+  /**
+   * @generated from field: string run_id = 4;
+   */
+  runId = "";
+
+  /**
+   * @generated from field: uint32 batch_size = 5;
+   */
+  batchSize = 0;
+
+  /**
+   * @generated from field: uint32 tail = 6;
+   */
+  tail = 0;
+
+  constructor(data?: PartialMessage<StreamProjectSchedulerEventsRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.StreamProjectSchedulerEventsRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "message", T: ProjectRef },
+    { no: 2, name: "agent_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "trigger_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "run_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "batch_size", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
+    { no: 6, name: "tail", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): StreamProjectSchedulerEventsRequest {
+    return new StreamProjectSchedulerEventsRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): StreamProjectSchedulerEventsRequest {
+    return new StreamProjectSchedulerEventsRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): StreamProjectSchedulerEventsRequest {
+    return new StreamProjectSchedulerEventsRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: StreamProjectSchedulerEventsRequest | PlainMessage<StreamProjectSchedulerEventsRequest> | undefined, b: StreamProjectSchedulerEventsRequest | PlainMessage<StreamProjectSchedulerEventsRequest> | undefined): boolean {
+    return proto3.util.equals(StreamProjectSchedulerEventsRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.StreamProjectSchedulerEventsResponse
+ */
+export class StreamProjectSchedulerEventsResponse extends Message<StreamProjectSchedulerEventsResponse> {
+  /**
+   * @generated from field: repeated agentcompose.v2.SchedulerEvent events = 1;
+   */
+  events: SchedulerEvent[] = [];
+
+  /**
+   * @generated from field: string checkpoint = 2;
+   */
+  checkpoint = "";
+
+  /**
+   * @generated from field: bool complete = 3;
+   */
+  complete = false;
+
+  /**
+   * @generated from field: uint64 emitted_count = 4;
+   */
+  emittedCount = protoInt64.zero;
+
+  constructor(data?: PartialMessage<StreamProjectSchedulerEventsResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.StreamProjectSchedulerEventsResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "events", kind: "message", T: SchedulerEvent, repeated: true },
+    { no: 2, name: "checkpoint", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "complete", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 4, name: "emitted_count", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): StreamProjectSchedulerEventsResponse {
+    return new StreamProjectSchedulerEventsResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): StreamProjectSchedulerEventsResponse {
+    return new StreamProjectSchedulerEventsResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): StreamProjectSchedulerEventsResponse {
+    return new StreamProjectSchedulerEventsResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: StreamProjectSchedulerEventsResponse | PlainMessage<StreamProjectSchedulerEventsResponse> | undefined, b: StreamProjectSchedulerEventsResponse | PlainMessage<StreamProjectSchedulerEventsResponse> | undefined): boolean {
+    return proto3.util.equals(StreamProjectSchedulerEventsResponse, a, b);
+  }
+}
+
+/**
+ * StreamSchedulerRunsRequest describes a finite scan of scheduler trigger runs.
+ * limit is the final result limit; zero means all.
+ *
+ * @generated from message agentcompose.v2.StreamSchedulerRunsRequest
+ */
+export class StreamSchedulerRunsRequest extends Message<StreamSchedulerRunsRequest> {
+  /**
+   * @generated from field: agentcompose.v2.ProjectRef project = 1;
+   */
+  project?: ProjectRef;
+
+  /**
+   * @generated from field: string agent_name = 2;
+   */
+  agentName = "";
+
+  /**
+   * @generated from field: string trigger_id = 3;
+   */
+  triggerId = "";
+
+  /**
+   * @generated from field: agentcompose.v2.SchedulerRunStatus status = 4;
+   */
+  status = SchedulerRunStatus.UNSPECIFIED;
+
+  /**
+   * @generated from field: uint32 batch_size = 5;
+   */
+  batchSize = 0;
+
+  /**
+   * @generated from field: uint32 limit = 6;
+   */
+  limit = 0;
+
+  constructor(data?: PartialMessage<StreamSchedulerRunsRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.StreamSchedulerRunsRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "message", T: ProjectRef },
+    { no: 2, name: "agent_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "trigger_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "status", kind: "enum", T: proto3.getEnumType(SchedulerRunStatus) },
+    { no: 5, name: "batch_size", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
+    { no: 6, name: "limit", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): StreamSchedulerRunsRequest {
+    return new StreamSchedulerRunsRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): StreamSchedulerRunsRequest {
+    return new StreamSchedulerRunsRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): StreamSchedulerRunsRequest {
+    return new StreamSchedulerRunsRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: StreamSchedulerRunsRequest | PlainMessage<StreamSchedulerRunsRequest> | undefined, b: StreamSchedulerRunsRequest | PlainMessage<StreamSchedulerRunsRequest> | undefined): boolean {
+    return proto3.util.equals(StreamSchedulerRunsRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.StreamSchedulerRunsResponse
+ */
+export class StreamSchedulerRunsResponse extends Message<StreamSchedulerRunsResponse> {
+  /**
+   * @generated from field: repeated agentcompose.v2.SchedulerRun runs = 1;
+   */
+  runs: SchedulerRun[] = [];
+
+  /**
+   * @generated from field: string checkpoint = 2;
+   */
+  checkpoint = "";
+
+  /**
+   * @generated from field: bool complete = 3;
+   */
+  complete = false;
+
+  /**
+   * @generated from field: uint64 emitted_count = 4;
+   */
+  emittedCount = protoInt64.zero;
+
+  /**
+   * @generated from field: bool truncated = 5;
+   */
+  truncated = false;
+
+  constructor(data?: PartialMessage<StreamSchedulerRunsResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.StreamSchedulerRunsResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "runs", kind: "message", T: SchedulerRun, repeated: true },
+    { no: 2, name: "checkpoint", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "complete", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 4, name: "emitted_count", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
+    { no: 5, name: "truncated", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): StreamSchedulerRunsResponse {
+    return new StreamSchedulerRunsResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): StreamSchedulerRunsResponse {
+    return new StreamSchedulerRunsResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): StreamSchedulerRunsResponse {
+    return new StreamSchedulerRunsResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: StreamSchedulerRunsResponse | PlainMessage<StreamSchedulerRunsResponse> | undefined, b: StreamSchedulerRunsResponse | PlainMessage<StreamSchedulerRunsResponse> | undefined): boolean {
+    return proto3.util.equals(StreamSchedulerRunsResponse, a, b);
+  }
+}
+
+/**
+ * BatchGetLatestSchedulerRunsRequest selects scheduler runs by sandbox. A
+ * request accepts at most 500 sandbox IDs.
+ *
+ * @generated from message agentcompose.v2.BatchGetLatestSchedulerRunsRequest
+ */
+export class BatchGetLatestSchedulerRunsRequest extends Message<BatchGetLatestSchedulerRunsRequest> {
+  /**
+   * @generated from field: agentcompose.v2.ProjectRef project = 1;
+   */
+  project?: ProjectRef;
+
+  /**
+   * @generated from field: repeated string sandbox_ids = 2;
+   */
+  sandboxIds: string[] = [];
+
+  constructor(data?: PartialMessage<BatchGetLatestSchedulerRunsRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.BatchGetLatestSchedulerRunsRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "message", T: ProjectRef },
+    { no: 2, name: "sandbox_ids", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): BatchGetLatestSchedulerRunsRequest {
+    return new BatchGetLatestSchedulerRunsRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): BatchGetLatestSchedulerRunsRequest {
+    return new BatchGetLatestSchedulerRunsRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): BatchGetLatestSchedulerRunsRequest {
+    return new BatchGetLatestSchedulerRunsRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: BatchGetLatestSchedulerRunsRequest | PlainMessage<BatchGetLatestSchedulerRunsRequest> | undefined, b: BatchGetLatestSchedulerRunsRequest | PlainMessage<BatchGetLatestSchedulerRunsRequest> | undefined): boolean {
+    return proto3.util.equals(BatchGetLatestSchedulerRunsRequest, a, b);
+  }
+}
+
+/**
+ * SandboxSchedulerRun is the latest scheduler run linked to one sandbox. Run
+ * is absent when the sandbox has no scheduler run in the selected project.
+ *
+ * @generated from message agentcompose.v2.SandboxSchedulerRun
+ */
+export class SandboxSchedulerRun extends Message<SandboxSchedulerRun> {
+  /**
+   * @generated from field: string sandbox_id = 1;
+   */
+  sandboxId = "";
+
+  /**
+   * @generated from field: agentcompose.v2.SchedulerRun run = 2;
+   */
+  run?: SchedulerRun;
+
+  constructor(data?: PartialMessage<SandboxSchedulerRun>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.SandboxSchedulerRun";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "sandbox_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "run", kind: "message", T: SchedulerRun },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SandboxSchedulerRun {
+    return new SandboxSchedulerRun().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): SandboxSchedulerRun {
+    return new SandboxSchedulerRun().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): SandboxSchedulerRun {
+    return new SandboxSchedulerRun().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: SandboxSchedulerRun | PlainMessage<SandboxSchedulerRun> | undefined, b: SandboxSchedulerRun | PlainMessage<SandboxSchedulerRun> | undefined): boolean {
+    return proto3.util.equals(SandboxSchedulerRun, a, b);
+  }
+}
+
+/**
+ * BatchGetLatestSchedulerRunsResponse contains one result for each distinct,
+ * non-empty requested sandbox ID, ordered by its first request occurrence.
+ *
+ * @generated from message agentcompose.v2.BatchGetLatestSchedulerRunsResponse
+ */
+export class BatchGetLatestSchedulerRunsResponse extends Message<BatchGetLatestSchedulerRunsResponse> {
+  /**
+   * @generated from field: repeated agentcompose.v2.SandboxSchedulerRun results = 1;
+   */
+  results: SandboxSchedulerRun[] = [];
+
+  constructor(data?: PartialMessage<BatchGetLatestSchedulerRunsResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.BatchGetLatestSchedulerRunsResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "results", kind: "message", T: SandboxSchedulerRun, repeated: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): BatchGetLatestSchedulerRunsResponse {
+    return new BatchGetLatestSchedulerRunsResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): BatchGetLatestSchedulerRunsResponse {
+    return new BatchGetLatestSchedulerRunsResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): BatchGetLatestSchedulerRunsResponse {
+    return new BatchGetLatestSchedulerRunsResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: BatchGetLatestSchedulerRunsResponse | PlainMessage<BatchGetLatestSchedulerRunsResponse> | undefined, b: BatchGetLatestSchedulerRunsResponse | PlainMessage<BatchGetLatestSchedulerRunsResponse> | undefined): boolean {
+    return proto3.util.equals(BatchGetLatestSchedulerRunsResponse, a, b);
   }
 }

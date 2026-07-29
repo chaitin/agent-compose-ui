@@ -117,11 +117,12 @@
     const preferredIndex = preferredMatch
       ? matches.findIndex((match) => matchKey(match) === matchKey(preferredMatch))
       : -1;
-    const currentIndex = matches.length === 0
-      ? -1
-      : preferredIndex >= 0
-        ? preferredIndex
-        : Math.min(Math.max(search.currentIndex, 0), matches.length - 1);
+    const currentIndex =
+      matches.length === 0
+        ? -1
+        : preferredIndex >= 0
+          ? preferredIndex
+          : Math.min(Math.max(search.currentIndex, 0), matches.length - 1);
     search = { ...search, appliedQuery: search.query.trim(), matches, currentIndex };
     if (currentIndex >= 0 && search.locateCurrent) void scrollToMatch();
   }
@@ -158,7 +159,11 @@
 
   function registerCurrentMatch(node: HTMLElement): { destroy: () => void } {
     currentMatchElement = node;
-    return { destroy: () => { if (currentMatchElement === node) currentMatchElement = null; } };
+    return {
+      destroy: () => {
+        if (currentMatchElement === node) currentMatchElement = null;
+      },
+    };
   }
 
   async function scrollToMatch(): Promise<void> {
@@ -198,7 +203,9 @@
       copyFeedback = '复制失败';
     }
     if (copyTimer) clearTimeout(copyTimer);
-    copyTimer = setTimeout(() => { copyFeedback = ''; }, 1600);
+    copyTimer = setTimeout(() => {
+      copyFeedback = '';
+    }, 1600);
   }
 
   async function writeClipboardText(value: string): Promise<void> {
@@ -224,13 +231,33 @@
     <div class="session-output-toolbar" aria-label={`会话 ${sessionId} 输出操作`}>
       <label class="output-search-field">
         <span class="visually-hidden">搜索会话输出</span>
-        <input type="search" value={search.query} placeholder="搜索输出（至少 2 个字符）" disabled={visibleCells.length === 0} on:input={(event) => scheduleSearch(event.currentTarget.value)} on:keydown={handleSearchKeydown}>
+        <input
+          type="search"
+          value={search.query}
+          placeholder="搜索输出（至少 2 个字符）"
+          disabled={visibleCells.length === 0}
+          on:input={(event) => scheduleSearch(event.currentTarget.value)}
+          on:keydown={handleSearchKeydown}
+        />
       </label>
-      <span class="search-count" aria-live="polite">{search.matches.length > 0 ? `${search.currentIndex + 1}/${search.matches.length}` : '0/0'}</span>
-      <button type="button" class="compact-button" disabled={search.matches.length === 0} on:click={() => moveSearch(-1)}>上一个</button>
-      <button type="button" class="compact-button" disabled={search.matches.length === 0} on:click={() => moveSearch(1)}>下一个</button>
-      <button type="button" class="compact-button" disabled={refreshDisabled} on:click={refreshOutput}>{refreshing ? '刷新中...' : '刷新'}</button>
-      <button type="button" class="compact-button" disabled={visibleCells.length === 0} on:click={copyAll}>{copyFeedback || '拷贝全部'}</button>
+      <span class="search-count" aria-live="polite"
+        >{search.matches.length > 0 ? `${search.currentIndex + 1}/${search.matches.length}` : '0/0'}</span
+      >
+      <button
+        type="button"
+        class="compact-button"
+        disabled={search.matches.length === 0}
+        on:click={() => moveSearch(-1)}>上一个</button
+      >
+      <button type="button" class="compact-button" disabled={search.matches.length === 0} on:click={() => moveSearch(1)}
+        >下一个</button
+      >
+      <button type="button" class="compact-button" disabled={refreshDisabled} on:click={refreshOutput}
+        >{refreshing ? '刷新中...' : '刷新'}</button
+      >
+      <button type="button" class="compact-button" disabled={visibleCells.length === 0} on:click={copyAll}
+        >{copyFeedback || '拷贝全部'}</button
+      >
     </div>
   </div>
 
@@ -244,24 +271,44 @@
         {#if source}
           <article class="message-card role-user">
             <div class="message-cell-head">
-              <div class="message-cell-summary"><div class="message-title-row"><b>用户</b><span class="message-cell-id">{cell.id}</span></div></div>
+              <div class="message-cell-summary">
+                <div class="message-title-row"><b>用户</b><span class="message-cell-id">{cell.id}</span></div>
+              </div>
               <div class="message-cell-meta"><span>{formatTime(cell.createdAt)}</span></div>
             </div>
-            <pre class="message-source">{#if sourceMatch}{#each sessionOutputMatchParts(source, sourceMatch) as part}{#if part.matched}<mark class="output-match" use:registerCurrentMatch>{part.text}</mark>{:else}{part.text}{/if}{/each}{:else}{source}{/if}</pre>
+            <pre
+              class="message-source">{#if sourceMatch}{#each sessionOutputMatchParts(source, sourceMatch) as part}{#if part.matched}<mark
+                      class="output-match"
+                      use:registerCurrentMatch>{part.text}</mark
+                    >{:else}{part.text}{/if}{/each}{:else}{source}{/if}</pre>
           </article>
         {/if}
         {#if output}
           <article class="message-card" class:failed={!cell.running && !cell.success} class:running={cell.running}>
             <div class="message-cell-head">
-              <div class="message-cell-summary"><div class="message-title-row"><b>{cell.agent || '助手'}</b><span class="message-cell-id">{cell.id}</span><span class={`message-status ${sessionCellStatusTone(cell)}`}>{sessionCellStatus(cell)}</span></div></div>
+              <div class="message-cell-summary">
+                <div class="message-title-row">
+                  <b>{cell.agent || '助手'}</b><span class="message-cell-id">{cell.id}</span><span
+                    class={`message-status ${sessionCellStatusTone(cell)}`}>{sessionCellStatus(cell)}</span
+                  >
+                </div>
+              </div>
               <div class="message-cell-meta"><span>{formatTime(cell.createdAt)}</span></div>
             </div>
             {#if isAgentSessionCell(cell)}
               <div class="run-terminal-block" class:running={cell.running}>
-                <pre class="run-terminal-static">{#if outputMatch}{#each sessionOutputMatchParts(output, outputMatch) as part}{#if part.matched}<mark class="output-match" use:registerCurrentMatch>{part.text}</mark>{:else}{part.text}{/if}{/each}{:else}{output}{/if}</pre>
+                <pre
+                  class="run-terminal-static">{#if outputMatch}{#each sessionOutputMatchParts(output, outputMatch) as part}{#if part.matched}<mark
+                          class="output-match"
+                          use:registerCurrentMatch>{part.text}</mark
+                        >{:else}{part.text}{/if}{/each}{:else}{output}{/if}</pre>
               </div>
             {:else}
-              <pre class="run-terminal-static">{#if outputMatch}{#each sessionOutputMatchParts(output, outputMatch) as part}{#if part.matched}<mark class="output-match" use:registerCurrentMatch>{part.text}</mark>{:else}{part.text}{/if}{/each}{:else}{output}{/if}</pre>
+              <pre
+                class="run-terminal-static">{#if outputMatch}{#each sessionOutputMatchParts(output, outputMatch) as part}{#if part.matched}<mark
+                        class="output-match"
+                        use:registerCurrentMatch>{part.text}</mark
+                      >{:else}{part.text}{/if}{/each}{:else}{output}{/if}</pre>
             {/if}
           </article>
         {/if}
@@ -294,9 +341,17 @@
     gap: 10px;
   }
 
-  .session-output-toolbar { justify-content: flex-end; }
-  h4 { margin: 0; color: var(--text); font-size: 13px; }
-  .output-search-field { min-width: 120px; }
+  .session-output-toolbar {
+    justify-content: flex-end;
+  }
+  h4 {
+    margin: 0;
+    color: var(--text);
+    font-size: 13px;
+  }
+  .output-search-field {
+    min-width: 120px;
+  }
 
   .output-search-field input {
     box-sizing: border-box;
@@ -311,14 +366,48 @@
     font-size: 12px;
   }
 
-  .output-search-field input:focus { border-color: var(--primary); outline: 2px solid rgba(47, 95, 208, 0.14); }
-  .search-count { min-width: 36px; color: var(--muted); font-family: var(--mono); font-size: 11px; text-align: center; }
-  .compact-button { flex: 0 0 auto; min-height: 28px; padding: 5px 9px; font-size: 12px; }
-  .cell-list { display: grid; gap: 8px; min-height: 0; overflow: auto; padding-right: 2px; }
-  .message-card { gap: 6px; padding: 10px 12px; }
-  .message-cell-head { gap: 10px; }
-  .message-cell-meta { font-size: 11px; }
-  .message-cell-id { display: inline-block; max-width: min(100%, 220px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+  .output-search-field input:focus {
+    border-color: var(--primary);
+    outline: 2px solid rgba(47, 95, 208, 0.14);
+  }
+  .search-count {
+    min-width: 36px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    text-align: center;
+  }
+  .compact-button {
+    flex: 0 0 auto;
+    min-height: 28px;
+    padding: 5px 9px;
+    font-size: 12px;
+  }
+  .cell-list {
+    display: grid;
+    gap: 8px;
+    min-height: 0;
+    overflow: auto;
+    padding-right: 2px;
+  }
+  .message-card {
+    gap: 6px;
+    padding: 10px 12px;
+  }
+  .message-cell-head {
+    gap: 10px;
+  }
+  .message-cell-meta {
+    font-size: 11px;
+  }
+  .message-cell-id {
+    display: inline-block;
+    max-width: min(100%, 220px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
 
   pre {
     margin: 0;
@@ -335,12 +424,40 @@
     word-break: break-word;
   }
 
-  .message-source { padding: 0; border: 0; border-radius: 0; background: transparent; color: #475569; line-height: 17px; overflow-wrap: anywhere; }
-  .output-match { border-radius: 2px; background: #fa8c16; color: #172033; box-shadow: 0 0 0 2px rgba(250, 140, 22, 0.35); }
-  .run-terminal-block { min-width: 0; overflow: hidden; }
-  .run-terminal-block .run-terminal-static { overflow: visible; border: 0; border-radius: 0; background: transparent; }
-  .message-card > .run-terminal-static { overflow: visible; }
-  .empty { min-height: 0; display: grid; place-items: center; color: var(--muted); }
+  .message-source {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #475569;
+    line-height: 17px;
+    overflow-wrap: anywhere;
+  }
+  .output-match {
+    border-radius: 2px;
+    background: #fa8c16;
+    color: #172033;
+    box-shadow: 0 0 0 2px rgba(250, 140, 22, 0.35);
+  }
+  .run-terminal-block {
+    min-width: 0;
+    overflow: hidden;
+  }
+  .run-terminal-block .run-terminal-static {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .message-card > .run-terminal-static {
+    overflow: visible;
+  }
+  .empty {
+    min-height: 0;
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+  }
 
   .visually-hidden {
     position: absolute;
@@ -356,9 +473,19 @@
 
   @media (max-width: 960px) {
     .session-output-head,
-    .session-output-toolbar { align-items: stretch; flex-wrap: wrap; justify-content: flex-start; }
-    .session-output-head { flex-direction: column; }
-    .output-search-field { flex: 1 1 180px; }
-    .output-search-field input { width: 100%; }
+    .session-output-toolbar {
+      align-items: stretch;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+    }
+    .session-output-head {
+      flex-direction: column;
+    }
+    .output-search-field {
+      flex: 1 1 180px;
+    }
+    .output-search-field input {
+      width: 100%;
+    }
   }
 </style>

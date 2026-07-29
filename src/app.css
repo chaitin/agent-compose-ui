@@ -1,0 +1,206 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * agent-compose-ui 设计令牌（分层）
+ * - 语义令牌用 OKLCH，:root 为浅色，.dark 为暗色
+ * - 紧凑开发者工具风：中性灰、克制描边、较小圆角、舒适/紧凑双密度
+ * - 主色沿用原 #2f5fd0 蓝的色相；暗色地基对齐 #0e1116 / #171b22
+ */
+:root {
+  --radius: 0.5rem;
+
+  --background: oklch(0.985 0.002 255);
+  --foreground: oklch(0.24 0.03 262);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.24 0.03 262);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.24 0.03 262);
+
+  --primary: oklch(0.52 0.17 262);
+  --primary-foreground: oklch(0.985 0 0);
+
+  --secondary: oklch(0.96 0.006 262);
+  --secondary-foreground: oklch(0.32 0.03 262);
+
+  --muted: oklch(0.965 0.005 262);
+  --muted-foreground: oklch(0.55 0.02 262);
+
+  --accent: oklch(0.955 0.012 262);
+  --accent-foreground: oklch(0.3 0.04 262);
+
+  --destructive: oklch(0.58 0.22 27);
+  --destructive-foreground: oklch(0.985 0 0);
+
+  --border: oklch(0.915 0.005 262);
+  --input: oklch(0.915 0.005 262);
+  --ring: oklch(0.52 0.17 262);
+
+  /* 状态色（运行/成功/警告/中性） */
+  --success: oklch(0.6 0.15 150);
+  --success-foreground: oklch(0.985 0 0);
+  --warning: oklch(0.75 0.15 75);
+  --warning-foreground: oklch(0.28 0.05 75);
+  --info: oklch(0.52 0.17 262);
+  --info-foreground: oklch(0.985 0 0);
+
+  /* 侧栏 */
+  --sidebar: oklch(0.99 0.002 255);
+  --sidebar-foreground: oklch(0.3 0.02 262);
+  --sidebar-primary: oklch(0.52 0.17 262);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.955 0.012 262);
+  --sidebar-accent-foreground: oklch(0.3 0.04 262);
+  --sidebar-border: oklch(0.915 0.005 262);
+  --sidebar-ring: oklch(0.52 0.17 262);
+
+  --font-sans:
+    'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans SC',
+    'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-mono: 'IBM Plex Mono', SFMono-Regular, 'Fira Code', Consolas, 'Liberation Mono', ui-monospace, monospace;
+}
+
+.dark {
+  --background: oklch(0.17 0.012 262);
+  --foreground: oklch(0.92 0.006 262);
+
+  --card: oklch(0.205 0.014 262);
+  --card-foreground: oklch(0.92 0.006 262);
+  --popover: oklch(0.205 0.014 262);
+  --popover-foreground: oklch(0.92 0.006 262);
+
+  --primary: oklch(0.64 0.15 262);
+  --primary-foreground: oklch(0.16 0.012 262);
+
+  --secondary: oklch(0.26 0.014 262);
+  --secondary-foreground: oklch(0.9 0.01 262);
+
+  --muted: oklch(0.26 0.014 262);
+  --muted-foreground: oklch(0.68 0.02 262);
+
+  --accent: oklch(0.3 0.018 262);
+  --accent-foreground: oklch(0.92 0.01 262);
+
+  --destructive: oklch(0.62 0.2 25);
+  --destructive-foreground: oklch(0.985 0 0);
+
+  --border: oklch(0.29 0.014 262);
+  --input: oklch(0.32 0.014 262);
+  --ring: oklch(0.64 0.15 262);
+
+  --success: oklch(0.68 0.15 150);
+  --success-foreground: oklch(0.16 0.012 262);
+  --warning: oklch(0.8 0.15 75);
+  --warning-foreground: oklch(0.2 0.03 75);
+  --info: oklch(0.64 0.15 262);
+  --info-foreground: oklch(0.16 0.012 262);
+
+  --sidebar: oklch(0.195 0.013 262);
+  --sidebar-foreground: oklch(0.85 0.01 262);
+  --sidebar-primary: oklch(0.64 0.15 262);
+  --sidebar-primary-foreground: oklch(0.16 0.012 262);
+  --sidebar-accent: oklch(0.3 0.018 262);
+  --sidebar-accent-foreground: oklch(0.92 0.01 262);
+  --sidebar-border: oklch(0.29 0.014 262);
+  --sidebar-ring: oklch(0.64 0.15 262);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    font-size: 15px;
+  }
+
+  body {
+    min-width: 0;
+    overflow: hidden;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.5;
+  }
+
+  pre,
+  code {
+    font-family: var(--font-mono);
+  }
+
+  [data-scroll-pane],
+  [data-scroll-surface] {
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    scrollbar-color: color-mix(in oklch, var(--muted-foreground) 45%, transparent) transparent;
+    scrollbar-width: thin;
+  }
+
+  [data-scroll-pane]::-webkit-scrollbar,
+  [data-scroll-surface]::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  [data-scroll-pane]::-webkit-scrollbar-thumb,
+  [data-scroll-surface]::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: color-mix(in oklch, var(--muted-foreground) 45%, transparent);
+    background-clip: padding-box;
+  }
+
+  ::selection {
+    background: color-mix(in oklch, var(--primary) 28%, transparent);
+  }
+}

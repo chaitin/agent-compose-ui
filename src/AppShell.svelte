@@ -1,0 +1,183 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { ModeWatcher } from 'mode-watcher';
+  import AppSidebar from '$lib/components/app-sidebar.svelte';
+  import AppTopbar from '$lib/components/app-topbar.svelte';
+  import CommandPalette from '$lib/components/command-palette.svelte';
+  import { router, matchDetail } from '$lib/router.svelte';
+  import { density } from '$lib/density.svelte';
+
+  import Overview from './routes/Overview.svelte';
+  import Agents from './routes/Agents.svelte';
+  import Automations from './routes/Automations.svelte';
+  import AutomationRunDetail from './routes/AutomationRunDetail.svelte';
+  import Runs from './routes/Runs.svelte';
+  import RunDetail from './routes/RunDetail.svelte';
+  import Settings from './routes/Settings.svelte';
+  import Images from './routes/Images.svelte';
+  import Capabilities from './routes/Capabilities.svelte';
+  import SpecResources from './routes/SpecResources.svelte';
+  import Caches from './routes/Caches.svelte';
+  import EventDetail from './routes/EventDetail.svelte';
+  import Events from './routes/Events.svelte';
+  import Conversations from './routes/Conversations.svelte';
+  import Login from './routes/Login.svelte';
+  import Audit from './routes/Audit.svelte';
+  import { getAuthStatus, logout, type AuthStatus } from './api/auth';
+  import { getHealthStatus, type HealthStatus } from './api/health';
+
+  const STORAGE_KEY = 'ac.sidebarCollapsed';
+  let collapsed = $state(false);
+  let auth = $state<AuthStatus | null>(null);
+  let authError = $state('');
+  let health = $state<HealthStatus | null>(null);
+  let healthTimer = 0;
+
+  onMount(() => {
+    redirectLegacyPath();
+    density.init();
+    const stored = localStorage.getItem(STORAGE_KEY);
+    collapsed = stored !== null ? stored === '1' : window.innerWidth < 1440;
+    const onResize = () => {
+      if (window.innerWidth < 1440 && localStorage.getItem(STORAGE_KEY) === null) collapsed = true;
+    };
+    window.addEventListener('resize', onResize);
+    void bootstrap();
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.clearInterval(healthTimer);
+    };
+  });
+
+  function redirectLegacyPath(): void {
+    const path = router.path.replace(/\/+$/, '') || '/';
+    let target = '';
+    if (path === '/ui' || path === '/workbench') target = '/';
+    else if (path === '/automation-tasks') target = '/automations';
+    else if (path.startsWith('/debug/runs/')) target = `/runs/${path.slice('/debug/runs/'.length)}/terminal`;
+    if (target) router.replace(target);
+  }
+
+  async function bootstrap() {
+    try {
+      auth = await getAuthStatus();
+      if (!auth.enabled || auth.loggedIn) startHealth();
+    } catch (cause) {
+      authError = cause instanceof Error ? cause.message : '无法连接 UI server';
+    }
+  }
+
+  function startHealth() {
+    window.clearInterval(healthTimer);
+    void refreshHealth();
+    healthTimer = window.setInterval(refreshHealth, 10_000);
+  }
+
+  async function refreshHealth(): Promise<void> {
+    try {
+      health = await getHealthStatus();
+    } catch {
+      health = null;
+    }
+  }
+
+  function authenticated(value: AuthStatus) {
+    auth = value;
+    const next = new URLSearchParams(window.location.search).get('next');
+    if (next?.startsWith('/')) {
+      history.replaceState({}, '', next);
+      router.sync();
+    }
+    startHealth();
+  }
+
+  async function handleLogout() {
+    await logout();
+    window.clearInterval(healthTimer);
+    auth = await getAuthStatus();
+  }
+
+  function toggleSidebar() {
+    collapsed = !collapsed;
+    localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0');
+  }
+
+  const p = $derived(router.path);
+  const runDetailId = $derived(matchDetail('/runs', p));
+</script>
+
+<ModeWatcher />
+{#if authError}
+  <main class="flex min-h-screen items-center justify-center bg-background p-6 text-foreground">
+    <div class="max-w-lg rounded-lg border border-destructive/30 bg-card p-6">
+      <h1 class="font-semibold">无法启动控制台</h1>
+      <p class="mt-2 text-sm text-destructive">{authError}</p>
+      <button class="mt-4 text-sm text-primary underline" onclick={() => location.reload()}>重试</button>
+    </div>
+  </main>
+{:else if !auth}
+  <main class="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+    正在连接 UI server…
+  </main>
+{:else if auth.enabled && !auth.loggedIn}
+  <Login status={auth} onAuthenticated={authenticated} />
+{:else}
+  <CommandPalette />
+
+  <div class="flex h-screen overflow-hidden bg-background text-foreground">
+    <AppSidebar
+      {collapsed}
+      healthy={Boolean(health)}
+      healthText={health ? `v${health.version}` : '连接中'}
+      cpu={health ? `${health.processCpuPercent.toFixed(0)}%` : '—'}
+      rss={health ? `${(health.processRssBytes / 1024 / 1024).toFixed(0)}M` : '—'}
+    />
+
+    <div class="flex min-w-0 flex-1 flex-col">
+      <AppTopbar
+        onToggleSidebar={toggleSidebar}
+        username={auth.user?.displayName || auth.username}
+        healthy={Boolean(health)}
+        onLogout={auth.enabled ? handleLogout : undefined}
+      />
+
+      <main data-scroll-root class="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
+        {#if p === '/'}
+          <Overview />
+        {:else if p.startsWith('/agents')}
+          <Agents />
+        {:else if p.startsWith('/automation-runs/')}
+          <AutomationRunDetail />
+        {:else if p.startsWith('/automations')}
+          <Automations />
+        {:else if p.startsWith('/events/')}
+          <EventDetail />
+        {:else if p.startsWith('/events')}
+          <Events />
+        {:else if p.startsWith('/conversations')}
+          <Conversations />
+        {:else if runDetailId}
+          <RunDetail />
+        {:else if p.startsWith('/runs')}
+          <Runs />
+        {:else if p.startsWith('/settings/caches')}
+          <Caches />
+        {:else if p.startsWith('/audit')}
+          <Audit />
+        {:else if p.startsWith('/settings')}
+          <Settings />
+        {:else if p.startsWith('/images')}
+          <Images />
+        {:else if p.startsWith('/capabilities')}
+          <Capabilities />
+        {:else if p.startsWith('/mcp')}
+          <SpecResources kind="mcp" />
+        {:else if p.startsWith('/skills')}
+          <SpecResources kind="skills" />
+        {:else}
+          <Overview />
+        {/if}
+      </main>
+    </div>
+  </div>
+{/if}

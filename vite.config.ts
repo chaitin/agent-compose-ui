@@ -1,13 +1,22 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import tailwindcss from '@tailwindcss/vite';
 
 const base = process.env.AGENT_COMPOSE_BASE || '/';
-const backendTarget = process.env.AGENT_COMPOSE_DEV_BACKEND || 'http://127.0.0.1:7410';
-const uiServerTarget = process.env.AGENT_COMPOSE_DEV_UI_SERVER || backendTarget;
+const uiServerTarget = process.env.AGENT_COMPOSE_DEV_UI_SERVER || 'http://127.0.0.1:8080';
 
 export default defineConfig({
   base,
-  plugins: [svelte()],
+  plugins: [tailwindcss(), svelte()],
+  resolve: {
+    alias: {
+      $lib: fileURLToPath(new URL('./src/lib', import.meta.url)),
+    },
+  },
+  optimizeDeps: {
+    include: ['monaco-editor/editor/editor.api', 'monaco-editor/languages/definitions/javascript/register'],
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
@@ -15,15 +24,15 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5174,
-    // Dev-only: forward Connect/gRPC-web RPC and plain HTTP endpoints to the
-    // local backend (`go run ./cmd/agent-compose`, :7410) so hot-reload has real data.
-    // Does not affect the production build — RPC baseUrl stays same-origin there.
+    // Keep the development request path identical to production: the browser
+    // talks to the authenticated UI server, which proxies daemon traffic.
     proxy: {
-      '/agentcompose.v2.': { target: backendTarget, changeOrigin: true },
-      '/health.v1.': { target: backendTarget, changeOrigin: true },
-      '/api': { target: backendTarget, changeOrigin: true },
+      '/agentcompose.v2.': { target: uiServerTarget, changeOrigin: true },
+      '/health.v1.': { target: uiServerTarget, changeOrigin: true },
+      '/api': { target: uiServerTarget, changeOrigin: true, ws: true },
       '/ui-api': { target: uiServerTarget, changeOrigin: false },
-      '/jupyter': { target: backendTarget, changeOrigin: true },
+      '/oauth': { target: uiServerTarget, changeOrigin: true },
+      '/jupyter': { target: uiServerTarget, changeOrigin: true },
     },
   },
 });

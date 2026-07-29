@@ -1,117 +1,109 @@
-import { ExecStreamEventType } from '../gen/agentcompose/v2/agentcompose_pb.js';
+import {
+  AttachResize,
+  AttachStdin,
+  AttachStdinEOF,
+  AttachTerminalSize,
+  ExecAttachRequest,
+  ExecAttachResponse,
+  ExecAttachStart,
+  ExecCommand,
+  ExecRequest,
+} from '../gen/agentcompose/v2/agentcompose_pb.js';
 
-import { execClient } from './client';
+import { apiPath } from '../paths';
 
-export type RuntimeExecInput = {
-  sandboxId?: string;
-  runId?: string;
-  command: string;
-  cwd?: string;
-  timeoutMs?: number;
+export type InteractiveTerminal = {
+  send(data: string): void;
+  resize(cols: number, rows: number): void;
+  eof(): void;
+  close(): void;
 };
 
-export type RuntimeExecResult = {
-  execId: string;
-  sandboxId: string;
-  runId: string;
-  command: string;
-  cwd: string;
-  exitCode: number;
-  success: boolean;
-  stdout: string;
-  stderr: string;
-  output: string;
-  error: string;
-};
+export function openInteractiveTerminal(
+  sandboxId: string,
+  handlers: { onData: (data: string) => void; onState: (state: string) => void; onError: (message: string) => void },
+): InteractiveTerminal {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const socketURL = new URL(apiPath('/api/terminal/attach'), window.location.href);
+  socketURL.searchParams.set('sandboxId', sandboxId);
+  socketURL.protocol = socketURL.protocol === 'https:' ? 'wss:' : 'ws:';
+  const socket = new WebSocket(socketURL);
+  socket.binaryType = 'arraybuffer';
+  const pending: Uint8Array[] = [];
+  let frame = 0;
+  let ended = false;
 
-export type RuntimeExecEvent =
-  | { type: 'started'; execId: string; sandboxId: string; runId: string }
-  | { type: 'chunk'; execId: string; sandboxId: string; runId: string; chunk: string; isStderr: boolean }
-  | { type: 'completed'; execId: string; sandboxId: string; runId: string; result: RuntimeExecResult | null };
+  const enqueue = (request: ExecAttachRequest): void => {
+    request.clientFrameId = `ui-${++frame}`;
+    const payload = request.toBinary();
+    if (socket.readyState === WebSocket.OPEN) socket.send(payload);
+    else if (socket.readyState === WebSocket.CONNECTING) pending.push(payload);
+  };
+  enqueue(
+    new ExecAttachRequest({
+      frame: {
+        case: 'start',
+        value: new ExecAttachStart({
+          request: new ExecRequest({
+            target: { case: 'sandboxId', value: sandboxId },
+            command: new ExecCommand({ command: 'sh', args: ['-l'] }),
+          }),
+          attachStdin: true,
+          tty: true,
+          terminalSize: new AttachTerminalSize({ cols: 80, rows: 24 }),
+        }),
+      },
+    }),
+  );
 
-export async function executeRuntimeCommandStream(
-  input: RuntimeExecInput,
-  onEvent: (event: RuntimeExecEvent) => void,
-  signal?: AbortSignal,
-): Promise<RuntimeExecResult | null> {
-  const source = input.command.trim();
-  if (!source) {
-    throw new Error('命令不能为空');
-  }
-  const sandboxId = input.sandboxId?.trim() || '';
-  const runId = input.runId?.trim() || '';
-  if (!sandboxId && !runId) {
-    throw new Error('缺少可执行命令的运行会话');
-  }
-
-  let finalResult: RuntimeExecResult | null = null;
-  const request = {
-    target: sandboxId
-      ? { case: 'sandboxId' as const, value: sandboxId }
-      : { case: 'runId' as const, value: runId },
-    command: {
-      command: 'sh',
-      args: ['-lc', source],
-    },
-    cwd: input.cwd?.trim() || '',
-    timeoutMs: input.timeoutMs ?? 0,
+  handlers.onState('连接中');
+  socket.onopen = () => {
+    for (const payload of pending.splice(0)) socket.send(payload);
+  };
+  socket.onmessage = (event) => {
+    try {
+      if (typeof event.data === 'string') {
+        handlers.onError(event.data);
+        return;
+      }
+      const response = ExecAttachResponse.fromBinary(new Uint8Array(event.data as ArrayBuffer));
+      if (response.frame.case === 'started') handlers.onState('已连接');
+      else if (response.frame.case === 'output')
+        handlers.onData(decoder.decode(response.frame.value.data, { stream: true }));
+      else if (response.frame.case === 'error') handlers.onError(response.frame.value.message);
+      else if (response.frame.case === 'result') {
+        ended = true;
+        handlers.onState(`已结束 · exit ${response.frame.value.exitCode}`);
+      }
+    } catch (cause) {
+      handlers.onError(cause instanceof Error ? cause.message : '无法解析交互终端响应');
+    }
+  };
+  socket.onerror = () => handlers.onError('交互终端 WebSocket 连接失败');
+  socket.onclose = () => {
+    if (!ended) handlers.onState('已断开');
   };
 
-  for await (const event of execClient.execStream(request, { signal })) {
-    if (event.eventType === ExecStreamEventType.STARTED) {
-      onEvent({
-        type: 'started',
-        execId: event.execId,
-        sandboxId: event.sandboxId,
-        runId: event.runId,
-      });
-    } else if (event.eventType === ExecStreamEventType.OUTPUT) {
-      onEvent({
-        type: 'chunk',
-        execId: event.execId,
-        sandboxId: event.sandboxId,
-        runId: event.runId,
-        chunk: event.chunk,
-        isStderr: event.stream === 2,
-      });
-    } else if (event.eventType === ExecStreamEventType.COMPLETED) {
-      finalResult = event.result ? resultFromProto(event.result) : null;
-      onEvent({
-        type: 'completed',
-        execId: event.execId,
-        sandboxId: event.sandboxId,
-        runId: event.runId,
-        result: finalResult,
-      });
-    }
-  }
-  return finalResult;
-}
-
-function resultFromProto(item: {
-  execId: string;
-  sandboxId: string;
-  runId: string;
-  command?: { command: string; args: string[] };
-  cwd: string;
-  exitCode: number;
-  success: boolean;
-  stdout: string;
-  stderr: string;
-  output: string;
-  error: string;
-}): RuntimeExecResult {
   return {
-    execId: item.execId,
-    sandboxId: item.sandboxId,
-    runId: item.runId,
-    command: item.command ? [item.command.command, ...item.command.args].join(' ') : '',
-    cwd: item.cwd,
-    exitCode: item.exitCode,
-    success: item.success,
-    stdout: item.stdout,
-    stderr: item.stderr,
-    output: item.output,
-    error: item.error,
+    send(data) {
+      enqueue(
+        new ExecAttachRequest({ frame: { case: 'stdin', value: new AttachStdin({ data: encoder.encode(data) }) } }),
+      );
+    },
+    resize(cols, rows) {
+      enqueue(
+        new ExecAttachRequest({
+          frame: { case: 'resize', value: new AttachResize({ terminalSize: new AttachTerminalSize({ cols, rows }) }) },
+        }),
+      );
+    },
+    eof() {
+      enqueue(new ExecAttachRequest({ frame: { case: 'stdinEof', value: new AttachStdinEOF() } }));
+    },
+    close() {
+      ended = true;
+      socket.close();
+    },
   };
 }

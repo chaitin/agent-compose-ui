@@ -11,6 +11,8 @@ frontend.node.pid
 # Vite / Svelte caches
 .vite/
 .svelte-kit/
+test-results/
+playwright-report/
 
 # Local env
 .env

@@ -4,7 +4,7 @@
 // @ts-nocheck
 
 import type { BinaryReadOptions, FieldList, JsonReadOptions, JsonValue, PartialMessage, PlainMessage } from "@bufbuild/protobuf";
-import { Message, proto3, protoInt64 } from "@bufbuild/protobuf";
+import { Message, proto3, protoInt64, Timestamp } from "@bufbuild/protobuf";
 
 /**
  * @generated from message health.v1.MemoryUsage
@@ -107,14 +107,14 @@ export class HealthStatusResponse extends Message<HealthStatusResponse> {
   version = "";
 
   /**
-   * @generated from field: string current_time = 2;
+   * @generated from field: google.protobuf.Timestamp current_time = 2;
    */
-  currentTime = "";
+  currentTime?: Timestamp;
 
   /**
-   * @generated from field: string started_at = 3;
+   * @generated from field: google.protobuf.Timestamp started_at = 3;
    */
-  startedAt = "";
+  startedAt?: Timestamp;
 
   /**
    * @generated from field: uint64 uptime_seconds = 4;
@@ -155,8 +155,8 @@ export class HealthStatusResponse extends Message<HealthStatusResponse> {
   static readonly typeName = "health.v1.HealthStatusResponse";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "version", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 2, name: "current_time", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 3, name: "started_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "current_time", kind: "message", T: Timestamp },
+    { no: 3, name: "started_at", kind: "message", T: Timestamp },
     { no: 4, name: "uptime_seconds", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
     { no: 5, name: "go_version", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 6, name: "num_goroutines", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
