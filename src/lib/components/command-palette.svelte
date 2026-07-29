@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import * as Command from '$lib/components/ui/command';
   import { navGroups } from '$lib/nav';
+  import { t } from '$lib/i18n.svelte';
   import { navigate } from '$lib/router.svelte';
   import { command } from '$lib/command.svelte';
   import { listAgentDefinitions, type AgentDefinition } from '../../api/agents';
@@ -51,18 +52,18 @@
       const result = await resolveResource(id);
       const route = result.targets.map(routeForTarget).find(Boolean);
       if (route) go(route);
-      else resolveError = result.warnings.join(' · ') || '资源存在，但当前 UI 没有对应详情路由';
+      else resolveError = result.warnings.join(' · ') || t('资源存在，但当前 UI 没有对应详情路由');
     } catch (cause) {
-      resolveError = cause instanceof Error ? cause.message : '无法解析资源 ID';
+      resolveError = cause instanceof Error ? cause.message : t('无法解析资源 ID');
     }
   }
 </script>
 
 <Command.Dialog bind:open={command.open}>
-  <Command.Input bind:value={query} placeholder="跳转页面，或输入 ID 直达资源…" />
+  <Command.Input bind:value={query} placeholder={t('跳转页面，或输入 ID 直达资源…')} />
   <Command.List>
-    <Command.Empty>没有匹配项。</Command.Empty>
-    {#each navGroups as group (group.title)}
+    <Command.Empty>{t('没有匹配项。')}</Command.Empty>
+    {#each navGroups() as group (group.title)}
       <Command.Group heading={group.title}>
         {#each group.items as item (item.href)}
           <Command.Item onSelect={() => go(item.href)}>
@@ -74,15 +75,15 @@
     {/each}
     <Command.Separator />
     {#if query.trim()}
-      <Command.Group heading="资源解析">
+      <Command.Group heading={t('资源解析')}>
         <Command.Item value={`resolve ${query}`} onSelect={resolveID}
-          ><span class="font-mono text-xs">ID</span><span>解析 {query}</span></Command.Item
+          ><span class="font-mono text-xs">ID</span><span>{t('解析')} {query}</span></Command.Item
         >
         {#if resolveError}<div class="px-2 py-1 text-xs text-destructive">{resolveError}</div>{/if}
       </Command.Group>
       <Command.Separator />
     {/if}
-    <Command.Group heading="智能体">
+    <Command.Group heading={t('智能体')}>
       {#each agents as a (a.id)}
         <Command.Item value={`agent ${a.id}`} onSelect={() => go(`/agents/${a.id}`)}>
           <span class="font-mono text-xs text-muted-foreground">agent</span>
@@ -90,7 +91,7 @@
         </Command.Item>
       {/each}
     </Command.Group>
-    <Command.Group heading="运行">
+    <Command.Group heading={t('运行')}>
       {#each runs as r (r.runId)}
         <Command.Item value={`run ${r.runId}`} onSelect={() => go(`/runs/${r.runId}`)}>
           <span class="font-mono text-xs text-muted-foreground">run</span>

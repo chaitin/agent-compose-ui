@@ -38,6 +38,8 @@
   import Minimize2 from '@lucide/svelte/icons/minimize-2';
   import Plus from '@lucide/svelte/icons/plus';
   import Square from '@lucide/svelte/icons/square';
+  import { t } from '$lib/i18n.svelte';
+  import { jupyterEntryHref } from '../model/jupyter';
 
   const runId = $derived(matchDetail('/runs', router.path) ?? '');
   let detail = $state<RunDetail | null>(null);
@@ -45,7 +47,7 @@
   let sandbox = $state<SandboxContextDetail | null>(null);
   let tab = $state(router.path.endsWith('/terminal') ? 'terminal' : 'chat');
   let shellLines = $state<string[]>([]);
-  let terminalState = $state('未连接');
+  let terminalState = $state(t('未连接'));
   let terminalFontSize = $state(15);
   let terminalExpanded = $state(false);
   let terminal = $state<InteractiveTerminal | null>(null);
@@ -70,6 +72,7 @@
   const activeStream = $derived(
     sandboxStream?.running ? sandboxStream : runStream?.running ? runStream : (sandboxStream ?? runStream),
   );
+  const jupyterHref = $derived(jupyterEntryHref(sandbox));
   const visibleLogs = $derived(
     logQuery.trim()
       ? logs
@@ -111,7 +114,7 @@
     controller = new AbortController();
     terminal?.close();
     terminal = null;
-    terminalState = '未连接';
+    terminalState = t('未连接');
     shellLines = [];
     logs = '';
     sandbox = null;
@@ -144,7 +147,8 @@
         },
         controller.signal,
       ).catch((cause) => {
-        if (version === loadVersion && !controller?.signal.aborted) error = `日志订阅断开：${errorMessage(cause)}`;
+        if (version === loadVersion && !controller?.signal.aborted)
+          error = t('日志订阅断开：{error}', { error: errorMessage(cause) });
       });
     } catch (cause) {
       if (version === loadVersion) error = errorMessage(cause);
@@ -195,7 +199,7 @@
         terminalState = state;
       },
       onError: (messageText) => {
-        terminalState = '连接失败';
+        terminalState = t('连接失败');
         error = `PTY：${messageText}`;
       },
     });
@@ -258,7 +262,7 @@
         error = '';
         runStreams.dismiss(stream);
       } else {
-        error = `本轮执行已完成，但刷新对话失败：${errorMessage(cause)}`;
+        error = t('本轮执行已完成，但刷新对话失败：{error}', { error: errorMessage(cause) });
       }
     }
   }
@@ -275,7 +279,7 @@
   }
 
   async function stop(): Promise<void> {
-    if (!confirm('确认停止当前运行？')) return;
+    if (!confirm(t('确认停止当前运行？'))) return;
     try {
       await stopRun(runId);
       await load(runId);
@@ -293,10 +297,6 @@
       error = errorMessage(cause);
     }
   }
-  function openJupyter(): void {
-    if (sandbox?.notebookUrl) window.open(sandbox.notebookUrl, '_blank', 'noopener');
-    else if (sandbox?.proxyPath) window.open(sandbox.proxyPath, '_blank', 'noopener');
-  }
   function downloadLogs(): void {
     const url = URL.createObjectURL(new Blob([logs], { type: 'text/plain' }));
     const anchor = document.createElement('a');
@@ -305,7 +305,7 @@
     anchor.click();
     URL.revokeObjectURL(url);
   }
-  const errorMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : '请求失败');
+  const errorMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : t('请求失败'));
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
@@ -339,7 +339,7 @@
             variant="outline"
             size="sm"
             class="text-destructive"
-            onclick={stop}><Square class="size-3.5" />停止运行</Button
+            onclick={stop}><Square class="size-3.5" />{t('停止运行')}</Button
           >{/if}
       </div>{/if}
   </div>
@@ -350,13 +350,15 @@
       {error}
     </div>{/if}
   {#if loading && !detail}<p class="p-6 text-sm text-muted-foreground">
-      正在加载运行详情…
+      {t('正在加载运行详情…')}
     </p>{:else if detail}<PageContent class="flex min-h-0 flex-1 overflow-hidden">
       <Tabs.Root class="flex h-full min-h-0 w-full flex-col overflow-hidden" value={tab} onValueChange={selectTab}
         ><Tabs.List data-scroll-surface class="shrink-0 max-w-full justify-start overflow-x-auto"
-          ><Tabs.Trigger value="chat">对话</Tabs.Trigger><Tabs.Trigger value="timeline">执行动态</Tabs.Trigger
-          ><Tabs.Trigger value="logs">原始日志</Tabs.Trigger><Tabs.Trigger value="terminal">终端</Tabs.Trigger
-          ><Tabs.Trigger value="sandbox">沙箱</Tabs.Trigger></Tabs.List
+          ><Tabs.Trigger value="chat">{t('对话')}</Tabs.Trigger><Tabs.Trigger value="timeline"
+            >{t('执行动态')}</Tabs.Trigger
+          ><Tabs.Trigger value="logs">{t('原始日志')}</Tabs.Trigger><Tabs.Trigger value="terminal"
+            >{t('终端')}</Tabs.Trigger
+          ><Tabs.Trigger value="sandbox">{t('沙箱')}</Tabs.Trigger></Tabs.List
         >
         <Tabs.Content value="chat" class="mt-4 min-h-0 flex-1 overflow-hidden">
           <RunConversation
@@ -395,19 +397,20 @@
           <div
             data-terminal-panel
             class="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-background {terminalExpanded
-              ? 'fixed inset-3 z-50 shadow-2xl'
+              ? 'fixed inset-0 z-50 shadow-2xl sm:inset-3'
               : 'h-full'}"
           >
             <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-border p-2">
               <span class="flex items-center gap-1 text-sm"
-                >沙箱 {#if summary?.sandboxId}<CopyableText
+                >{t('沙箱')}
+                {#if summary?.sandboxId}<CopyableText
                     value={summary.sandboxId}
                     display={summary.sandboxShortId || summary.sandboxId}
                     label="Sandbox ID"
                     class="font-mono text-xs"
-                  />{:else}<span class="font-mono text-xs">已回收</span>{/if}</span
+                  />{:else}<span class="font-mono text-xs">{t('已回收')}</span>{/if}</span
               >{#if sandbox}<StatusBadge status={sandbox.status} />{:else}<span class="text-xs text-muted-foreground"
-                  >不可连接</span
+                  >{t('不可连接')}</span
                 >{/if}<span class="text-xs text-muted-foreground">{terminalState}</span>
               <div class="ml-auto flex gap-1">
                 <Button
@@ -416,8 +419,8 @@
                   class="size-7"
                   disabled={terminalFontSize <= 12}
                   onclick={() => adjustTerminalFont(-1)}
-                  title="缩小终端字体"
-                  aria-label="缩小终端字体"><Minus class="size-3.5" /></Button
+                  title={t('缩小终端字体')}
+                  aria-label={t('缩小终端字体')}><Minus class="size-3.5" /></Button
                 ><span class="min-w-8 self-center text-center font-mono text-[11px] text-muted-foreground"
                   >{terminalFontSize}px</span
                 ><Button
@@ -426,8 +429,8 @@
                   class="size-7"
                   disabled={terminalFontSize >= 20}
                   onclick={() => adjustTerminalFont(1)}
-                  title="增大终端字体"
-                  aria-label="增大终端字体"><Plus class="size-3.5" /></Button
+                  title={t('增大终端字体')}
+                  aria-label={t('增大终端字体')}><Plus class="size-3.5" /></Button
                 >
                 <Button variant="ghost" size="sm" onclick={() => terminal?.send('\x03')}>Ctrl-C</Button><Button
                   variant="ghost"
@@ -438,21 +441,22 @@
                   size="icon"
                   class="size-7"
                   onclick={() => (terminalExpanded = !terminalExpanded)}
-                  title={terminalExpanded ? '还原终端' : '展开终端'}
-                  aria-label={terminalExpanded ? '还原终端' : '展开终端'}
+                  title={t(terminalExpanded ? '还原终端' : '展开终端')}
+                  aria-label={t(terminalExpanded ? '还原终端' : '展开终端')}
                   >{#if terminalExpanded}<Minimize2 class="size-3.5" />{:else}<Maximize2
                       class="size-3.5"
                     />{/if}</Button
                 >
-                {#if sandbox && !terminal}<Button variant="outline" size="sm" onclick={connectShell}>连接</Button
+                {#if sandbox && !terminal}<Button variant="outline" size="sm" onclick={connectShell}>{t('连接')}</Button
                   >{/if}{#if sandbox?.status === 'stopped'}<Button variant="outline" size="sm" onclick={resume}
-                    >恢复沙箱</Button
+                    >{t('恢复沙箱')}</Button
                   >{/if}<Button
                   variant="ghost"
                   size="sm"
-                  onclick={openJupyter}
-                  disabled={!sandbox?.notebookUrl && !sandbox?.proxyPath}
-                  ><ExternalLink class="size-3.5" />Jupyter</Button
+                  href={jupyterHref || undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  disabled={!jupyterHref}><ExternalLink class="size-3.5" />Jupyter</Button
                 >
               </div>
             </div>

@@ -6,6 +6,7 @@
   import Clock3 from '@lucide/svelte/icons/clock-3';
   import MinusCircle from '@lucide/svelte/icons/minus-circle';
   import OctagonPause from '@lucide/svelte/icons/octagon-pause';
+  import { t } from '$lib/i18n.svelte';
 
   type SemanticStatus = 'running' | 'success' | 'failed' | 'skipped' | 'pending' | 'stopped';
   const statusLabel: Record<SemanticStatus, string> = {
@@ -58,5 +59,5 @@
     />{:else if semanticStatus === 'failed'}<CircleX class="size-3" />{:else if semanticStatus === 'pending'}<Clock3
       class="size-3"
     />{:else if semanticStatus === 'skipped'}<MinusCircle class="size-3" />{:else}<OctagonPause class="size-3" />{/if}
-  {label || statusLabel[semanticStatus]}
+  {label ? t(label) : t(statusLabel[semanticStatus])}
 </span>

@@ -6,6 +6,7 @@
   import { RunEventKind, type RunEvent } from '../../gen/agentcompose/v2/agentcompose_pb.js';
   import { timestampToISOString } from '../../model/timestamps';
   import Timestamp from './timestamp.svelte';
+  import { t } from '$lib/i18n.svelte';
 
   let { events }: { events: RunEvent[] } = $props();
 
@@ -45,7 +46,7 @@
       <div class="min-w-0 rounded-lg border border-border bg-card p-3">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div class="flex items-center gap-2">
-            <span class="text-sm font-medium">{meta.label}</span>
+            <span class="text-sm font-medium">{t(meta.label)}</span>
             <span class="font-mono text-[11px] text-muted-foreground">#{index + 1}</span>
             {#if event.agent}<span class="text-xs text-muted-foreground">{event.agent}</span>{/if}
           </div>
@@ -53,14 +54,14 @@
         </div>
         {#if eventText(event)}<p class="mt-2 whitespace-pre-wrap text-sm leading-6">{eventText(event)}</p>{/if}
         {#if payload(event)}<details class="mt-2">
-            <summary class="cursor-pointer text-xs text-muted-foreground">查看结构化载荷</summary>
+            <summary class="cursor-pointer text-xs text-muted-foreground">{t('查看结构化载荷')}</summary>
             <pre class="mt-2 whitespace-pre-wrap break-words rounded-md bg-muted p-3 text-xs">{payload(event)}</pre>
           </details>{/if}
       </div>
     </article>
   {:else}
     <div class="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-      当前运行没有语义事件
+      {t('当前运行没有语义事件')}
     </div>
   {/each}
 </div>

@@ -25,6 +25,7 @@
     type SaveAutomationTaskInput,
   } from '../api/loaders';
   import Plus from '@lucide/svelte/icons/plus';
+  import { t } from '$lib/i18n.svelte';
 
   type Draft = SaveAutomationTaskInput & { payload: string };
 
@@ -102,11 +103,11 @@
 
   async function save(): Promise<void> {
     if (!draft.name.trim()) {
-      error = '任务名称必填';
+      error = t('任务名称必填');
       return;
     }
     if (!draft.agentId) {
-      error = '请选择绑定智能体';
+      error = t('请选择绑定智能体');
       return;
     }
     saving = true;
@@ -200,7 +201,7 @@
       );
   }
 
-  const errorMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : '请求失败');
+  const errorMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : t('请求失败'));
 </script>
 
 <div
@@ -212,7 +213,7 @@
           size="sm"
           onpointerenter={preloadMonaco}
           onfocus={preloadMonaco}
-          onclick={beginCreate}><Plus class="size-3.5" /> 新建任务</Button
+          onclick={beginCreate}><Plus class="size-3.5" /> {t('新建任务')}</Button
         >{/if}{/snippet}
   </PageHeader>
   {#if error}<div class="mx-4 mt-3 shrink-0 rounded-md bg-destructive/10 p-3 text-sm text-destructive sm:mx-5 xl:mx-6">
@@ -230,19 +231,19 @@
       >
         <div class="flex shrink-0 flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 class="font-semibold">{creating ? '新建自动化任务' : '编辑自动化任务'}</h2>
+            <h2 class="font-semibold">{t(creating ? '新建自动化任务' : '编辑自动化任务')}</h2>
             {#if validation}<p class="text-sm {validation.valid ? 'text-success' : 'text-destructive'}">
                 {validation.valid
-                  ? `校验通过${validation.warnings.length ? ` · ${validation.warnings.join(' · ')}` : ''}`
-                  : '校验失败'}
+                  ? `${t('校验通过')}${validation.warnings.length ? ` · ${validation.warnings.join(' · ')}` : ''}`
+                  : t('校验失败')}
               </p>{/if}
           </div>
           <div class="flex gap-2">
-            <Button type="button" variant="outline" onclick={() => navigate('/automations')}>取消</Button><Button
+            <Button type="button" variant="outline" onclick={() => navigate('/automations')}>{t('取消')}</Button><Button
               type="button"
               variant="outline"
-              onclick={validate}>校验</Button
-            ><Button type="submit" disabled={saving}>{saving ? '保存中…' : '保存'}</Button>
+              onclick={validate}>{t('校验')}</Button
+            ><Button type="submit" disabled={saving}>{t(saving ? '保存中…' : '保存')}</Button>
           </div>
         </div>
         <div class="grid min-h-0 flex-1 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)] lg:overflow-hidden">
@@ -250,12 +251,13 @@
             data-scroll-pane
             class="space-y-4 rounded-lg border border-border bg-card p-4 lg:min-h-0 lg:overflow-y-auto"
           >
-            <label class="block space-y-1"><span class="text-sm">名称</span><Input bind:value={draft.name} /></label
+            <label class="block space-y-1"
+              ><span class="text-sm">{t('名称')}</span><Input bind:value={draft.name} /></label
             ><label class="block space-y-1"
-              ><span class="text-sm">绑定智能体</span><select
+              ><span class="text-sm">{t('绑定智能体')}</span><select
                 class="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm"
                 bind:value={draft.agentId}
-                ><option value="">请选择</option>{#each agents as agent (agent.id)}<option value={agent.id}
+                ><option value="">{t('请选择')}</option>{#each agents as agent (agent.id)}<option value={agent.id}
                     >{agent.name}</option
                   >{/each}</select
               ></label
@@ -264,11 +266,11 @@
             ><label class="block space-y-1"
               ><span class="text-sm">Driver</span><Input bind:value={draft.driver} /></label
             ><label class="block space-y-1"
-              ><span class="text-sm">Guest 镜像</span><Input bind:value={draft.guestImage} /></label
+              ><span class="text-sm">{t('Guest 镜像')}</span><Input bind:value={draft.guestImage} /></label
             ><label class="block space-y-1"
-              ><span class="text-sm">描述</span><Textarea bind:value={draft.description} /></label
+              ><span class="text-sm">{t('描述')}</span><Textarea bind:value={draft.description} /></label
             ><label class="flex items-center gap-2 text-sm"
-              ><input type="checkbox" bind:checked={draft.enabled} /> 启用调度</label
+              ><input type="checkbox" bind:checked={draft.enabled} /> {t('启用调度')}</label
             >
           </section>
           <section class="flex min-h-[24rem] flex-col lg:min-h-0">
@@ -283,9 +285,9 @@
   {:else}
     <PageContent class="space-y-4">
       <div class="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 sm:flex-row sm:items-center">
-        <Input bind:value={query} class="sm:max-w-sm" placeholder="搜索任务、智能体或任务 ID" />
-        <div class="flex rounded-lg bg-muted p-1" aria-label="自动化任务状态筛选">
-          {#each [{ value: 'all', label: `全部 ${tasks.length}` }, { value: 'enabled', label: `已启用 ${enabledCount}` }, { value: 'disabled', label: `已停用 ${disabledCount}` }] as option}
+        <Input bind:value={query} class="sm:max-w-sm" placeholder={t('搜索任务、智能体或任务 ID')} />
+        <div class="flex rounded-lg bg-muted p-1" aria-label={t('自动化任务状态筛选')}>
+          {#each [{ value: 'all', label: `${t('全部')} ${tasks.length}` }, { value: 'enabled', label: `${t('已启用')} ${enabledCount}` }, { value: 'disabled', label: `${t('已停用')} ${disabledCount}` }] as option}
             <button
               type="button"
               aria-pressed={statusFilter === option.value}
@@ -296,7 +298,7 @@
             >
           {/each}
         </div>
-        <span class="text-xs text-muted-foreground sm:ml-auto">已启用任务优先展示</span>
+        <span class="text-xs text-muted-foreground sm:ml-auto">{t('已启用任务优先展示')}</span>
       </div>
       <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {#each visibleTasks as task (task.id)}<article
@@ -310,29 +312,32 @@
             </div>
             <p class="mt-1 text-sm text-muted-foreground">{task.description || `绑定 ${task.agentName}`}</p>
             <dl class="mt-4 grid grid-cols-2 gap-2 text-xs">
-              <dt class="text-muted-foreground">任务 ID</dt>
+              <dt class="text-muted-foreground">{t('任务 ID')}</dt>
               <dd><CopyableText value={task.id} label="任务 ID" class="max-w-full font-mono" /></dd>
-              <dt class="text-muted-foreground">触发器</dt>
+              <dt class="text-muted-foreground">{t('触发器')}</dt>
               <dd>{task.triggerCount}</dd>
-              <dt class="text-muted-foreground">运行</dt>
+              <dt class="text-muted-foreground">{t('运行')}</dt>
               <dd>{task.runCount}</dd>
-              <dt class="text-muted-foreground">最近</dt>
-              <dd><Timestamp value={task.latestRunAt} empty="未运行" /></dd>
-              <dt class="text-muted-foreground">更新时间</dt>
+              <dt class="text-muted-foreground">{t('最近')}</dt>
+              <dd><Timestamp value={task.latestRunAt} empty={t('未运行')} /></dd>
+              <dt class="text-muted-foreground">{t('更新时间')}</dt>
               <dd><Timestamp value={task.updatedAt} /></dd>
             </dl>
             <div class="mt-4 flex flex-wrap gap-2">
-              <Button size="sm" onclick={() => runNow(task)}>立即运行</Button><Button
+              <Button size="sm" onclick={() => runNow(task)}>{t('立即运行')}</Button><Button
                 size="sm"
                 variant="outline"
                 onpointerenter={preloadMonaco}
                 onfocus={preloadMonaco}
-                onclick={() => beginEdit(task.id)}>编辑</Button
-              ><Button size="sm" variant="ghost" onclick={() => toggle(task)}>{task.enabled ? '停用' : '启用'}</Button
-              ><Button size="sm" variant="ghost" class="text-destructive" onclick={() => remove(task)}>删除</Button>
+                onclick={() => beginEdit(task.id)}>{t('编辑')}</Button
+              ><Button size="sm" variant="ghost" onclick={() => toggle(task)}
+                >{t(task.enabled ? '停用' : '启用')}</Button
+              ><Button size="sm" variant="ghost" class="text-destructive" onclick={() => remove(task)}
+                >{t('删除')}</Button
+              >
             </div>
           </article>{:else}<p class="text-sm text-muted-foreground">
-            {loading ? '正在加载…' : tasks.length ? '没有匹配的自动化任务' : '还没有自动化任务'}
+            {t(loading ? '正在加载…' : tasks.length ? '没有匹配的自动化任务' : '还没有自动化任务')}
           </p>{/each}
       </div>
     </PageContent>

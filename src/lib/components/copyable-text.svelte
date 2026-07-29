@@ -4,6 +4,7 @@
   import Copy from '@lucide/svelte/icons/copy';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import { copyText } from '$lib/clipboard';
+  import { t } from '$lib/i18n.svelte';
 
   let {
     value,
@@ -45,8 +46,12 @@
   <button
     type="button"
     class="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-60 transition hover:bg-accent hover:text-foreground group-hover/copy:opacity-100"
-    aria-label={status === 'copied' ? `${label}已复制` : status === 'error' ? `${label}复制失败` : `复制${label}`}
-    title={status === 'copied' ? '已复制' : status === 'error' ? '复制失败' : `复制${label}`}
+    aria-label={status === 'copied'
+      ? `${t(label)} ${t('已复制')}`
+      : status === 'error'
+        ? `${t(label)} ${t('复制失败')}`
+        : `${t('复制')} ${t(label)}`}
+    title={status === 'copied' ? t('已复制') : status === 'error' ? t('复制失败') : `${t('复制')} ${t(label)}`}
     onclick={copy}
   >
     {#if status === 'copied'}<Check class="size-3 text-success" />{:else if status === 'error'}<TriangleAlert
@@ -58,7 +63,7 @@
       role="status"
       class="absolute right-0 top-full z-50 mt-1 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-[11px] font-normal text-popover-foreground shadow-md"
     >
-      {status === 'copied' ? '已复制' : '复制失败'}
+      {t(status === 'copied' ? '已复制' : '复制失败')}
     </span>
   {/if}
 </span>

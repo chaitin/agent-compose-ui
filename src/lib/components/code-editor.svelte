@@ -5,6 +5,7 @@
   import Expand from '@lucide/svelte/icons/expand';
   import Minimize2 from '@lucide/svelte/icons/minimize-2';
   import WandSparkles from '@lucide/svelte/icons/wand-sparkles';
+  import { t } from '$lib/i18n.svelte';
 
   let {
     value = $bindable(''),
@@ -55,7 +56,7 @@
         await editor.getAction('editor.action.formatDocument')?.run();
       }
     } catch (cause) {
-      formatError = cause instanceof Error ? cause.message : '格式化失败';
+      formatError = cause instanceof Error ? cause.message : t('格式化失败');
     } finally {
       formatting = false;
       editor.focus();
@@ -113,7 +114,7 @@
       })
       .catch((cause) => {
         loading = false;
-        loadError = cause instanceof Error ? cause.message : '编辑器加载失败';
+        loadError = cause instanceof Error ? cause.message : t('编辑器加载失败');
       });
 
     return () => {
@@ -133,15 +134,16 @@
 <div
   data-scroll-surface
   class:fixed={fullscreen}
-  class:inset-3={fullscreen}
   class:z-50={fullscreen}
-  class="flex min-h-[16rem] flex-col overflow-hidden rounded-lg border border-input bg-background shadow-sm"
-  style:height={fullscreen ? 'calc(100vh - 1.5rem)' : height}
+  class="flex min-h-[16rem] flex-col overflow-hidden rounded-lg border border-input bg-background shadow-sm {fullscreen
+    ? 'inset-0 h-dvh sm:inset-3 sm:h-[calc(100dvh-1.5rem)]'
+    : ''}"
+  style:height={fullscreen ? undefined : height}
   style:resize={fullscreen ? 'none' : 'vertical'}
 >
   <div class="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-2">
-    <span class="text-xs font-medium">{title}</span>
-    <span class="text-[11px] text-muted-foreground">{language} · Shift+Alt+F 格式化</span>
+    <span class="text-xs font-medium">{t(title)}</span>
+    <span class="text-[11px] text-muted-foreground">{language} · Shift+Alt+F {t('格式化')}</span>
     {#if formatError}<span class="min-w-0 truncate text-xs text-destructive" title={formatError}>{formatError}</span
       >{/if}
     <div class="ml-auto flex gap-1">
@@ -150,9 +152,11 @@
           variant="ghost"
           size="sm"
           disabled={formatting}
-          onclick={formatDocument}><WandSparkles class="size-3.5" />{formatting ? '格式化中…' : '格式化'}</Button
+          onclick={formatDocument}><WandSparkles class="size-3.5" />{t(formatting ? '格式化中…' : '格式化')}</Button
         >{/if}<Button type="button" variant="ghost" size="sm" onclick={toggleFullscreen}
-        >{#if fullscreen}<Minimize2 class="size-3.5" />退出全屏{:else}<Expand class="size-3.5" />全屏{/if}</Button
+        >{#if fullscreen}<Minimize2 class="size-3.5" />{t('退出全屏')}{:else}<Expand class="size-3.5" />{t(
+            '全屏',
+          )}{/if}</Button
       >
     </div>
   </div>
@@ -161,7 +165,7 @@
     {#if loading}<div
         class="absolute inset-0 flex items-center justify-center bg-background text-sm text-muted-foreground"
       >
-        正在加载代码编辑器…
+        {t('正在加载代码编辑器…')}
       </div>{:else if loadError}<div
         class="absolute inset-0 flex items-center justify-center bg-background p-4 text-sm text-destructive"
       >

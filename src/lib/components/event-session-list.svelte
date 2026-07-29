@@ -8,6 +8,8 @@
   import Timestamp from './timestamp.svelte';
   import type { EventSessionTrace } from '../../model/event-detail';
   import { failureDetails, failureSummary } from '../../model/errors';
+  import { t } from '$lib/i18n.svelte';
+  import { jupyterEntryHref } from '../../model/jupyter';
 
   let {
     traces,
@@ -23,7 +25,6 @@
     onSend,
     onStop,
     onResume,
-    onOpenNotebook,
   }: {
     traces: EventSessionTrace[];
     drafts: Record<string, string>;
@@ -38,13 +39,13 @@
     onSend: (trace: EventSessionTrace) => void;
     onStop: (trace: EventSessionTrace) => void;
     onResume: (trace: EventSessionTrace) => void;
-    onOpenNotebook: (trace: EventSessionTrace) => void;
   } = $props();
 
   let selectedSessionId = $state('');
   let conversationNode = $state<HTMLElement | null>(null);
   let followsLatest = $state(true);
   const selected = $derived(traces.find((trace) => trace.link.sessionId === selectedSessionId) ?? traces[0]);
+  const notebookHref = $derived(jupyterEntryHref(selected?.session));
 
   $effect(() => {
     const ids = traces.map((trace) => trace.link.sessionId);
@@ -85,11 +86,14 @@
   <div class="shrink-0 border-b border-border px-4 py-3">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <h2 class="text-sm font-medium">关联对话</h2>
-        <p class="text-xs text-muted-foreground">{traces.length} 个对话上下文，消息继续发送到所选 Sandbox</p>
+        <h2 class="text-sm font-medium">{t('关联对话')}</h2>
+        <p class="text-xs text-muted-foreground">
+          {traces.length}
+          {t('个对话上下文，消息继续发送到所选 Sandbox')}
+        </p>
       </div>
       {#if !followsLatest}
-        <Button size="sm" variant="outline" onclick={() => void scrollToLatest(true)}>回到最新</Button>
+        <Button size="sm" variant="outline" onclick={() => void scrollToLatest(true)}>{t('回到最新')}</Button>
       {/if}
     </div>
     {#if traces.length > 1}
@@ -126,25 +130,27 @@
           <Button
             size="sm"
             variant="outline"
-            onclick={() => navigate(`/runs?sandboxId=${encodeURIComponent(sessionId)}`)}>关联运行</Button
+            onclick={() => navigate(`/runs?sandboxId=${encodeURIComponent(sessionId)}`)}>{t('关联运行')}</Button
           >
           {#if isRunning(selected)}
             <Button size="sm" variant="outline" disabled={sessionAction === sessionId} onclick={() => onStop(selected)}
-              >停止</Button
+              >{t('停止')}</Button
             >
           {:else}
             <Button
               size="sm"
               variant="outline"
               disabled={sessionAction === sessionId}
-              onclick={() => onResume(selected)}>恢复</Button
+              onclick={() => onResume(selected)}>{t('恢复')}</Button
             >
           {/if}
           <Button
             size="sm"
             variant="outline"
-            disabled={!selected.session?.notebookUrl && !selected.session?.proxyPath}
-            onclick={() => onOpenNotebook(selected)}>Jupyter</Button
+            href={notebookHref || undefined}
+            target="_blank"
+            rel="noopener noreferrer"
+            disabled={!notebookHref}>Jupyter</Button
           >
         </div>
       </div>
@@ -159,7 +165,7 @@
       {#each selected.cells as cell (cell.id)}
         {#if cell.source}
           <div class="ml-auto max-w-[90%] rounded-lg bg-primary/10 p-3">
-            <div class="text-[11px] font-medium text-muted-foreground">用户</div>
+            <div class="text-[11px] font-medium text-muted-foreground">{t('用户')}</div>
             <pre class="mt-1 whitespace-pre-wrap break-words text-sm">{cell.source}</pre>
           </div>
         {/if}
@@ -172,8 +178,8 @@
               : 'border-border'}"
           >
             <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
-              <span>{cell.agent || '智能体'}</span><span class="flex items-center gap-2"
-                >{#if cell.stopReason}<span class="text-destructive">失败</span>{/if}<Timestamp
+              <span>{cell.agent || t('智能体')}</span><span class="flex items-center gap-2"
+                >{#if cell.stopReason}<span class="text-destructive">{t('失败')}</span>{/if}<Timestamp
                   value={cell.createdAt}
                 /></span
               >
@@ -182,17 +188,17 @@
                 {errorSummary}
               </p>{:else}<pre class="mt-1 whitespace-pre-wrap break-words text-sm">{cell.output}</pre>{/if}
             {#if cell.stopReason && errorDetail !== errorSummary}<details class="mt-2 text-xs text-destructive/90">
-                <summary class="cursor-pointer select-none">错误详情</summary>
+                <summary class="cursor-pointer select-none">{t('错误详情')}</summary>
                 <pre class="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words">{errorDetail}</pre>
               </details>{/if}
           </div>
         {/if}
       {:else}
-        <p class="py-6 text-center text-sm text-muted-foreground">暂无对话输出</p>
+        <p class="py-6 text-center text-sm text-muted-foreground">{t('暂无对话输出')}</p>
       {/each}
       {#if pendingPrompts[sessionId]}
         <div class="ml-auto max-w-[90%] rounded-lg bg-primary/10 p-3">
-          <div class="text-[11px] font-medium text-muted-foreground">用户</div>
+          <div class="text-[11px] font-medium text-muted-foreground">{t('用户')}</div>
           <pre class="mt-1 whitespace-pre-wrap break-words text-sm">{pendingPrompts[sessionId]}</pre>
         </div>
         <div
@@ -202,11 +208,11 @@
           aria-live="polite"
         >
           <div class="flex items-center justify-between gap-2 text-[11px]">
-            <span class="font-medium text-muted-foreground">智能体</span>
+            <span class="font-medium text-muted-foreground">{t('智能体')}</span>
             <span class="flex items-center gap-1.5 {streamFailed[sessionId] ? 'text-destructive' : 'text-primary'}"
               ><span
                 class="size-1.5 rounded-full {streamFailed[sessionId] ? 'bg-destructive' : 'animate-pulse bg-primary'}"
-              ></span>{streamState[sessionId] || '回复中…'}</span
+              ></span>{streamState[sessionId] || t('回复中…')}</span
             >
           </div>
           {#if streamOutput[sessionId]}<pre
@@ -221,7 +227,7 @@
       <Input
         value={drafts[sessionId] || ''}
         oninput={(event) => onDraft(sessionId, event.currentTarget.value)}
-        placeholder={selected.target && isRunning(selected) ? '输入消息' : 'Sandbox 已停止'}
+        placeholder={t(selected.target && isRunning(selected) ? '输入消息' : 'Sandbox 已停止')}
         disabled={!selected.target || !isRunning(selected)}
         onkeydown={(event) => {
           if (event.key === 'Enter' && !event.shiftKey) sendSelected();
@@ -230,12 +236,12 @@
       <Button
         class="sm:shrink-0"
         disabled={!selected.target || !isRunning(selected) || sendingSessionId === sessionId}
-        onclick={sendSelected}>{sendingSessionId === sessionId ? '发送中…' : '发送'}</Button
+        onclick={sendSelected}>{t(sendingSessionId === sessionId ? '发送中…' : '发送')}</Button
       >
     </div>
   {:else}
     <div class="flex min-h-48 flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
-      这个事件没有产生或绑定对话 Sandbox。
+      {t('这个事件没有产生或绑定对话 Sandbox。')}
     </div>
   {/if}
 </section>

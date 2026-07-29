@@ -7,6 +7,7 @@
   import Timestamp from '$lib/components/timestamp.svelte';
   import type { ConversationTurn } from '../../model/conversation';
   import { failureDetails, failureSummary } from '../../model/errors';
+  import { t } from '$lib/i18n.svelte';
   import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right';
 
   let {
@@ -66,7 +67,7 @@
       class="absolute bottom-16 right-4 z-10 shadow"
       size="sm"
       variant="outline"
-      onclick={() => void scrollToLatest(true)}>回到最新</Button
+      onclick={() => void scrollToLatest(true)}>{t('回到最新')}</Button
     >
   {/if}
 
@@ -87,7 +88,7 @@
       >
         <div>
           <div class="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
-            <span>用户输入</span>
+            <span>{t('用户输入')}</span>
             <span class="flex flex-wrap items-center gap-2 font-normal">
               {#if turn.createdAt}<Timestamp value={turn.createdAt} />{/if}
               {#if turn.runId}<CopyableText
@@ -102,8 +103,9 @@
         </div>
         <div class="border-t border-border pt-3">
           <div class="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
-            <span>智能体输出</span>
-            {#if failed}<span class="rounded-full bg-destructive/10 px-2 py-0.5 text-destructive">失败</span>{/if}
+            <span>{t('智能体输出')}</span>
+            {#if failed}<span class="rounded-full bg-destructive/10 px-2 py-0.5 text-destructive">{t('失败')}</span
+              >{/if}
           </div>
           {#if failed}<p class="mt-2 whitespace-pre-wrap break-words text-sm text-destructive">
               {errorSummary}
@@ -111,10 +113,10 @@
               class="mt-2 whitespace-pre-wrap break-words text-sm">{turn.output}</pre>{:else}<p
               class="mt-2 text-sm text-muted-foreground"
             >
-              暂无输出
+              {t('暂无输出')}
             </p>{/if}
           {#if failed && errorDetail !== errorSummary}<details class="mt-2 text-xs text-destructive/90">
-              <summary class="cursor-pointer select-none">错误详情</summary>
+              <summary class="cursor-pointer select-none">{t('错误详情')}</summary>
               <pre
                 class="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-destructive/5 p-2">{errorDetail}</pre>
             </details>{/if}
@@ -124,7 +126,7 @@
     {#if continuationRunId}
       <div class="flex justify-end">
         <Button variant="ghost" size="sm" onclick={() => navigate(`/runs/${encodeURIComponent(continuationRunId)}`)}
-          >查看运行 {continuationRunId.slice(0, 12)} <ArrowUpRight class="size-3.5" /></Button
+          >{t('查看运行')} {continuationRunId.slice(0, 12)} <ArrowUpRight class="size-3.5" /></Button
         >
       </div>
     {/if}
@@ -132,7 +134,7 @@
       <article class="min-w-0 space-y-3 rounded-lg border border-primary/30 bg-card p-4" aria-live="polite">
         <div>
           <div class="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
-            <span>用户输入</span>
+            <span>{t('用户输入')}</span>
             {#if pendingRunId}<CopyableText
                 value={pendingRunId}
                 display={pendingRunId.slice(0, 12)}
@@ -144,10 +146,10 @@
         </div>
         <div class="border-t border-border pt-3">
           <div class="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
-            <span>智能体输出</span>
+            <span>{t('智能体输出')}</span>
             <span class="flex items-center gap-1.5 font-normal text-primary">
               <span class="size-1.5 animate-pulse rounded-full bg-primary"></span>
-              {pendingStreamState || '回复中…'}
+              {pendingStreamState || t('回复中…')}
             </span>
           </div>
           {#if pendingOutput}<pre class="mt-2 whitespace-pre-wrap break-words text-sm">{pendingOutput}</pre>{/if}
@@ -161,10 +163,10 @@
       <Input
         value={message}
         oninput={(event) => onMessage(event.currentTarget.value)}
-        placeholder="输入消息"
+        placeholder={t('输入消息')}
         onkeydown={(event) => event.key === 'Enter' && !event.shiftKey && sendAndFollow()}
       />
-      <Button class="sm:shrink-0" disabled={sending} onclick={sendAndFollow}>{sending ? '回复中…' : '发送'}</Button>
+      <Button class="sm:shrink-0" disabled={sending} onclick={sendAndFollow}>{t(sending ? '回复中…' : '发送')}</Button>
     </div>
   {/if}
 </div>

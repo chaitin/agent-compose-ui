@@ -5,6 +5,7 @@
   import * as Dialog from '$lib/components/ui/dialog';
   import StatusBadge from '$lib/components/status-badge.svelte';
   import Timestamp from '$lib/components/timestamp.svelte';
+  import { t } from '$lib/i18n.svelte';
   import { copyText } from '$lib/clipboard';
   import {
     ApiTokenError,
@@ -109,11 +110,11 @@
   <div class="flex shrink-0 flex-wrap items-start justify-between gap-3">
     <div>
       <h2 class="text-sm font-medium">API Token</h2>
-      <p class="text-xs text-muted-foreground">为远程 CLI 和自动化调用创建受角色约束的凭据，明文只显示一次。</p>
+      <p class="text-xs text-muted-foreground">{t('为远程 CLI 和自动化调用创建受角色约束的凭据，明文只显示一次。')}</p>
     </div>
     <div class="flex gap-2">
-      <Button variant="outline" size="sm" onclick={() => (guideOpen = true)}>使用说明</Button>
-      <Button size="sm" disabled={unavailable} onclick={openCreate}>创建 Token</Button>
+      <Button variant="outline" size="sm" onclick={() => (guideOpen = true)}>{t('使用说明')}</Button>
+      <Button size="sm" disabled={unavailable} onclick={openCreate}>{t('创建 Token')}</Button>
     </div>
   </div>
 
@@ -122,11 +123,11 @@
     </div>{/if}
   {#if unavailable}
     <div class="rounded-lg border border-warning/35 bg-warning/10 p-4 text-sm">
-      <div class="font-medium">Token 管理功能未启用</div>
-      <p class="mt-1 text-muted-foreground">部署 UI server 时配置 TOKEN_DB_PATH 后启用，其他功能不受影响。</p>
+      <div class="font-medium">{t('Token 管理功能未启用')}</div>
+      <p class="mt-1 text-muted-foreground">{t('部署 UI server 时配置 TOKEN_DB_PATH 后启用，其他功能不受影响。')}</p>
     </div>
   {:else if loading}
-    <p class="text-sm text-muted-foreground">正在加载 Token…</p>
+    <p class="text-sm text-muted-foreground">{t('正在加载 Token…')}</p>
   {:else}
     <div data-scroll-surface class="min-h-0 overflow-auto rounded-lg border border-border bg-card">
       <table class="w-full min-w-[52rem] text-left text-sm">

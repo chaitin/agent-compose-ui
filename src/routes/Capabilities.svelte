@@ -12,6 +12,7 @@
     type CapabilitySet,
     type CapabilityStatus,
   } from '../api/config';
+  import { t } from '$lib/i18n.svelte';
   let status = $state<CapabilityStatus | null>(null);
   let sets = $state<CapabilitySet[]>([]);
   let selected = $state('');
@@ -26,7 +27,7 @@
       [status, sets] = await Promise.all([getCapabilityStatus(), listCapabilitySets()]);
       if (sets[0]) await select(sets[0].id);
     } catch (e) {
-      error = e instanceof Error ? e.message : '加载失败';
+      error = e instanceof Error ? e.message : t('加载失败');
     } finally {
       loading = false;
     }
@@ -38,18 +39,18 @@
 </script>
 
 <PageHeader title="能力集" description="能力网关状态、capset 与方法目录"
-  >{#snippet actions()}<Button variant="outline" size="sm" onclick={load}>刷新</Button>{/snippet}</PageHeader
+  >{#snippet actions()}<Button variant="outline" size="sm" onclick={load}>{t('刷新')}</Button>{/snippet}</PageHeader
 >
 <PageContent class="space-y-4">
   {#if error}<div class="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>{:else if loading}<p
       class="text-sm text-muted-foreground"
     >
-      正在加载能力网关…
+      {t('正在加载能力网关…')}
     </p>{:else}<div class="rounded-lg border border-border bg-card p-4 text-sm">
-      <span class="mr-2 inline-block size-2 rounded-full {status?.ok ? 'bg-success' : 'bg-destructive'}"
-      ></span>{status?.ok ? '已连接' : '未连接'} · {status?.status || '未配置'} · {status?.serviceCount ?? 0} 个服务{#if status?.error}<p
-          class="mt-2 text-destructive"
-        >
+      <span class="mr-2 inline-block size-2 rounded-full {status?.ok ? 'bg-success' : 'bg-destructive'}"></span>{t(
+        status?.ok ? '已连接' : '未连接',
+      )} · {status?.status || t('未配置')} · {status?.serviceCount ?? 0}
+      {t('个服务')}{#if status?.error}<p class="mt-2 text-destructive">
           {status.error}
         </p>{/if}
     </div>
@@ -68,18 +69,19 @@
               label="Capability Set ID"
               class="absolute right-2 top-1/2 -translate-y-1/2"
             />
-          </div>{:else}<p class="p-4 text-sm text-muted-foreground">没有能力集</p>{/each}
+          </div>{:else}<p class="p-4 text-sm text-muted-foreground">{t('没有能力集')}</p>{/each}
       </div>
       <div class="overflow-hidden rounded-lg border border-border">
         <table class="w-full text-sm">
           <thead class="bg-muted/40"
-            ><tr><th class="p-3 text-left">方法</th><th class="p-3 text-left">说明</th></tr></thead
+            ><tr><th class="p-3 text-left">{t('方法')}</th><th class="p-3 text-left">{t('说明')}</th></tr></thead
           ><tbody class="divide-y divide-border"
             >{#each methods as method (method.methodFullName)}<tr
                 ><td class="p-3 font-mono text-xs">{method.methodFullName}</td><td class="p-3 text-muted-foreground"
                   >{method.serviceId} · {method.backendInstanceStatus || '未知'}</td
                 ></tr
-              >{:else}<tr><td colspan="2" class="p-8 text-center text-muted-foreground">选择能力集查看方法</td></tr
+              >{:else}<tr
+                ><td colspan="2" class="p-8 text-center text-muted-foreground">{t('选择能力集查看方法')}</td></tr
               >{/each}</tbody
           >
         </table>

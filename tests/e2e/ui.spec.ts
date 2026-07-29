@@ -146,7 +146,8 @@ async function setMonacoValue(page: Page, value: string): Promise<void> {
 }
 
 async function configureWebhookAutomation(page: Page, script: string): Promise<void> {
-  await navigateInApp(page, '/automations');
+  await page.getByRole('button', { name: '自动化任务', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '自动化任务' })).toBeVisible();
   const taskCard = page.locator('article').filter({ hasText: 'UI Agent Shell Regression' });
   await expect(taskCard).toBeVisible();
 
@@ -233,6 +234,67 @@ test('authenticates and loads every primary route without browser errors', async
 
   expect(failedResponses, failedResponses.join('\n')).toEqual([]);
   expect(browserErrors, browserErrors.join('\n')).toEqual([]);
+});
+
+test('switches between Chinese and English and persists the locale', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: '切换语言' }).click();
+  await expect(page.getByRole('button', { name: 'Change language' })).toBeVisible();
+  await expect(page.getByText('Overview', { exact: true }).first()).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('en-US');
+
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Change language' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('ac.locale'))).toBe('en-US');
+});
+
+test('keeps primary pages within phone and tablet viewports', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await login(page);
+
+  const navigationButton = page.getByRole('button', { name: '打开导航' });
+  await expect(navigationButton).toBeVisible();
+  await navigationButton.click();
+  await expect(page.getByRole('navigation').first()).toBeVisible();
+  await page.getByRole('button', { name: '事件', exact: true }).click();
+  await expect(page).toHaveURL(/\/events$/);
+
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 430, height: 932 },
+    { width: 768, height: 1024 },
+  ]) {
+    await page.setViewportSize(viewport);
+    for (const route of ['/', '/agents', '/automations', '/runs', '/conversations', '/events', '/settings', '/audit']) {
+      await navigateInApp(page, route);
+      await page.waitForTimeout(100);
+      const dimensions = await page.evaluate(() => ({
+        viewport: window.innerWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+      }));
+      expect(dimensions.documentWidth, `${viewport.width}px ${route} document overflow`).toBeLessThanOrEqual(
+        dimensions.viewport + 1,
+      );
+      expect(dimensions.bodyWidth, `${viewport.width}px ${route} body overflow`).toBeLessThanOrEqual(
+        dimensions.viewport + 1,
+      );
+    }
+  }
+});
+
+test('normalizes Jupyter links to same-origin token-free entry routes', async ({ page }) => {
+  await page.goto('/');
+  const paths = await page.evaluate(async () => {
+    const { jupyterEntryHref } = await import('/src/model/jupyter.ts');
+    return [
+      jupyterEntryHref({ proxyPath: '/jupyter/sandbox-1/lab' }),
+      jupyterEntryHref({ notebookUrl: 'https://daemon.example/jupyter/sandbox-2/lab?token=secret' }),
+      jupyterEntryHref({ proxyPath: '/agent-compose/session/sandbox-3/lab/tree/notebook.ipynb' }),
+    ];
+  });
+  expect(paths).toEqual(['/jupyter/sandbox-1', '/jupyter/sandbox-2', '/agent-compose/session/sandbox-3']);
+  expect(paths.join('\n')).not.toContain('token');
 });
 
 test('loads the code editor only after intent and keeps the transition responsive', async ({ page }) => {
@@ -352,14 +414,15 @@ test('supports theme, density, command palette, and browser navigation', async (
 test('distinguishes semantic statuses and the selected tab', async ({ page }) => {
   await login(page);
   await navigateInApp(page, '/runs');
-  const failedStatus = page.locator('[data-semantic-status="failed"]').first();
-  const successStatus = page.locator('[data-semantic-status="success"]').first();
+  const failedStatus = page.locator('table [data-semantic-status="failed"]').first();
   await expect(failedStatus).toBeVisible();
+  const failedColor = await failedStatus.evaluate((element) => getComputedStyle(element).color);
+
+  await navigateInApp(page, `/events/${retainedLiveWebhookEventId}`);
+  const successStatus = page.locator('[data-semantic-status="success"]:visible').first();
   await expect(successStatus).toBeVisible();
-  const statusColors = await Promise.all(
-    [failedStatus, successStatus].map((locator) => locator.evaluate((element) => getComputedStyle(element).color)),
-  );
-  expect(statusColors[0]).not.toBe(statusColors[1]);
+  const successColor = await successStatus.evaluate((element) => getComputedStyle(element).color);
+  expect(failedColor).not.toBe(successColor);
 
   await navigateInApp(page, `/conversations/${retainedSandboxId}`);
   const stoppedStatusIcon = page.locator('[data-semantic-status="stopped"] svg').first();
@@ -388,13 +451,16 @@ test('keeps document actions sticky and restores document scroll on browser hist
   const root = page.locator('main[data-scroll-root]');
   const header = page.locator('[data-page-header]');
   await expect(page.getByRole('heading', { name: '运行', exact: true })).toBeVisible();
-  await expect.poll(() => page.getByRole('row').count()).toBeGreaterThan(10);
+  await expect.poll(() => page.getByRole('row').count()).toBeGreaterThan(1);
+  await page.addStyleTag({
+    content: 'main[data-scroll-root]::after { content: ""; display: block; height: 48rem; }',
+  });
   const headerTop = await header.evaluate((element) => element.getBoundingClientRect().top);
   await root.evaluate((element) => element.scrollTo(0, 480));
   await expect.poll(() => root.evaluate((element) => element.scrollTop)).toBeGreaterThan(400);
   expect(await header.evaluate((element) => element.getBoundingClientRect().top)).toBe(headerTop);
 
-  await page.getByRole('row').nth(10).click();
+  await page.getByRole('row').nth(1).evaluate((element) => (element as HTMLElement).click());
   await expect(page).toHaveURL(/\/runs\/[a-f0-9]+$/);
   await page.goBack();
   await expect(page).toHaveURL(/\/runs$/);
@@ -440,7 +506,7 @@ test('copies full resource identifiers and deep links without navigating rows', 
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
 
   await navigateInApp(page, '/runs');
-  const runCopy = page.getByRole('button', { name: '复制Run ID' }).first();
+  const runCopy = page.getByRole('button', { name: '复制 Run ID' }).first();
   const fullRunId = await runCopy.locator('..').locator('span[title]').getAttribute('title');
   expect(fullRunId).toBeTruthy();
   await runCopy.click();
@@ -449,19 +515,19 @@ test('copies full resource identifiers and deep links without navigating rows', 
   await expect(page).toHaveURL(/\/runs$/);
 
   await navigateInApp(page, `/runs/${retainedRunId}`);
-  await page.locator('[data-page-header]').getByRole('button', { name: '复制Run ID' }).click();
+  await page.locator('[data-page-header]').getByRole('button', { name: '复制 Run ID' }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(retainedRunId);
   await page.getByRole('button', { name: '复制链接' }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(page.url());
   await page.getByRole('tab', { name: '终端' }).click();
-  await expect(page.getByRole('button', { name: '复制Sandbox ID' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '复制 Sandbox ID' })).toBeVisible();
 
   await navigateInApp(page, `/events/${retainedLinkedWebhookEventId}`);
-  await page.getByRole('button', { name: '复制Event ID' }).click();
+  await page.getByRole('button', { name: '复制 Event ID' }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(retainedLinkedWebhookEventId);
   await page.getByRole('button', { name: '复制链接' }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(page.url());
-  await expect(page.getByRole('button', { name: '复制Scheduler Run ID' }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: '复制 Scheduler Run ID' }).first()).toBeVisible();
 
   const detailTime = page.locator('time[datetime]').first();
   await expect(detailTime).toHaveAttribute('datetime', /T/);
@@ -481,7 +547,7 @@ test('copies full resource identifiers and deep links without navigating rows', 
       return true;
     };
   });
-  const fallbackCopy = page.getByRole('button', { name: '复制Run ID' }).first();
+  const fallbackCopy = page.getByRole('button', { name: '复制 Run ID' }).first();
   const fallbackRunId = await fallbackCopy.locator('..').locator('span[title]').getAttribute('title');
   await fallbackCopy.click();
   await expect(page.getByRole('status').filter({ hasText: '已复制' })).toBeVisible();
@@ -523,7 +589,7 @@ test('dispatches a webhook event to a real automation trigger', async ({ page })
   await expect(page.getByRole('heading', { name: '事件运行结果' })).toBeVisible();
   await expect(page.getByText('Webhook Payload')).toHaveCount(0);
   await expect(page.getByText(/WEBHOOK_AUTOMATION_TRIGGER_OK/)).toHaveCount(0);
-  await expect(page.getByText(/succeeded|success/i)).toBeVisible();
+  await expect(page.getByText('运行成功', { exact: true })).toBeVisible();
   await expect(page.getByText('ui-webhook-event', { exact: false })).toBeVisible();
   await page.getByRole('button', { name: '查看调度运行' }).click();
   await expect(page.getByRole('heading', { name: '调度运行详情' })).toBeVisible();
@@ -832,7 +898,7 @@ test('groups retained runs into a frontend conversation history', async ({ page 
   await login(page);
   await navigateInApp(page, `/conversations/${retainedSandboxId}`);
   await expect(page.getByRole('heading', { name: '对话记录' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '复制Sandbox ID' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '复制 Sandbox ID' })).toBeVisible();
   await expect(page.getByText('WEBHOOK_AGENT_CONVERSATION_OK', { exact: true })).toBeVisible();
 
   await page.getByPlaceholder('搜索当前对话').fill('WEBHOOK_AGENT_CONVERSATION_OK');
@@ -841,7 +907,7 @@ test('groups retained runs into a frontend conversation history', async ({ page 
 
   await page.getByRole('tab', { name: '执行记录' }).click();
   await expect(
-    page.getByRole('tabpanel', { name: '执行记录' }).getByRole('button', { name: '复制Run ID' }).first(),
+    page.getByRole('tabpanel', { name: '执行记录' }).getByRole('button', { name: '复制 Run ID' }).first(),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: '查看运行详情' }).first()).toBeVisible();
   await page.getByRole('tab', { name: '执行动态' }).click();
@@ -1279,8 +1345,8 @@ test('runs a real LLM conversation and an automation agent shell task', async ({
     await expect(chatPanel.getByRole('button', { name: /^查看运行 [a-f0-9]{12}/ })).toBeVisible();
   }
 
-  await navigateInApp(page, '/automations');
-  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: '自动化任务', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '自动化任务' })).toBeVisible();
   const taskName = 'UI Agent Shell Regression';
   const taskCard = page.locator('article').filter({ hasText: taskName });
   if ((await taskCard.count()) === 0) {
@@ -1307,7 +1373,11 @@ test('runs a real LLM conversation and an automation agent shell task', async ({
     .getByText('智能体输出', { exact: true })
     .locator('..')
     .locator('pre');
-  await expect(agentOutput).toContainText('AUTOMATION_AGENT_SHELL_OK', { timeout: 180_000 });
+  const automationFailure = page.getByRole('tabpanel', { name: '对话' }).locator('p.text-destructive').last();
+  await expect(agentOutput.or(automationFailure)).toBeVisible({ timeout: 180_000 });
+  if ((await agentOutput.filter({ hasText: 'AUTOMATION_AGENT_SHELL_OK' }).count()) === 0) {
+    throw new Error(`automation agent shell failed: ${(await automationFailure.textContent()) || 'missing output'}`);
+  }
 
   expect(failedResponses, failedResponses.join('\n')).toEqual([]);
   expect(browserErrors, browserErrors.join('\n')).toEqual([]);

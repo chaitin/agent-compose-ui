@@ -13,6 +13,7 @@ import Settings from '@lucide/svelte/icons/settings';
 import Database from '@lucide/svelte/icons/database';
 import MessagesSquare from '@lucide/svelte/icons/messages-square';
 import ScrollText from '@lucide/svelte/icons/scroll-text';
+import { t } from '$lib/i18n.svelte';
 
 export type NavItem = {
   label: string;
@@ -29,7 +30,7 @@ export type NavGroup = {
 
 const startsWith = (prefix: string) => (path: string) => path === prefix || path.startsWith(`${prefix}/`);
 
-export const navGroups: NavGroup[] = [
+const navGroupDefinitions: NavGroup[] = [
   {
     title: '工作区',
     items: [
@@ -70,13 +71,23 @@ export const navGroups: NavGroup[] = [
   },
 ];
 
-export const allNavItems: NavItem[] = navGroups.flatMap((g) => g.items);
+export function navGroups(): NavGroup[] {
+  return navGroupDefinitions.map((group) => ({
+    ...group,
+    title: t(group.title),
+    items: group.items.map((item) => ({ ...item, label: t(item.label) })),
+  }));
+}
+
+export function allNavItems(): NavItem[] {
+  return navGroups().flatMap((group) => group.items);
+}
 
 /** 面包屑：根据当前路径推导（列表 / 详情两层）。 */
 export function breadcrumbs(path: string): { label: string; href?: string }[] {
-  if (path === '/') return [{ label: '概览' }];
-  const top = allNavItems.find((i) => i.href !== '/' && i.match?.(path));
-  if (!top) return [{ label: '概览', href: '/' }];
+  if (path === '/') return [{ label: t('概览') }];
+  const top = allNavItems().find((i) => i.href !== '/' && i.match?.(path));
+  if (!top) return [{ label: t('概览'), href: '/' }];
   const crumbs: { label: string; href?: string }[] = [{ label: top.label, href: top.href }];
   const rest = path.slice(top.href.length).split('/').filter(Boolean);
   if (rest.length > 0) {

@@ -5,6 +5,7 @@
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import { Button } from '$lib/components/ui/button';
   import { copyText } from '$lib/clipboard';
+  import { t } from '$lib/i18n.svelte';
 
   let { value = '', label = '复制链接' }: { value?: string; label?: string } = $props();
   let status = $state<'idle' | 'copied' | 'error'>('idle');
@@ -29,7 +30,9 @@
 </script>
 
 <Button variant="outline" size="sm" onclick={() => void copy()}>
-  {#if status === 'copied'}<Check class="size-3.5 text-success" />已复制{:else if status === 'error'}<TriangleAlert
-      class="size-3.5 text-destructive"
-    />复制失败{:else}<Link class="size-3.5" />{label}{/if}
+  {#if status === 'copied'}<Check class="size-3.5 text-success" />{t(
+      '已复制',
+    )}{:else if status === 'error'}<TriangleAlert class="size-3.5 text-destructive" />{t('复制失败')}{:else}<Link
+      class="size-3.5"
+    />{t(label)}{/if}
 </Button>

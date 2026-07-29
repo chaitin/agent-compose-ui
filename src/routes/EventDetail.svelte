@@ -28,6 +28,9 @@
     stopSandboxContext,
   } from '../api/sessions';
   import type { EventRunTrace as RunTrace, EventSessionTrace as SessionTrace } from '../model/event-detail';
+  import EventStatusLegend from '$lib/components/event-status-legend.svelte';
+  import { dispatchStatus } from '../model/event-status';
+  import { t } from '$lib/i18n.svelte';
 
   const eventId = $derived(decodeURIComponent(router.path.split('/')[2] || ''));
   let event = $state<TopicEvent | null>(null);
@@ -173,11 +176,6 @@
     }
   }
 
-  function openNotebook(trace: SessionTrace): void {
-    const url = trace.session?.notebookUrl || trace.session?.proxyPath;
-    if (url) window.open(url, '_blank', 'noopener');
-  }
-
   async function sendMessage(trace: SessionTrace): Promise<void> {
     const sessionId = trace.link.sessionId;
     const message = (drafts[sessionId] || '').trim();
@@ -240,7 +238,7 @@
     return items.sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
   }
 
-  const errorMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : '请求失败');
+  const errorMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : t('请求失败'));
 </script>
 
 <div data-page-layout="workbench" class="flex min-h-full flex-col lg:h-full lg:min-h-0 lg:overflow-hidden">
@@ -249,40 +247,42 @@
         variant="outline"
         size="sm"
         onclick={() => void load()}
-        disabled={loading}>{loading ? '刷新中…' : '刷新'}</Button
-      ><Button variant="outline" size="sm" onclick={() => navigate('/events')}>返回事件中心</Button>{/snippet}
+        disabled={loading}>{t(loading ? '刷新中…' : '刷新')}</Button
+      ><Button variant="outline" size="sm" onclick={() => navigate('/events')}>{t('返回事件中心')}</Button>{/snippet}
   </PageHeader>
 
   <PageContent class="flex min-h-0 flex-1 flex-col space-y-4 lg:overflow-hidden">
     {#if error}<div data-page-error class="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>{/if}
     {#if loading && !event}
-      <p class="text-sm text-muted-foreground">正在加载事件运行结果…</p>
+      <p class="text-sm text-muted-foreground">{t('正在加载事件运行结果…')}</p>
     {:else if event}
+      {@const eventStatus = dispatchStatus(event.dispatchStatus)}
       <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         <section class="rounded-lg border border-border bg-card p-4">
-          <div class="text-xs text-muted-foreground">投递状态</div>
+          <div class="text-xs text-muted-foreground">{t('投递状态')}</div>
           <div class="mt-1">
-            <StatusBadge status={event.dispatchStatus || 'pending'} label={event.dispatchStatus || 'pending'} />
+            <StatusBadge status={eventStatus.semantic} label={eventStatus.label} />
           </div>
         </section>
         <section class="rounded-lg border border-border bg-card p-4">
-          <div class="text-xs text-muted-foreground">序号</div>
+          <div class="text-xs text-muted-foreground">{t('序号')}</div>
           <div class="mt-1 font-mono font-medium">#{event.sequence}</div>
         </section>
         <section class="rounded-lg border border-border bg-card p-4">
-          <div class="text-xs text-muted-foreground">历史任务</div>
+          <div class="text-xs text-muted-foreground">{t('历史任务')}</div>
           <div class="mt-1 font-medium">{runTraces.length}</div>
         </section>
         <section class="rounded-lg border border-border bg-card p-4">
-          <div class="text-xs text-muted-foreground">关联对话</div>
+          <div class="text-xs text-muted-foreground">{t('关联对话')}</div>
           <div class="mt-1 font-medium">{sessionTraces.length}</div>
         </section>
       </div>
+      <EventStatusLegend />
 
       <div
         class="grid min-h-0 gap-4 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_20rem] lg:overflow-hidden xl:grid-cols-[minmax(0,1fr)_25rem]"
       >
-        <div class="min-h-0">
+        <div class="min-h-[36rem] lg:min-h-0">
           <EventSessionList
             traces={sessionTraces}
             {drafts}
@@ -297,7 +297,6 @@
             onSend={(trace) => void sendMessage(trace)}
             onStop={(trace) => void stopSession(trace)}
             onResume={(trace) => void resumeSession(trace)}
-            onOpenNotebook={openNotebook}
           />
         </div>
 

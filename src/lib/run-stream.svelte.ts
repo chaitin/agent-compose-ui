@@ -7,6 +7,7 @@ import {
 } from '../gen/agentcompose/v2/agentcompose_pb.js';
 import { streamAgentRun } from '../api/run-stream';
 import { createOperationId } from './id';
+import { t } from './i18n.svelte';
 
 export type AgentStreamRequest = {
   projectId: string;
@@ -50,11 +51,11 @@ export class AgentStreamState {
   }
 
   get statusText(): string {
-    if (this.phase === 'starting') return '正在发送…';
-    if (this.phase === 'streaming') return '回复中…';
-    if (this.phase === 'completed') return '已完成';
-    if (this.phase === 'canceled') return '已取消';
-    return this.error || '回复失败';
+    if (this.phase === 'starting') return t('正在发送…');
+    if (this.phase === 'streaming') return t('回复中…');
+    if (this.phase === 'completed') return t('已完成');
+    if (this.phase === 'canceled') return t('已取消');
+    return this.error || t('回复失败');
   }
 }
 
@@ -123,11 +124,11 @@ class RunStreamCoordinator {
       }
       if (state.running) {
         state.phase = 'failed';
-        state.error = '流式响应在完成事件前结束';
+        state.error = t('流式响应在完成事件前结束');
       }
     } catch (cause) {
       state.phase = controller.signal.aborted ? 'canceled' : 'failed';
-      state.error = cause instanceof Error ? cause.message : '流式执行失败';
+      state.error = cause instanceof Error ? cause.message : t('流式执行失败');
     } finally {
       this.controllers.delete(state.operationId);
       this.scheduleCleanup(state);

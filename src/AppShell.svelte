@@ -6,6 +6,7 @@
   import CommandPalette from '$lib/components/command-palette.svelte';
   import { router, matchDetail } from '$lib/router.svelte';
   import { density } from '$lib/density.svelte';
+  import { i18n, t } from '$lib/i18n.svelte';
 
   import Overview from './routes/Overview.svelte';
   import Agents from './routes/Agents.svelte';
@@ -32,10 +33,12 @@
   let authError = $state('');
   let health = $state<HealthStatus | null>(null);
   let healthTimer = 0;
+  let mobileNavigationOpen = $state(false);
 
   onMount(() => {
     redirectLegacyPath();
     density.init();
+    i18n.init();
     const stored = localStorage.getItem(STORAGE_KEY);
     collapsed = stored !== null ? stored === '1' : window.innerWidth < 1440;
     const onResize = () => {
@@ -63,7 +66,7 @@
       auth = await getAuthStatus();
       if (!auth.enabled || auth.loggedIn) startHealth();
     } catch (cause) {
-      authError = cause instanceof Error ? cause.message : '无法连接 UI server';
+      authError = cause instanceof Error ? cause.message : t('无法连接 UI server');
     }
   }
 
@@ -98,50 +101,88 @@
   }
 
   function toggleSidebar() {
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      mobileNavigationOpen = !mobileNavigationOpen;
+      return;
+    }
     collapsed = !collapsed;
     localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0');
   }
 
   const p = $derived(router.path);
   const runDetailId = $derived(matchDetail('/runs', p));
+
+  $effect(() => {
+    void p;
+    mobileNavigationOpen = false;
+  });
 </script>
 
 <ModeWatcher />
+<svelte:window
+  onkeydown={(event) => {
+    if (event.key === 'Escape') mobileNavigationOpen = false;
+  }}
+/>
 {#if authError}
   <main class="flex min-h-screen items-center justify-center bg-background p-6 text-foreground">
     <div class="max-w-lg rounded-lg border border-destructive/30 bg-card p-6">
-      <h1 class="font-semibold">无法启动控制台</h1>
+      <h1 class="font-semibold">{t('无法启动控制台')}</h1>
       <p class="mt-2 text-sm text-destructive">{authError}</p>
-      <button class="mt-4 text-sm text-primary underline" onclick={() => location.reload()}>重试</button>
+      <button class="mt-4 text-sm text-primary underline" onclick={() => location.reload()}>{t('重试')}</button>
     </div>
   </main>
 {:else if !auth}
   <main class="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
-    正在连接 UI server…
+    {t('正在连接 UI server…')}
   </main>
 {:else if auth.enabled && !auth.loggedIn}
   <Login status={auth} onAuthenticated={authenticated} />
 {:else}
   <CommandPalette />
 
-  <div class="flex h-screen overflow-hidden bg-background text-foreground">
-    <AppSidebar
-      {collapsed}
-      healthy={Boolean(health)}
-      healthText={health ? `v${health.version}` : '连接中'}
-      cpu={health ? `${health.processCpuPercent.toFixed(0)}%` : '—'}
-      rss={health ? `${(health.processRssBytes / 1024 / 1024).toFixed(0)}M` : '—'}
-    />
+  <div class="flex h-dvh overflow-hidden bg-background text-foreground">
+    <div class="hidden h-full lg:block">
+      <AppSidebar
+        {collapsed}
+        healthy={Boolean(health)}
+        healthText={health ? `v${health.version}` : t('连接中')}
+        cpu={health ? `${health.processCpuPercent.toFixed(0)}%` : '—'}
+        rss={health ? `${(health.processRssBytes / 1024 / 1024).toFixed(0)}M` : '—'}
+      />
+    </div>
+
+    {#if mobileNavigationOpen}
+      <button
+        type="button"
+        class="fixed inset-0 z-40 bg-black/45 backdrop-blur-[1px] lg:hidden"
+        aria-label={t('关闭导航')}
+        onclick={() => (mobileNavigationOpen = false)}
+      ></button>
+      <div class="fixed inset-y-0 left-0 z-50 w-[min(19rem,86vw)] pt-[env(safe-area-inset-top)] lg:hidden">
+        <AppSidebar
+          collapsed={false}
+          healthy={Boolean(health)}
+          healthText={health ? `v${health.version}` : t('连接中')}
+          cpu={health ? `${health.processCpuPercent.toFixed(0)}%` : '—'}
+          rss={health ? `${(health.processRssBytes / 1024 / 1024).toFixed(0)}M` : '—'}
+        />
+      </div>
+    {/if}
 
     <div class="flex min-w-0 flex-1 flex-col">
       <AppTopbar
         onToggleSidebar={toggleSidebar}
+        navigationOpen={mobileNavigationOpen}
         username={auth.user?.displayName || auth.username}
         healthy={Boolean(health)}
         onLogout={auth.enabled ? handleLogout : undefined}
       />
 
-      <main data-scroll-root class="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
+      <main
+        data-scroll-root
+        class="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]"
+      >
         {#if p === '/'}
           <Overview />
         {:else if p.startsWith('/agents')}

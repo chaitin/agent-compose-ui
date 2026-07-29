@@ -34,6 +34,8 @@
   } from '../model/conversation';
   import Download from '@lucide/svelte/icons/download';
   import Search from '@lucide/svelte/icons/search';
+  import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+  import { t } from '$lib/i18n.svelte';
 
   let contexts = $state<SandboxContext[]>([]);
   let detail = $state<SandboxContextDetail | null>(null);
@@ -119,19 +121,19 @@
   async function sendMessage(): Promise<void> {
     const text = message.trim();
     if (!detail) {
-      error = '请先选择一条对话记录';
+      error = t('请先选择一条对话记录');
       return;
     }
     if (!target) {
-      error = '当前对话缺少关联智能体，无法继续发送消息';
+      error = t('当前对话缺少关联智能体，无法继续发送消息');
       return;
     }
     if (!text) {
-      error = '请输入要发送的消息';
+      error = t('请输入要发送的消息');
       return;
     }
     if (submitting || activeStream?.running) {
-      error = '上一条消息仍在处理中，请稍候';
+      error = t('上一条消息仍在处理中，请稍候');
       return;
     }
     message = '';
@@ -221,9 +223,9 @@
         ? JSON.stringify({ sandboxId: detail.id, agentName: target?.agentName, turns }, null, 2)
         : turns
             .flatMap((turn) => [
-              `## 用户 · ${turn.createdAt || '未知时间'}`,
+              `## ${t('用户')} · ${turn.createdAt || t('未知时间')}`,
               turn.prompt || '—',
-              `## ${turn.agent || target?.agentName || '智能体'} · Run ${turn.runId || '—'}`,
+              `## ${turn.agent || target?.agentName || t('智能体')} · Run ${turn.runId || '—'}`,
               turn.output || '—',
             ])
             .join('\n\n');
@@ -254,7 +256,7 @@
   }
 
   const isRunning = (value: string): boolean => value.trim().toLowerCase() === 'running';
-  const errorMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : '请求失败');
+  const errorMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : t('请求失败'));
 </script>
 
 <div data-page-layout="master-detail" class="flex min-h-full flex-col lg:h-full lg:min-h-0 lg:overflow-hidden">
@@ -275,11 +277,11 @@
   <div
     class="grid min-h-0 flex-1 lg:grid-cols-[20rem_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[24rem_minmax(0,1fr)]"
   >
-    <aside class="flex min-h-0 flex-col border-r border-border bg-card/30">
+    <aside class="min-h-0 flex-col border-r border-border bg-card/30 lg:flex {routeSandboxId ? 'hidden' : 'flex'}">
       <div class="shrink-0 border-b border-border p-3">
         <div class="relative">
           <Search class="pointer-events-none absolute left-2.5 top-2 size-3.5 text-muted-foreground" />
-          <Input bind:value={query} class="pl-8" placeholder="搜索智能体或 Sandbox ID" />
+          <Input bind:value={query} class="pl-8" placeholder={t('搜索智能体或 Sandbox ID')} />
         </div>
       </div>
       <div data-scroll-pane class="min-h-0 flex-1 overflow-y-auto p-2">
@@ -300,39 +302,50 @@
             </div>
           </button>
         {:else}
-          <p class="p-6 text-sm text-muted-foreground">{loading ? '正在加载对话记录…' : '没有匹配的对话记录'}</p>
+          <p class="p-6 text-sm text-muted-foreground">{t(loading ? '正在加载对话记录…' : '没有匹配的对话记录')}</p>
         {/each}
       </div>
     </aside>
 
-    <section class="flex min-h-0 min-w-0 flex-col overflow-hidden p-4 sm:p-5 xl:p-6">
+    <section
+      class="min-h-0 min-w-0 flex-col overflow-hidden p-3 sm:p-5 lg:flex xl:p-6 {routeSandboxId ? 'flex' : 'hidden'}"
+    >
       {#if detail && selectedSummary}
         <div class="mb-4 flex shrink-0 flex-wrap items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-2">
-              <h2 class="font-semibold">{selectedSummary.agentName}</h2>
-              <StatusBadge status={detail.status} />
+          <div class="flex min-w-0 items-start gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              class="shrink-0 lg:hidden"
+              onclick={() => navigate('/conversations')}
+              aria-label={t('返回')}><ArrowLeft class="size-4" /></Button
+            >
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <h2 class="font-semibold">{selectedSummary.agentName}</h2>
+                <StatusBadge status={detail.status} />
+              </div>
             </div>
             <div class="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <span>Sandbox</span><CopyableText value={detail.id} label="Sandbox ID" class="max-w-72 font-mono" />
-              <span>更新于</span><Timestamp value={detail.updatedAt} />
+              <span>{t('更新于')}</span><Timestamp value={detail.updatedAt} />
             </div>
           </div>
-          <div class="flex gap-2">
-            <Input bind:value={messageQuery} class="w-52" placeholder="搜索当前对话" />
+          <div class="flex w-full gap-2 sm:w-auto">
+            <Input bind:value={messageQuery} class="min-w-0 flex-1 sm:w-52" placeholder={t('搜索当前对话')} />
             {#if isRunning(detail.status)}<Button variant="outline" size="sm" disabled={Boolean(action)} onclick={stop}
-                >停止 Sandbox</Button
+                >{t('停止 Sandbox')}</Button
               >{:else}<Button variant="outline" size="sm" disabled={Boolean(action)} onclick={resume}
-                >恢复 Sandbox</Button
+                >{t('恢复 Sandbox')}</Button
               >{/if}
           </div>
         </div>
 
         <Tabs.Root value="conversation" class="flex min-h-0 flex-1 flex-col overflow-hidden">
           <Tabs.List class="shrink-0">
-            <Tabs.Trigger value="conversation">对话</Tabs.Trigger>
-            <Tabs.Trigger value="runs">执行记录</Tabs.Trigger>
-            <Tabs.Trigger value="events">执行动态</Tabs.Trigger>
+            <Tabs.Trigger value="conversation">{t('对话')}</Tabs.Trigger>
+            <Tabs.Trigger value="runs">{t('执行记录')}</Tabs.Trigger>
+            <Tabs.Trigger value="events">{t('执行动态')}</Tabs.Trigger>
           </Tabs.List>
           <Tabs.Content value="conversation" class="mt-4 min-h-0 flex-1 overflow-hidden">
             <RunConversation
@@ -341,7 +354,7 @@
               pendingPrompt={activeStream?.prompt || submittingPrompt}
               pendingOutput={activeStream?.output || ''}
               pendingRunId={activeStream?.runId || ''}
-              pendingStreamState={activeStream?.statusText || (submitting ? '正在发送…' : '')}
+              pendingStreamState={activeStream?.statusText || (submitting ? t('正在发送…') : '')}
               sandboxId={isRunning(detail.status) && target ? detail.id : ''}
               {message}
               sending={submitting || Boolean(activeStream?.running)}
@@ -357,17 +370,17 @@
                     <CopyableText value={turn.runId} label="Run ID" class="max-w-full font-mono text-xs" />
                     <div class="mt-1 text-xs text-muted-foreground">
                       <Timestamp value={turn.createdAt} mode="full" /> · {turn.success
-                        ? '完成'
-                        : turn.stopReason || '失败'}
+                        ? t('完成')
+                        : turn.stopReason || t('失败')}
                     </div>
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
-                    onclick={() => navigate(`/runs/${encodeURIComponent(turn.runId)}`)}>查看运行详情</Button
+                    onclick={() => navigate(`/runs/${encodeURIComponent(turn.runId)}`)}>{t('查看运行详情')}</Button
                   >
                 </article>
-              {:else}<p class="py-8 text-center text-sm text-muted-foreground">没有可关联的 Run 记录</p>{/each}
+              {:else}<p class="py-8 text-center text-sm text-muted-foreground">{t('没有可关联的 Run 记录')}</p>{/each}
             </div>
           </Tabs.Content>
           <Tabs.Content data-scroll-pane value="events" class="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
@@ -379,13 +392,13 @@
                   {#if event.message}<pre
                       class="mt-1 whitespace-pre-wrap break-words text-xs text-muted-foreground">{event.message}</pre>{/if}
                 </article>
-              {:else}<p class="py-8 text-center text-sm text-muted-foreground">没有执行动态</p>{/each}
+              {:else}<p class="py-8 text-center text-sm text-muted-foreground">{t('没有执行动态')}</p>{/each}
             </div>
           </Tabs.Content>
         </Tabs.Root>
       {:else}
         <div class="flex min-h-48 flex-1 items-center justify-center text-sm text-muted-foreground">
-          {detailLoading ? '正在加载对话…' : '选择一条对话记录查看详情'}
+          {t(detailLoading ? '正在加载对话…' : '选择一条对话记录查看详情')}
         </div>
       {/if}
     </section>

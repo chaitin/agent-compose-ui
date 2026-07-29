@@ -23,6 +23,8 @@
   import Play from '@lucide/svelte/icons/play';
   import Plus from '@lucide/svelte/icons/plus';
   import Trash2 from '@lucide/svelte/icons/trash-2';
+  import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+  import { localeCode, t } from '$lib/i18n.svelte';
 
   const emptyDraft = (): AgentDefinitionInput => ({
     agentName: '',
@@ -130,13 +132,13 @@
 
   async function run(agent: AgentDefinition): Promise<void> {
     if (!runPrompt.trim()) {
-      error = '请输入运行任务';
+      error = t('请输入运行任务');
       return;
     }
     saving = true;
     error = '';
     try {
-      if (!agent.projectId) throw new Error('智能体缺少项目标识，无法启动运行');
+      if (!agent.projectId) throw new Error(t('智能体缺少项目标识，无法启动运行'));
       const stream = await runStreams.start(
         {
           projectId: agent.projectId,
@@ -155,7 +157,7 @@
   }
 
   async function remove(agent: AgentDefinition): Promise<void> {
-    if (!confirm(`确认删除智能体 ${agent.name}？`)) return;
+    if (!confirm(t('确认删除智能体 {name}？', { name: agent.name }))) return;
     try {
       await deleteAgentDefinition(agent.id);
       navigate('/agents');
@@ -188,26 +190,27 @@
       .sort(
         (left, right) =>
           Number(right.enabled) - Number(left.enabled) ||
-          (left.name || left.agentName).localeCompare(right.name || right.agentName, 'zh-CN'),
+          (left.name || left.agentName).localeCompare(right.name || right.agentName, localeCode()),
       );
   }
-  const errorMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : '请求失败');
+  const errorMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : t('请求失败'));
 
   function validateDraft(input: AgentDefinitionInput, existingAgents: AgentDefinition[], currentId?: string): string {
     if (!/^[a-z][a-z0-9_-]*$/.test(input.agentName.trim()))
-      return '调用标识必须以小写字母开头，仅包含小写字母、数字、- 或 _';
+      return t('调用标识必须以小写字母开头，仅包含小写字母、数字、- 或 _');
     if (existingAgents.some((agent) => agent.id !== currentId && agent.agentName === input.agentName.trim()))
-      return '调用标识已存在';
-    if (!input.name.trim()) return '显示名称必填';
-    if (!input.model.trim()) return '模型必填';
-    if (!input.driver.trim()) return 'Driver 必填';
+      return t('调用标识已存在');
+    if (!input.name.trim()) return t('显示名称必填');
+    if (!input.model.trim()) return t('模型必填');
+    if (!input.driver.trim()) return t('Driver 必填');
     return '';
   }
 </script>
 
 <div data-page-layout="master-detail" class="flex min-h-full flex-col lg:h-full lg:min-h-0 lg:overflow-hidden">
   <PageHeader title="智能体" description="定义 LLM 提供方、运行时、工作区与能力">
-    {#snippet actions()}<Button size="sm" onclick={beginCreate}><Plus class="size-3.5" /> 新建智能体</Button>{/snippet}
+    {#snippet actions()}<Button size="sm" onclick={beginCreate}><Plus class="size-3.5" /> {t('新建智能体')}</Button
+      >{/snippet}
   </PageHeader>
 
   {#if error}<div class="mx-6 mt-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>{/if}
@@ -222,26 +225,26 @@
     >
       <div class="flex items-center justify-between">
         <div>
-          <h2 class="font-semibold">{creating ? '新建智能体' : `编辑 ${selected?.name ?? ''}`}</h2>
-          <p class="text-sm text-muted-foreground">基础、运行时、工作区、环境与能力</p>
+          <h2 class="font-semibold">{creating ? t('新建智能体') : `${t('编辑')} ${selected?.name ?? ''}`}</h2>
+          <p class="text-sm text-muted-foreground">{t('基础、运行时、工作区、环境与能力')}</p>
         </div>
         <div class="flex gap-2">
           <Button
             type="button"
             variant="outline"
-            onclick={() => navigate(selected ? `/agents/${selected.id}` : '/agents')}>取消</Button
-          ><Button type="submit" disabled={saving}>{saving ? '保存中…' : '保存'}</Button>
+            onclick={() => navigate(selected ? `/agents/${selected.id}` : '/agents')}>{t('取消')}</Button
+          ><Button type="submit" disabled={saving}>{t(saving ? '保存中…' : '保存')}</Button>
         </div>
       </div>
       <section class="grid gap-4 rounded-lg border border-border bg-card p-5 md:grid-cols-2">
         <label class="space-y-1"
-          ><span class="text-sm">调用标识</span><Input
+          ><span class="text-sm">{t('调用标识')}</span><Input
             bind:value={draft.agentName}
             disabled={!creating}
             placeholder="my-agent"
           /></label
         >
-        <label class="space-y-1"><span class="text-sm">显示名称</span><Input bind:value={draft.name} /></label>
+        <label class="space-y-1"><span class="text-sm">{t('显示名称')}</span><Input bind:value={draft.name} /></label>
         <label class="space-y-1"
           ><span class="text-sm">Provider</span><select
             class="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm"
@@ -251,22 +254,25 @@
             ></select
           ></label
         >
-        <label class="space-y-1"><span class="text-sm">模型</span><Input bind:value={draft.model} /></label>
+        <label class="space-y-1"><span class="text-sm">{t('模型')}</span><Input bind:value={draft.model} /></label>
         <label class="space-y-1"><span class="text-sm">Driver</span><Input bind:value={draft.driver} /></label>
         <label class="space-y-1"
-          ><span class="text-sm">Guest 镜像</span><Input bind:value={draft.guestImage} placeholder="node:20" /></label
+          ><span class="text-sm">{t('Guest 镜像')}</span><Input
+            bind:value={draft.guestImage}
+            placeholder="node:20"
+          /></label
         >
         <label class="space-y-1"
           ><span class="text-sm">Workspace</span><select
             class="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm"
             bind:value={draft.workspaceId}
-            ><option value="">无</option>{#each workspaces as workspace (workspace.id)}<option value={workspace.id}
-                >{workspace.name}</option
+            ><option value="">{t('无')}</option>{#each workspaces as workspace (workspace.id)}<option
+                value={workspace.id}>{workspace.name}</option
               >{/each}</select
           ></label
         >
         <label class="space-y-1"
-          ><span class="text-sm">能力集（逗号分隔）</span><Input
+          ><span class="text-sm">{t('能力集（逗号分隔）')}</span><Input
             value={draft.capsetIds.join(', ')}
             oninput={(event) => updateCapsets(event.currentTarget.value)}
             list="capsets"
@@ -275,26 +281,30 @@
           ></label
         >
         <label class="space-y-1 md:col-span-2"
-          ><span class="text-sm">描述</span><Input bind:value={draft.description} /></label
+          ><span class="text-sm">{t('描述')}</span><Input bind:value={draft.description} /></label
         >
         <label class="space-y-1 md:col-span-2"
-          ><span class="text-sm">系统提示词</span><Textarea
+          ><span class="text-sm">{t('系统提示词')}</span><Textarea
             bind:value={draft.systemPrompt}
             class="min-h-40 font-mono text-xs"
           /></label
         >
         <label class="flex items-center gap-2 text-sm md:col-span-2"
-          ><input type="checkbox" bind:checked={draft.enabled} /> 启用智能体</label
+          ><input type="checkbox" bind:checked={draft.enabled} /> {t('启用智能体')}</label
         >
       </section>
     </form>
   {:else}
     <div class="grid min-w-0 lg:min-h-0 lg:flex-1 lg:grid-cols-[20rem_minmax(0,1fr)] lg:overflow-hidden">
-      <aside class="flex min-w-0 flex-col border-b border-border lg:min-h-0 lg:border-b-0 lg:border-r">
+      <aside
+        class="min-w-0 flex-col border-b border-border lg:flex lg:min-h-0 lg:border-b-0 lg:border-r {pathParts[1]
+          ? 'hidden'
+          : 'flex'}"
+      >
         <div class="p-3">
-          <Input bind:value={query} placeholder="过滤智能体…" />
-          <div class="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-muted p-1" aria-label="智能体状态筛选">
-            {#each [{ value: 'all', label: `全部 ${agents.length}` }, { value: 'enabled', label: `已启用 ${enabledCount}` }, { value: 'disabled', label: `已停用 ${disabledCount}` }] as option}
+          <Input bind:value={query} placeholder={t('过滤智能体…')} />
+          <div class="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-muted p-1" aria-label={t('智能体状态筛选')}>
+            {#each [{ value: 'all', label: `${t('全部')} ${agents.length}` }, { value: 'enabled', label: `${t('已启用')} ${enabledCount}` }, { value: 'disabled', label: `${t('已停用')} ${disabledCount}` }] as option}
               <button
                 type="button"
                 aria-pressed={statusFilter === option.value}
@@ -315,20 +325,30 @@
               ><div class="flex items-center justify-between gap-2">
                 <span class="truncate text-sm font-medium">{agent.name}</span>
                 <span class="shrink-0 text-[11px] {agent.enabled ? 'text-success' : 'text-muted-foreground'}"
-                  >{agent.enabled ? '已启用' : '已停用'}</span
+                  >{t(agent.enabled ? '已启用' : '已停用')}</span
                 >
               </div>
               <div class="font-mono text-xs text-muted-foreground">
-                {agent.provider} · {agent.guestImage || '默认镜像'}
+                {agent.provider} · {agent.guestImage || t('默认镜像')}
               </div></button
             >{:else}<p class="p-6 text-sm text-muted-foreground">
-              {loading ? '正在加载…' : agents.length ? '没有匹配的智能体' : '还没有智能体'}
+              {t(loading ? '正在加载…' : agents.length ? '没有匹配的智能体' : '还没有智能体')}
             </p>{/each}
         </div>
       </aside>
-      <section data-scroll-pane class="min-w-0 p-4 sm:p-5 lg:min-h-0 lg:overflow-y-auto xl:p-6">
+      <section
+        data-scroll-pane
+        class="min-w-0 p-4 sm:p-5 lg:block lg:min-h-0 lg:overflow-y-auto xl:p-6 {pathParts[1] ? 'block' : 'hidden'}"
+      >
         {#if selected}<div class="mb-5 flex items-center justify-between">
             <div class="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                class="lg:hidden"
+                onclick={() => navigate('/agents')}
+                aria-label={t('返回')}><ArrowLeft class="size-4" /></Button
+              >
               <h2 class="font-semibold">{selected.name}</h2>
               <StatusBadge
                 status={selected.enabled ? 'enabled' : 'disabled'}
@@ -343,47 +363,49 @@
             </div>
             <div class="flex gap-2">
               <Button variant="outline" size="sm" onclick={() => beginEdit(selected)}
-                ><Pencil class="size-3.5" />编辑</Button
+                ><Pencil class="size-3.5" />{t('编辑')}</Button
               ><Button variant="outline" size="sm" class="text-destructive" onclick={() => remove(selected)}
-                ><Trash2 class="size-3.5" />删除</Button
+                ><Trash2 class="size-3.5" />{t('删除')}</Button
               >
             </div>
           </div>
           <Tabs.Root value="overview"
             ><Tabs.List
-              ><Tabs.Trigger value="overview">概况</Tabs.Trigger><Tabs.Trigger value="prompt">系统提示</Tabs.Trigger
-              ><Tabs.Trigger value="env">环境</Tabs.Trigger><Tabs.Trigger value="extensions">扩展</Tabs.Trigger
+              ><Tabs.Trigger value="overview">{t('概况')}</Tabs.Trigger><Tabs.Trigger value="prompt"
+                >{t('系统提示')}</Tabs.Trigger
+              ><Tabs.Trigger value="env">{t('环境')}</Tabs.Trigger><Tabs.Trigger value="extensions"
+                >{t('扩展')}</Tabs.Trigger
               ></Tabs.List
             ><Tabs.Content value="overview" class="mt-4"
               ><dl class="grid grid-cols-[8rem_1fr] gap-3 text-sm">
                 <dt class="text-muted-foreground">Agent ID</dt>
                 <dd><CopyableText value={selected.id} label="Agent ID" class="max-w-full font-mono text-xs" /></dd>
-                <dt class="text-muted-foreground">调用标识</dt>
+                <dt class="text-muted-foreground">{t('调用标识')}</dt>
                 <dd>
                   <CopyableText value={selected.agentName} label="调用标识" class="max-w-full font-mono text-xs" />
                 </dd>
                 <dt class="text-muted-foreground">Provider / Model</dt>
                 <dd>{selected.provider} · {selected.model}</dd>
-                <dt class="text-muted-foreground">运行时</dt>
+                <dt class="text-muted-foreground">{t('运行时')}</dt>
                 <dd>{selected.driver} · {selected.guestImage}</dd>
                 <dt class="text-muted-foreground">Workspace</dt>
-                <dd>{selected.workFiles.summary || '无'}</dd>
-                <dt class="text-muted-foreground">健康</dt>
+                <dd>{selected.workFiles.summary || t('无')}</dd>
+                <dt class="text-muted-foreground">{t('健康')}</dt>
                 <dd>{selected.health}</dd>
-                <dt class="text-muted-foreground">创建时间</dt>
+                <dt class="text-muted-foreground">{t('创建时间')}</dt>
                 <dd><Timestamp value={selected.createdAt} mode="full" /></dd>
-                <dt class="text-muted-foreground">更新时间</dt>
+                <dt class="text-muted-foreground">{t('更新时间')}</dt>
                 <dd><Timestamp value={selected.updatedAt} mode="full" /></dd>
               </dl>
               <div class="mt-6 flex max-w-xl gap-2">
-                <Input bind:value={runPrompt} placeholder="输入一次短任务" /><Button
+                <Input bind:value={runPrompt} placeholder={t('输入一次短任务')} /><Button
                   disabled={saving || !selected.enabled}
-                  onclick={() => run(selected)}><Play class="size-3.5" />运行</Button
+                  onclick={() => run(selected)}><Play class="size-3.5" />{t('运行')}</Button
                 >
               </div></Tabs.Content
             ><Tabs.Content value="prompt" class="mt-4"
               ><pre class="whitespace-pre-wrap rounded-lg bg-muted p-4 text-xs">{selected.systemPrompt ||
-                  '未设置'}</pre></Tabs.Content
+                  t('未设置')}</pre></Tabs.Content
             ><Tabs.Content value="env" class="mt-4"
               ><pre
                 class="overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-4 text-xs"

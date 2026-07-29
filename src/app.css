@@ -161,9 +161,12 @@
 
   html {
     font-size: 15px;
+    min-width: 320px;
+    height: 100%;
   }
 
   body {
+    height: 100%;
     min-width: 0;
     overflow: hidden;
     background-color: var(--background);
@@ -171,6 +174,17 @@
     font-family: var(--font-sans);
     font-variant-numeric: tabular-nums;
     line-height: 1.5;
+  }
+
+  #app {
+    height: 100%;
+  }
+
+  @media (max-width: 767px) {
+    [data-scroll-pane],
+    [data-scroll-surface] {
+      scrollbar-gutter: auto;
+    }
   }
 
   pre,

@@ -18,6 +18,7 @@
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Activity from '@lucide/svelte/icons/activity';
   import CircleCheck from '@lucide/svelte/icons/circle-check';
+  import { t } from '$lib/i18n.svelte';
 
   type RunView = {
     id: string;
@@ -78,7 +79,7 @@
           .filter((run) => run.status === 'failed')
           .map((run) => ({
             title: `${run.id} · ${run.agent}`,
-            sub: '运行失败',
+            sub: t('运行失败'),
             runId: run.fullId,
           })),
       ];
@@ -89,7 +90,7 @@
         rss: `${(healthValue.processRssBytes / 1024 / 1024).toFixed(0)}M`,
       };
     } catch (cause) {
-      error = cause instanceof Error ? cause.message : '概览加载失败';
+      error = cause instanceof Error ? cause.message : t('概览加载失败');
     }
   }
 </script>
@@ -97,7 +98,7 @@
 <div data-page-layout="dashboard" class="flex min-h-full flex-col lg:h-full lg:min-h-0 lg:overflow-hidden">
   <PageHeader title="概览" description="运行状态与近期结果">
     {#snippet actions()}
-      <Button variant="outline" size="sm" onclick={load}><RefreshCw class="size-3.5" /> 刷新</Button>
+      <Button variant="outline" size="sm" onclick={load}><RefreshCw class="size-3.5" /> {t('刷新')}</Button>
     {/snippet}
   </PageHeader>
 
@@ -114,7 +115,7 @@
           ><Activity class="size-4" /></span
         >
         <span class="min-w-0"
-          ><span class="block text-xs text-muted-foreground">运行中</span><span
+          ><span class="block text-xs text-muted-foreground">{t('运行中')}</span><span
             class="block text-xl font-semibold tabular-nums text-info">{dashboard.runningCount}</span
           ></span
         >
@@ -128,7 +129,7 @@
           ><TriangleAlert class="size-4" /></span
         >
         <span class="min-w-0"
-          ><span class="block text-xs text-muted-foreground">近期失败</span><span
+          ><span class="block text-xs text-muted-foreground">{t('近期失败')}</span><span
             class="block text-xl font-semibold tabular-nums text-destructive">{attention.length}</span
           ></span
         >
@@ -142,7 +143,7 @@
           ><ChevronRight class="size-4" /></span
         >
         <span class="min-w-0"
-          ><span class="block text-xs text-muted-foreground">近期运行</span><span
+          ><span class="block text-xs text-muted-foreground">{t('近期运行')}</span><span
             class="block text-xl font-semibold tabular-nums">{dashboard.recentCount}</span
           ></span
         >
@@ -152,8 +153,9 @@
           ><CircleCheck class="size-4" /></span
         >
         <span class="min-w-0"
-          ><span class="block truncate text-xs text-muted-foreground">服务 {health.status}</span><span
-            class="block truncate text-sm font-semibold text-success">正常 · CPU {health.cpu} · RSS {health.rss}</span
+          ><span class="block truncate text-xs text-muted-foreground">{t('服务')} {health.status}</span><span
+            class="block truncate text-sm font-semibold text-success"
+            >{t('正常')} · CPU {health.cpu} · RSS {health.rss}</span
           ></span
         >
       </div>
@@ -163,14 +165,14 @@
       <Card.Root size="sm" class="min-h-0 gap-0 py-0">
         <Card.Header class="flex-row items-center justify-between border-b border-border py-2.5">
           <div>
-            <Card.Title>近期结果</Card.Title>
-            <p class="text-xs text-muted-foreground">最近 {recentPreview.length} 条</p>
+            <Card.Title>{t('近期结果')}</Card.Title>
+            <p class="text-xs text-muted-foreground">{t('最近 {count} 条', { count: recentPreview.length })}</p>
           </div>
           <button
             type="button"
             onclick={() => navigate('/runs')}
             class="flex items-center gap-0.5 text-xs font-medium text-primary hover:underline"
-            >全部运行 <ChevronRight class="size-3.5" /></button
+            >{t('全部运行')} <ChevronRight class="size-3.5" /></button
           >
         </Card.Header>
         <Card.Content class="min-h-0 flex-1 overflow-hidden p-0">
@@ -193,7 +195,7 @@
                   >
                 </tr>
               {:else}
-                <tr><td class="p-8 text-center text-sm text-muted-foreground">暂无近期运行</td></tr>
+                <tr><td class="p-8 text-center text-sm text-muted-foreground">{t('暂无近期运行')}</td></tr>
               {/each}
             </tbody>
           </table>
@@ -204,7 +206,7 @@
         <Card.Root size="sm" class="min-h-0 gap-0 py-0">
           <Card.Header class="flex-row items-center justify-between border-b border-border py-2.5">
             <Card.Title class="flex items-center gap-2 text-destructive"
-              ><TriangleAlert class="size-4" />近期失败</Card.Title
+              ><TriangleAlert class="size-4" />{t('近期失败')}</Card.Title
             >
             <span class="text-xs font-semibold tabular-nums text-destructive">{attention.length}</span>
           </Card.Header>
@@ -220,16 +222,18 @@
                   size="icon"
                   class="size-7 shrink-0 text-destructive"
                   onclick={() => navigate(`/runs/${item.runId}/terminal`)}
-                  title="进入终端"><Terminal class="size-3.5" /></Button
+                  title={t('进入终端')}><Terminal class="size-3.5" /></Button
                 >
               </div>
-            {:else}<p class="grid h-full place-items-center text-sm text-muted-foreground">暂无失败运行</p>{/each}
+            {:else}<p class="grid h-full place-items-center text-sm text-muted-foreground">
+                {t('暂无失败运行')}
+              </p>{/each}
           </Card.Content>
         </Card.Root>
 
         <Card.Root size="sm" class="min-h-0 gap-0 py-0">
           <Card.Header class="flex-row items-center justify-between border-b border-border py-2.5">
-            <Card.Title class="flex items-center gap-2 text-info"><Activity class="size-4" />运行中</Card.Title>
+            <Card.Title class="flex items-center gap-2 text-info"><Activity class="size-4" />{t('运行中')}</Card.Title>
             <span class="text-xs font-semibold tabular-nums text-info">{dashboard.runningCount}</span>
           </Card.Header>
           <Card.Content class="min-h-0 flex-1 overflow-hidden p-1.5">
@@ -246,7 +250,7 @@
                 ><StatusBadge status="running" />
               </button>
             {:else}<p class="grid h-full place-items-center text-sm text-muted-foreground">
-                {dashboard.runningCount > 0 ? '运行记录正在同步' : '当前没有运行中的任务'}
+                {t(dashboard.runningCount > 0 ? '运行记录正在同步' : '当前没有运行中的任务')}
               </p>{/each}
           </Card.Content>
         </Card.Root>

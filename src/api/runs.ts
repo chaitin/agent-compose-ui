@@ -6,6 +6,7 @@ import {
   type RunSummary,
 } from '../gen/agentcompose/v2/agentcompose_pb.js';
 import { runClient } from './client';
+import { t } from '$lib/i18n.svelte';
 
 export type RunFilter = {
   query?: string;
@@ -76,12 +77,12 @@ export function runStatusName(status: RunStatus): 'running' | 'success' | 'faile
 
 export function sourceName(source: RunSource): string {
   return source === RunSource.MANUAL
-    ? '手动'
+    ? t('手动')
     : source === RunSource.SCHEDULER
-      ? '调度'
+      ? t('调度')
       : source === RunSource.API
         ? 'API'
-        : '未知';
+        : t('未知');
 }
 export function durationName(ms: bigint): string {
   const seconds = Math.max(0, Math.round(Number(ms) / 1000));

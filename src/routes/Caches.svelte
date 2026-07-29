@@ -8,11 +8,12 @@
   import { timestampToISOString } from '../model/timestamps';
   import { listCaches, pruneUnusedCaches, removeCache } from '../api/resources';
   import type { CacheItem } from '../gen/agentcompose/v2/agentcompose_pb.js';
+  import { t } from '$lib/i18n.svelte';
   let items = $state<CacheItem[]>([]);
   let warnings = $state<string[]>([]);
   let loading = $state(true);
   let error = $state('');
-  const msg = (e: unknown) => (e instanceof Error ? e.message : '请求失败');
+  const msg = (e: unknown) => (e instanceof Error ? e.message : t('请求失败'));
   onMount(load);
   async function load() {
     loading = true;
@@ -50,10 +51,10 @@
 </script>
 
 <PageHeader title="缓存" description="运行时、镜像与 Skill 缓存"
-  >{#snippet actions()}<Button variant="outline" size="sm" onclick={prune}>清理未使用缓存</Button><Button
+  >{#snippet actions()}<Button variant="outline" size="sm" onclick={prune}>{t('清理未使用缓存')}</Button><Button
       variant="outline"
       size="sm"
-      onclick={load}>刷新</Button
+      onclick={load}>{t('刷新')}</Button
     >{/snippet}</PageHeader
 >
 <PageContent class="space-y-3">
@@ -61,14 +62,15 @@
       {error}
     </div>{/if}{#if warnings.length}<div class="rounded-md bg-warning/10 p-3 text-sm text-warning">
       {warnings.join(' · ')}
-    </div>{/if}{#if loading}<p class="text-sm text-muted-foreground">正在加载…</p>{:else}<div
+    </div>{/if}{#if loading}<p class="text-sm text-muted-foreground">{t('正在加载…')}</p>{:else}<div
       class="overflow-hidden rounded-lg border border-border"
     >
       <table class="w-full text-sm">
         <thead class="bg-muted/40"
           ><tr
-            ><th class="p-3 text-left">缓存</th><th class="p-3 text-left">类型</th><th class="p-3 text-left">大小</th
-            ><th class="p-3 text-left">最后使用</th><th class="p-3 text-left">状态</th><th></th></tr
+            ><th class="p-3 text-left">{t('缓存')}</th><th class="p-3 text-left">{t('类型')}</th><th
+              class="p-3 text-left">{t('大小')}</th
+            ><th class="p-3 text-left">{t('最后使用')}</th><th class="p-3 text-left">{t('状态')}</th><th></th></tr
           ></thead
         ><tbody class="divide-y divide-border"
           >{#each items as item (item.cacheId)}<tr
@@ -81,7 +83,7 @@
                   />{/if}</td
               ><td class="p-3">{item.kind} · {item.driver}</td><td class="p-3">{size(item.sizeBytes)}</td><td
                 class="p-3 text-xs text-muted-foreground"
-                ><Timestamp value={timestampToISOString(item.lastUsedAt)} empty="从未使用" /></td
+                ><Timestamp value={timestampToISOString(item.lastUsedAt)} empty={t('从未使用')} /></td
               ><td class="p-3"
                 >{item.status}{#if item.blockedReasons.length}<div class="text-xs text-warning">
                     {item.blockedReasons.join(' · ')}
@@ -92,10 +94,11 @@
                   size="sm"
                   class="text-destructive"
                   disabled={!item.removable}
-                  onclick={() => remove(item)}>删除</Button
+                  onclick={() => remove(item)}>{t('删除')}</Button
                 ></td
               ></tr
-            >{:else}<tr><td colspan="6" class="p-8 text-center text-muted-foreground">没有缓存</td></tr>{/each}</tbody
+            >{:else}<tr><td colspan="6" class="p-8 text-center text-muted-foreground">{t('没有缓存')}</td></tr
+            >{/each}</tbody
         >
       </table>
     </div>{/if}

@@ -11,14 +11,18 @@
   import { command } from '$lib/command.svelte';
   import { density } from '$lib/density.svelte';
   import LogOut from '@lucide/svelte/icons/log-out';
+  import Languages from '@lucide/svelte/icons/languages';
+  import { i18n, t } from '$lib/i18n.svelte';
 
   let {
     onToggleSidebar,
+    navigationOpen = false,
     username = '',
     healthy = false,
     onLogout,
   }: {
     onToggleSidebar: () => void;
+    navigationOpen?: boolean;
     username?: string;
     healthy?: boolean;
     onLogout?: () => void;
@@ -27,8 +31,15 @@
   const crumbs = $derived(breadcrumbs(router.path));
 </script>
 
-<header class="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background/80 px-3 backdrop-blur">
-  <Button variant="ghost" size="icon" onclick={onToggleSidebar} aria-label="折叠侧栏">
+<header
+  class="flex min-h-12 shrink-0 items-center gap-1.5 border-b border-border bg-background/80 px-2 pt-[env(safe-area-inset-top)] backdrop-blur sm:gap-2 sm:px-3"
+>
+  <Button
+    variant="ghost"
+    size="icon"
+    onclick={onToggleSidebar}
+    aria-label={t(navigationOpen ? '关闭导航' : '打开导航')}
+  >
     <PanelLeft class="size-4" />
   </Button>
 
@@ -60,16 +71,17 @@
       class="hidden items-center gap-2 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted sm:flex"
     >
       <Search class="size-3.5" />
-      <span>搜索…</span>
+      <span>{t('搜索…')}</span>
       <kbd class="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] font-medium">⌘K</kbd>
     </button>
 
     <Button
       variant="ghost"
       size="icon"
+      class="hidden sm:inline-flex"
       onclick={density.toggle}
-      title={density.value === 'comfortable' ? '密度：舒适（点击切紧凑）' : '密度：紧凑（点击切舒适）'}
-      aria-label="切换密度"
+      title={t(density.value === 'comfortable' ? '密度：舒适（点击切紧凑）' : '密度：紧凑（点击切舒适）')}
+      aria-label={t('切换密度')}
     >
       {#if density.value === 'comfortable'}
         <Rows3 class="size-4" />
@@ -78,15 +90,20 @@
       {/if}
     </Button>
 
-    <ThemeToggle />
+    <div class="hidden sm:block"><ThemeToggle /></div>
+
+    <Button variant="ghost" size="icon" onclick={i18n.toggle} title={t('切换语言')} aria-label={t('切换语言')}>
+      <Languages class="size-4" />
+      <span class="sr-only">{i18n.locale === 'zh-CN' ? 'English' : '中文'}</span>
+    </Button>
 
     <!-- 健康点 -->
     <div
       class="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground"
-      title={healthy ? '系统健康：正常' : '系统健康：异常或连接中'}
+      title={t(healthy ? '系统健康：正常' : '系统健康：异常或连接中')}
     >
       <span class="size-2 rounded-full {healthy ? 'bg-success' : 'bg-warning'}"></span>
-      <span class="hidden md:inline">{healthy ? '正常' : '检查中'}</span>
+      <span class="hidden md:inline">{t(healthy ? '正常' : '检查中')}</span>
     </div>
 
     <!-- 用户 -->
@@ -96,7 +113,7 @@
       >
         {username.slice(0, 1).toUpperCase()}
       </div>{/if}
-    {#if onLogout}<Button variant="ghost" size="icon" onclick={onLogout} title="退出登录"
+    {#if onLogout}<Button variant="ghost" size="icon" onclick={onLogout} title={t('退出登录')}
         ><LogOut class="size-4" /></Button
       >{/if}
   </div>
