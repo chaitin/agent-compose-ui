@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"agent-compose-ui/internal/dbmigrate"
 	"modernc.org/sqlite"
 )
 
@@ -25,7 +26,10 @@ type Store struct {
 func OpenStore(path string) (*Store, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return nil, fmt.Errorf("token database path is required")
+		return nil, fmt.Errorf("UI database path is required")
+	}
+	if err := dbmigrate.Apply(context.Background(), path); err != nil {
+		return nil, err
 	}
 	db, err := sql.Open("sqlite", filepath.Clean(path))
 	if err != nil {
@@ -45,33 +49,15 @@ func (s *Store) init(ctx context.Context) error {
 	for _, statement := range []string{
 		`PRAGMA journal_mode=WAL`,
 		`PRAGMA busy_timeout=5000`,
-		`CREATE TABLE IF NOT EXISTS api_token (
-			id TEXT PRIMARY KEY,
-			secret_hash BLOB NOT NULL CHECK(length(secret_hash) = 32),
-			name TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 64),
-			role TEXT NOT NULL CHECK(role IN ('admin', 'read-only-admin')),
-			created_at INTEGER NOT NULL,
-			expires_at INTEGER,
-			revoked_at INTEGER
-		)`,
 	} {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("initialize token database: %w", err)
-		}
-	}
-	var expiresAtColumns int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('api_token') WHERE name='expires_at'`).Scan(&expiresAtColumns); err != nil {
-		return fmt.Errorf("inspect token database schema: %w", err)
-	}
-	if expiresAtColumns == 0 {
-		if _, err := s.db.ExecContext(ctx, `ALTER TABLE api_token ADD COLUMN expires_at INTEGER`); err != nil {
-			return fmt.Errorf("migrate token database: %w", err)
+			return fmt.Errorf("configure UI database: %w", err)
 		}
 	}
 	return nil
 }
 
-func (s *Store) Create(ctx context.Context, name string, role Role, validFor time.Duration) (Created, error) {
+func (s *Store) Create(ctx context.Context, ownerID, name string, role Role, validFor time.Duration) (Created, error) {
 	now := s.now().UTC().Truncate(time.Second)
 	expiresAt := now.Add(validFor)
 	for range createCollisionRetries {
@@ -80,7 +66,7 @@ func (s *Store) Create(ctx context.Context, name string, role Role, validFor tim
 			return Created{}, fmt.Errorf("generate api token: %w", err)
 		}
 		digest := secretDigest(parsed.secret)
-		_, err = s.db.ExecContext(ctx, `INSERT INTO api_token(id, secret_hash, name, role, created_at, expires_at) VALUES(?,?,?,?,?,?)`, parsed.id, digest[:], name, role, now.Unix(), expiresAt.Unix())
+		_, err = s.db.ExecContext(ctx, `INSERT INTO api_token(id, secret_hash, owner_id, name, role, created_at, expires_at) VALUES(?,?,?,?,?,?,?)`, parsed.id, digest[:], ownerID, name, role, now.Unix(), expiresAt.Unix())
 		if err == nil {
 			return Created{Metadata: Metadata{ID: parsed.id, Name: name, Role: role, CreatedAt: now, ExpiresAt: &expiresAt}, Token: raw}, nil
 		}
@@ -91,8 +77,8 @@ func (s *Store) Create(ctx context.Context, name string, role Role, validFor tim
 	return Created{}, fmt.Errorf("create api token: exhausted public id retries")
 }
 
-func (s *Store) List(ctx context.Context) ([]Metadata, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, role, created_at, expires_at, revoked_at FROM api_token ORDER BY created_at DESC, id`)
+func (s *Store) List(ctx context.Context, ownerID string) ([]Metadata, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, role, created_at, expires_at, revoked_at FROM api_token WHERE owner_id=? ORDER BY created_at DESC, id`, ownerID)
 	if err != nil {
 		return nil, fmt.Errorf("list api tokens: %w", err)
 	}
@@ -122,10 +108,17 @@ func (s *Store) List(ctx context.Context) ([]Metadata, error) {
 	return items, nil
 }
 
-func (s *Store) Revoke(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE api_token SET revoked_at=COALESCE(revoked_at, ?) WHERE id=?`, s.now().UTC().Unix(), id)
+func (s *Store) Revoke(ctx context.Context, ownerID, id string) error {
+	result, err := s.db.ExecContext(ctx, `UPDATE api_token SET revoked_at=COALESCE(revoked_at, ?) WHERE owner_id=? AND id=?`, s.now().UTC().Unix(), ownerID, id)
 	if err != nil {
 		return fmt.Errorf("revoke api token: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("inspect revoked api token: %w", err)
+	}
+	if affected == 0 {
+		return ErrTokenNotFound
 	}
 	return nil
 }

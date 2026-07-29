@@ -32,7 +32,7 @@ export default defineConfig({
       '/api': { target: uiServerTarget, changeOrigin: true, ws: true },
       '/ui-api': { target: uiServerTarget, changeOrigin: false },
       '/oauth': { target: uiServerTarget, changeOrigin: true },
-      '/jupyter': { target: uiServerTarget, changeOrigin: true },
+      '/jupyter': { target: uiServerTarget, changeOrigin: true, ws: true },
     },
   },
 });

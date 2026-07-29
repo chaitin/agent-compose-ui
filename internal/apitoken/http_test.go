@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"agent-compose-ui/internal/audit"
 )
 
 type fakeTokenStore struct {
@@ -17,15 +19,21 @@ type fakeTokenStore struct {
 	listCalls int
 }
 
-func (s *fakeTokenStore) Create(_ context.Context, _ string, _ Role, validFor time.Duration) (Created, error) {
+func (s *fakeTokenStore) Create(_ context.Context, _, _ string, _ Role, validFor time.Duration) (Created, error) {
 	s.validFor = validFor
 	return s.created, s.err
 }
-func (s *fakeTokenStore) List(context.Context) ([]Metadata, error) {
+func (s *fakeTokenStore) List(context.Context, string) ([]Metadata, error) {
 	s.listCalls++
 	return nil, s.err
 }
-func (s *fakeTokenStore) Revoke(context.Context, string) error { return s.err }
+func (s *fakeTokenStore) Revoke(context.Context, string, string) error { return s.err }
+
+func ownedRequest(method, target string, body *strings.Reader) *http.Request {
+	request := httptest.NewRequest(method, target, body)
+	principal := audit.Principal{ID: "local:alice", Source: "local", Username: "alice"}
+	return request.WithContext(audit.WithPrincipal(request.Context(), principal))
+}
 
 func TestCreateInputBoundary(t *testing.T) {
 	tests := []struct {
@@ -43,7 +51,7 @@ func TestCreateInputBoundary(t *testing.T) {
 	handler := NewHTTPHandler(&fakeTokenStore{created: Created{Token: "once"}})
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodPost, "http://example.com/ui-api/v1/tokens", strings.NewReader(test.body))
+			request := ownedRequest(http.MethodPost, "http://example.com/api/ui/v1/tokens", strings.NewReader(test.body))
 			request.Header.Set("Content-Type", test.contentType)
 			request.Header.Set("Origin", test.origin)
 			request.Header.Set("Sec-Fetch-Site", test.fetchSite)
@@ -58,7 +66,7 @@ func TestCreateInputBoundary(t *testing.T) {
 
 func TestCreateDefaultsValidityToNinetyDays(t *testing.T) {
 	store := &fakeTokenStore{created: Created{Token: "once"}}
-	request := httptest.NewRequest(http.MethodPost, "/ui-api/v1/tokens", strings.NewReader(`{"name":"ci","role":"admin"}`))
+	request := ownedRequest(http.MethodPost, "/api/ui/v1/tokens", strings.NewReader(`{"name":"ci","role":"admin"}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	NewHTTPHandler(store).ServeHTTP(response, request)
@@ -76,7 +84,7 @@ func TestListRejectsCrossSiteRequests(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			store := &fakeTokenStore{}
-			request := httptest.NewRequest(http.MethodGet, "http://example.com/ui-api/v1/tokens", nil)
+			request := ownedRequest(http.MethodGet, "http://example.com/api/ui/v1/tokens", strings.NewReader(""))
 			request.Header.Set("Origin", test.origin)
 			request.Header.Set("Sec-Fetch-Site", test.fetchSite)
 			response := httptest.NewRecorder()
@@ -95,7 +103,7 @@ func TestUnavailableAndStoreFailure(t *testing.T) {
 	}{{"disabled", UnavailableHandler()}, {"store error", NewHTTPHandler(&fakeTokenStore{err: errors.New("database secret")})}} {
 		t.Run(test.name, func(t *testing.T) {
 			response := httptest.NewRecorder()
-			test.handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/ui-api/v1/tokens", nil))
+			test.handler.ServeHTTP(response, ownedRequest(http.MethodGet, "/api/ui/v1/tokens", strings.NewReader("")))
 			if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "database secret") {
 				t.Fatalf("response = %d %q", response.Code, response.Body.String())
 			}

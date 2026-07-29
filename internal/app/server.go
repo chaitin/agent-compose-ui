@@ -13,11 +13,14 @@ import (
 	"syscall"
 	"time"
 
+	"agent-compose-ui/internal/agentrecords"
 	"agent-compose-ui/internal/apitoken"
 	"agent-compose-ui/internal/audit"
 	"agent-compose-ui/internal/auth"
 	"agent-compose-ui/internal/config"
+	"agent-compose-ui/internal/projectdeploy"
 	"agent-compose-ui/internal/proxy"
+	"agent-compose-ui/internal/runindex"
 	"agent-compose-ui/internal/terminal"
 	"agent-compose-ui/internal/tokenproxy"
 
@@ -74,7 +77,7 @@ func Run() error {
 	authManager := do.MustInvoke[*auth.Manager](di)
 	backend := do.MustInvoke[*url.URL](di)
 	cfg := do.MustInvoke[config.Config](di)
-	logger.Info("agent-compose-ui server started", "listen", cfg.ListenAddr, "token_listen", tokenListenAddr, "token_enabled", cfg.TokenDBPath != "", "backend", backend.String(), "auth_enabled", authManager.Enabled(), "oauth_enabled", authManager.OAuthEnabled())
+	logger.Info("agent-compose-ui server started", "listen", cfg.ListenAddr, "token_listen", tokenListenAddr, "database_enabled", cfg.DatabasePath != "", "backend", backend.String(), "auth_enabled", authManager.Enabled(), "oauth_enabled", authManager.OAuthEnabled())
 	if err := servePair(ctx, browserServer, tokenServer); err != nil {
 		return fmt.Errorf("agent-compose-ui server failed: %w", err)
 	}
@@ -88,6 +91,9 @@ func Register(di do.Injector) {
 	do.Provide(di, NewEcho)
 	do.Provide(di, NewAuthManager)
 	do.Provide(di, NewBackendProxy)
+	do.Provide(di, NewProjectDeployHandler)
+	do.Provide(di, NewRunIndexHandler)
+	do.Provide(di, NewAgentRecordsHandler)
 	do.Provide(di, NewAuditRuntime)
 	do.Provide(di, NewTokenRuntime)
 	do.Provide(di, NewTerminalBridge)
@@ -126,6 +132,9 @@ func NewEcho(di do.Injector) (*echo.Echo, error) {
 		do.MustInvoke[*auth.Manager](di),
 		do.MustInvoke[*terminal.Bridge](di),
 		do.MustInvoke[http.Handler](di),
+		do.MustInvoke[*projectdeploy.Handler](di),
+		do.MustInvoke[*runindex.Handler](di),
+		do.MustInvoke[*agentrecords.Handler](di),
 		do.MustInvoke[*TokenRuntime](di).Management,
 		do.MustInvoke[*AuditRuntime](di),
 	)
@@ -140,6 +149,18 @@ func NewBackendProxy(di do.Injector) (http.Handler, error) {
 	return proxy.NewBackendProxy(do.MustInvoke[*url.URL](di)), nil
 }
 
+func NewProjectDeployHandler(di do.Injector) (*projectdeploy.Handler, error) {
+	return projectdeploy.New(do.MustInvoke[*url.URL](di)), nil
+}
+
+func NewRunIndexHandler(di do.Injector) (*runindex.Handler, error) {
+	return runindex.New(do.MustInvoke[*url.URL](di)), nil
+}
+
+func NewAgentRecordsHandler(di do.Injector) (*agentrecords.Handler, error) {
+	return agentrecords.New(do.MustInvoke[config.Config](di).SandboxRoot), nil
+}
+
 type AuditRuntime struct {
 	Management http.Handler
 	Middleware *audit.Middleware
@@ -149,10 +170,10 @@ type AuditRuntime struct {
 func NewAuditRuntime(di do.Injector) (*AuditRuntime, error) {
 	cfg := do.MustInvoke[config.Config](di)
 	logger := do.MustInvoke[*slog.Logger](di)
-	if cfg.StateDBPath == "" {
+	if cfg.DatabasePath == "" {
 		return &AuditRuntime{Management: audit.UnavailableHandler(), Middleware: audit.NewMiddleware(nil, logger)}, nil
 	}
-	store, err := audit.OpenStore(cfg.StateDBPath, cfg.AuditRetentionDay)
+	store, err := audit.OpenStore(cfg.DatabasePath, cfg.AuditRetentionDay)
 	if err != nil {
 		return nil, err
 	}
@@ -174,13 +195,13 @@ type TokenRuntime struct {
 
 func NewTokenRuntime(di do.Injector) (*TokenRuntime, error) {
 	cfg := do.MustInvoke[config.Config](di)
-	if cfg.TokenDBPath == "" {
+	if cfg.DatabasePath == "" {
 		return &TokenRuntime{
 			Management: apitoken.UnavailableHandler(),
 			Machine:    tokenproxy.UnavailableHandler(),
 		}, nil
 	}
-	store, err := apitoken.OpenStore(cfg.TokenDBPath)
+	store, err := apitoken.OpenStore(cfg.DatabasePath)
 	if err != nil {
 		return nil, err
 	}
@@ -231,6 +252,9 @@ func registerRoutes(
 	authManager *auth.Manager,
 	terminalBridge *terminal.Bridge,
 	backend http.Handler,
+	projectDeploy http.Handler,
+	runIndex http.Handler,
+	agentRecords http.Handler,
 	tokenManagement http.Handler,
 	audits *AuditRuntime,
 ) {
@@ -243,11 +267,15 @@ func registerRoutes(
 	app.GET("/oauth/callback", authManager.HandleOAuthCallback)
 	app.HEAD("/oauth/callback", authManager.HandleOAuthCallback)
 	app.Any("/api/ui/v1/audit/*", authManager.Protect(echo.WrapHandler(audits.Management)))
+	app.Any("/api/ui/v1/projects", authManager.Protect(echo.WrapHandler(projectDeploy)))
+	app.Any("/api/ui/v1/projects/*", authManager.Protect(echo.WrapHandler(projectDeploy)))
+	app.Any("/api/ui/v1/project-deployment-previews", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(projectDeploy))))
+	app.Any("/api/ui/v1/project-deployment-previews/*", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(projectDeploy))))
+	app.GET("/api/ui/v1/runs/unlinked", authManager.Protect(echo.WrapHandler(runIndex)))
+	app.GET("/api/ui/v1/sandboxes/:sandboxID/agent-records", authManager.Protect(echo.WrapHandler(agentRecords)))
+	app.GET("/api/ui/v1/sandboxes/:sandboxID/agent-records/*", authManager.Protect(echo.WrapHandler(agentRecords)))
 	app.Any("/api/ui/v1/tokens", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(tokenManagement))))
 	app.Any("/api/ui/v1/tokens/*", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(tokenManagement))))
-	// Deprecated compatibility endpoint. New UI-server APIs live under /api/ui/v1.
-	app.Any("/ui-api/v1/tokens", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(tokenManagement))))
-	app.Any("/ui-api/v1/tokens/*", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(tokenManagement))))
 	app.GET(terminal.AttachPath, authManager.Protect(echo.WrapHandler(terminalBridge)))
 	app.Any("/*", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(backend))))
 }

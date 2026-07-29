@@ -15,7 +15,7 @@ import (
 func TestRegisterBuildsHTTPServer(t *testing.T) {
 	t.Setenv("AUTH_PASSWORD", "secret")
 	t.Setenv("AUTH_SECRET", "test-secret")
-	t.Setenv("TOKEN_DB_PATH", "")
+	t.Setenv("UI_DATABASE_PATH", "")
 
 	di := do.New()
 	Register(di)
@@ -47,7 +47,7 @@ func TestTokenManagementAndMachineProxyIntegration(t *testing.T) {
 	t.Setenv("AUTH_PASSWORD", "")
 	t.Setenv("AUTH_SECRET", "")
 	t.Setenv("AGENT_COMPOSE_URL", upstream.URL)
-	t.Setenv("TOKEN_DB_PATH", t.TempDir()+"/tokens.db")
+	t.Setenv("UI_DATABASE_PATH", t.TempDir()+"/ui.db")
 
 	di := do.New()
 	Register(di)
@@ -93,7 +93,7 @@ func TestTokenManagementAndMachineProxyIntegration(t *testing.T) {
 func TestTokenManagementRouteUsesBrowserAuthentication(t *testing.T) {
 	t.Setenv("AUTH_PASSWORD", "password")
 	t.Setenv("AUTH_SECRET", "secret")
-	t.Setenv("TOKEN_DB_PATH", t.TempDir()+"/tokens.db")
+	t.Setenv("UI_DATABASE_PATH", t.TempDir()+"/ui.db")
 	di := do.New()
 	Register(di)
 	t.Cleanup(func() { _ = do.MustInvoke[*TokenRuntime](di).Close() })

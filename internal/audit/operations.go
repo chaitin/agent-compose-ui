@@ -214,6 +214,18 @@ func restResource(path string) (string, string) {
 		}
 		return "api_token", ""
 	}
+	if len(parts) >= 4 && parts[0] == "api" && parts[1] == "ui" && parts[3] == "projects" {
+		if len(parts) > 4 {
+			return "project", parts[4]
+		}
+		return "project", ""
+	}
+	if len(parts) >= 4 && parts[0] == "api" && parts[1] == "ui" && parts[3] == "project-deployment-previews" {
+		if len(parts) > 4 {
+			return "project_deployment_preview", parts[4]
+		}
+		return "project_deployment_preview", ""
+	}
 	if len(parts) >= 3 && parts[0] == "ui-api" && parts[2] == "tokens" {
 		if len(parts) > 3 {
 			return "api_token", parts[3]
@@ -237,6 +249,7 @@ func categoryForPath(path string) string {
 		{"ProjectService", "project"}, {"RunService", "run"}, {"SandboxService", "sandbox"},
 		{"Scheduler", "automation"}, {"ImageService", "image"}, {"CacheService", "cache"},
 		{"SettingsService", "settings"}, {"Capability", "capability"}, {"/tokens", "token"},
+		{"/api/ui/v1/projects", "project"}, {"/api/ui/v1/project-deployment", "project"},
 		{"/api/webhook", "webhook"},
 	} {
 		if strings.Contains(path, item.needle) {

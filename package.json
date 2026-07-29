@@ -10,6 +10,7 @@
     "check:ui": "svelte-check --tsconfig ./tsconfig.check.json && vite build",
     "format:check": "prettier --check 'src/**/*.{svelte,ts}' '*.{json,ts}'",
     "format": "prettier --write 'src/**/*.{svelte,ts}' '*.{json,ts}'",
+    "lint:ui": "eslint src tests playwright.config.ts vite.config.ts",
     "test:e2e": "playwright test",
     "check:server": "go test ./...",
     "build:image": "docker build -f nginx/Dockerfile -t agent-compose-ui:local ."
@@ -29,21 +30,27 @@
     "xterm": "^5.3.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
     "@bufbuild/protoc-gen-es": "^1.10.1",
     "@connectrpc/protoc-gen-connect-es": "^1.7.0",
+    "@eslint/js": "^10.0.1",
     "@internationalized/date": "^3.12.2",
     "@lucide/svelte": "^1.25.0",
+    "@playwright/test": "^1.61.1",
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.1.1",
+    "eslint": "^10.8.0",
+    "eslint-plugin-svelte": "^3.22.0",
+    "globals": "^16.5.0",
     "monaco-editor": "^0.56.0",
+    "postcss": "^8.5.23",
     "prettier": "^3.9.6",
     "prettier-plugin-svelte": "^4.1.1",
     "svelte-check": "^4.7.3",
     "tailwindcss": "^4.3.3",
     "tw-animate-css": "^1.4.0",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.65.0",
     "vite": "^7.1.9"
   }
 }

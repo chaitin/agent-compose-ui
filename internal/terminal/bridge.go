@@ -21,7 +21,7 @@ import (
 
 const (
 	AttachPath       = "/api/terminal/attach"
-	execAttachPath   = "/agentcompose.v2.ExecService/ExecAttach"
+	execAttachPath   = "/agentcompose.v2.ExecService/AttachExec"
 	connectMediaType = "application/connect+proto"
 	maxFrameSize     = 16 << 20
 )
@@ -109,7 +109,7 @@ func (b *Bridge) serve(conn *websocket.Conn, parent context.Context) error {
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, maxFrameSize))
-		err := fmt.Errorf("daemon returned %s: %s", response.Status, strings.TrimSpace(string(body)))
+		err := fmt.Errorf("后端服务返回 %s: %s", response.Status, strings.TrimSpace(string(body)))
 		sendError(conn, err)
 		return err
 	}

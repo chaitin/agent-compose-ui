@@ -126,7 +126,12 @@ func (a *Manager) configureOAuth(username string) {
 func (a *Manager) Protect(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		r := c.Request()
-		if !a.enabled || isPublicAuthPath(r.URL.Path) || isRuntimeLLMFacadeRequest(r) {
+		if !a.enabled {
+			principal := audit.Principal{ID: "local:default", Source: "local", Username: "local", DisplayName: "local", AuthMethod: "disabled"}
+			c.SetRequest(r.WithContext(audit.WithPrincipal(r.Context(), principal)))
+			return next(c)
+		}
+		if isPublicAuthPath(r.URL.Path) || isRuntimeLLMFacadeRequest(r) {
 			return next(c)
 		}
 		if !a.protectsPath(r.URL.Path, r.Header.Get("Accept")) {

@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"agent-compose-ui/internal/audit"
 )
 
 const maxCreateBody = 4 << 10
@@ -17,9 +19,9 @@ const defaultValidityDays = 90
 var allowedValidityDays = map[int]struct{}{1: {}, 7: {}, 30: {}, 90: {}, 365: {}}
 
 type tokenStore interface {
-	Create(context.Context, string, Role, time.Duration) (Created, error)
-	List(context.Context) ([]Metadata, error)
-	Revoke(context.Context, string) error
+	Create(context.Context, string, string, Role, time.Duration) (Created, error)
+	List(context.Context, string) ([]Metadata, error)
+	Revoke(context.Context, string, string) error
 }
 
 type HTTPHandler struct {
@@ -29,7 +31,7 @@ type HTTPHandler struct {
 
 func NewHTTPHandler(store tokenStore) *HTTPHandler {
 	h := &HTTPHandler{store: store, mux: http.NewServeMux()}
-	for _, prefix := range []string{"/api/ui/v1/tokens", "/ui-api/v1/tokens"} {
+	for _, prefix := range []string{"/api/ui/v1/tokens"} {
 		h.mux.HandleFunc("GET "+prefix, h.list)
 		h.mux.HandleFunc("POST "+prefix, h.create)
 		h.mux.HandleFunc("DELETE "+prefix+"/{id}", h.revoke)
@@ -52,7 +54,11 @@ func (h *HTTPHandler) list(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "cross-site request rejected"})
 		return
 	}
-	items, err := h.store.List(r.Context())
+	ownerID, ok := currentOwner(w, r)
+	if !ok {
+		return
+	}
+	items, err := h.store.List(r.Context(), ownerID)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -97,7 +103,11 @@ func (h *HTTPHandler) create(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "name, role, or validity is invalid"})
 		return
 	}
-	created, err := h.store.Create(r.Context(), input.Name, input.Role, time.Duration(input.ExpiresInDays)*24*time.Hour)
+	ownerID, ok := currentOwner(w, r)
+	if !ok {
+		return
+	}
+	created, err := h.store.Create(r.Context(), ownerID, input.Name, input.Role, time.Duration(input.ExpiresInDays)*24*time.Hour)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -116,12 +126,29 @@ func (h *HTTPHandler) revoke(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid token id"})
 		return
 	}
-	if err := h.store.Revoke(r.Context(), id); err != nil {
+	ownerID, ok := currentOwner(w, r)
+	if !ok {
+		return
+	}
+	if err := h.store.Revoke(r.Context(), ownerID, id); err != nil {
+		if errors.Is(err, ErrTokenNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "api token not found"})
+			return
+		}
 		writeStoreError(w, err)
 		return
 	}
 	noStore(w)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func currentOwner(w http.ResponseWriter, r *http.Request) (string, bool) {
+	principal := audit.PrincipalFromContext(r.Context())
+	if principal.ID == "" || principal.ID == "anonymous" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+		return "", false
+	}
+	return principal.ID, true
 }
 
 func validPublicID(value string) bool {
