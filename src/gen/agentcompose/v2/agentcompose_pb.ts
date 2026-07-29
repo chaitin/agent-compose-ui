@@ -4409,6 +4409,11 @@ export class AgentSpec extends Message<AgentSpec> {
    */
   description = "";
 
+  /**
+   * @generated from field: agentcompose.v2.SandboxSpec sandbox = 19;
+   */
+  sandbox?: SandboxSpec;
+
   constructor(data?: PartialMessage<AgentSpec>) {
     super();
     proto3.util.initPartial(data, this);
@@ -4435,6 +4440,7 @@ export class AgentSpec extends Message<AgentSpec> {
     { no: 16, name: "enabled", kind: "scalar", T: 8 /* ScalarType.BOOL */, opt: true },
     { no: 17, name: "display_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 18, name: "description", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 19, name: "sandbox", kind: "message", T: SandboxSpec },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): AgentSpec {
@@ -4451,6 +4457,45 @@ export class AgentSpec extends Message<AgentSpec> {
 
   static equals(a: AgentSpec | PlainMessage<AgentSpec> | undefined, b: AgentSpec | PlainMessage<AgentSpec> | undefined): boolean {
     return proto3.util.equals(AgentSpec, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.SandboxSpec
+ */
+export class SandboxSpec extends Message<SandboxSpec> {
+  /**
+   * Runtime handling after a confirmed stop. Empty defaults to "remove".
+   *
+   * @generated from field: string stopped_runtime_policy = 1;
+   */
+  stoppedRuntimePolicy = "";
+
+  constructor(data?: PartialMessage<SandboxSpec>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.SandboxSpec";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "stopped_runtime_policy", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SandboxSpec {
+    return new SandboxSpec().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): SandboxSpec {
+    return new SandboxSpec().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): SandboxSpec {
+    return new SandboxSpec().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: SandboxSpec | PlainMessage<SandboxSpec> | undefined, b: SandboxSpec | PlainMessage<SandboxSpec> | undefined): boolean {
+    return proto3.util.equals(SandboxSpec, a, b);
   }
 }
 
@@ -5106,6 +5151,13 @@ export class TriggerSpec extends Message<TriggerSpec> {
    */
   sandboxPolicy = SchedulerSandboxPolicy.UNSPECIFIED;
 
+  /**
+   * Optional IANA timezone. Unset cron triggers use the daemon's local timezone.
+   *
+   * @generated from field: string timezone = 9;
+   */
+  timezone = "";
+
   constructor(data?: PartialMessage<TriggerSpec>) {
     super();
     proto3.util.initPartial(data, this);
@@ -5122,6 +5174,7 @@ export class TriggerSpec extends Message<TriggerSpec> {
     { no: 6, name: "event", kind: "message", T: EventTriggerSpec },
     { no: 7, name: "prompt", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 8, name: "sandbox_policy", kind: "enum", T: proto3.getEnumType(SchedulerSandboxPolicy) },
+    { no: 9, name: "timezone", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): TriggerSpec {
@@ -7235,6 +7288,26 @@ export class Sandbox extends Message<Sandbox> {
    */
   workspaceReclamationLastError = "";
 
+  /**
+   * @generated from field: string stopped_runtime_policy = 21;
+   */
+  stoppedRuntimePolicy = "";
+
+  /**
+   * @generated from field: string stopped_runtime_state = 22;
+   */
+  stoppedRuntimeState = "";
+
+  /**
+   * @generated from field: string stopped_runtime_last_error = 23;
+   */
+  stoppedRuntimeLastError = "";
+
+  /**
+   * @generated from field: google.protobuf.Timestamp stopped_runtime_released_at = 24;
+   */
+  stoppedRuntimeReleasedAt?: Timestamp;
+
   constructor(data?: PartialMessage<Sandbox>) {
     super();
     proto3.util.initPartial(data, this);
@@ -7263,6 +7336,10 @@ export class Sandbox extends Message<Sandbox> {
     { no: 18, name: "workspace_reclamation_started_at", kind: "message", T: Timestamp },
     { no: 19, name: "workspace_reclamation_completed_at", kind: "message", T: Timestamp },
     { no: 20, name: "workspace_reclamation_last_error", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 21, name: "stopped_runtime_policy", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 22, name: "stopped_runtime_state", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 23, name: "stopped_runtime_last_error", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 24, name: "stopped_runtime_released_at", kind: "message", T: Timestamp },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): Sandbox {

@@ -48,6 +48,7 @@
     driver: string;
     workspaceName: string;
     workspace: Record<string, unknown>;
+    stoppedRuntimePolicy: string;
     env: Array<{ name: string; value: string; secret: boolean }>;
     capsetIds: string[];
   };
@@ -65,6 +66,7 @@
     driver: 'docker',
     workspaceName: '',
     workspace: {},
+    stoppedRuntimePolicy: 'remove',
     env: [],
     capsetIds: [],
   });
@@ -204,6 +206,7 @@
       driver: stringValue(agent.driver.name) || 'docker',
       workspaceName: stringValue(agent.workspace.name),
       workspace: { ...agent.workspace },
+      stoppedRuntimePolicy: agent.stoppedRuntimePolicy || 'remove',
       env: agent.env.map((item) => ({ ...item })),
       capsetIds: [...agent.capsetIds],
     };
@@ -337,6 +340,7 @@
       driver: input.driver.trim() ? { name: input.driver.trim() } : {},
       env: input.env.map((item) => ({ ...item, name: item.name.trim() })).filter((item) => item.name),
       workspace: workspaceSpec(input),
+      sandbox: { stoppedRuntimePolicy: input.stoppedRuntimePolicy },
       capsetIds: input.capsetIds.map((item) => item.trim()).filter(Boolean),
       enabled: input.enabled,
       displayName: input.displayName.trim(),
@@ -637,6 +641,23 @@
                   >{/each}</select
               ></label
             >
+            <label class="space-y-1 md:col-span-2">
+              <span class="text-sm">{t('停止后')}</span>
+              <select
+                class="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm"
+                bind:value={draft.stoppedRuntimePolicy}
+              >
+                <option value="remove">{t('释放运行环境')}</option>
+                <option value="retain">{t('保留运行环境')}</option>
+              </select>
+              <span class="block text-xs text-muted-foreground">
+                {t(
+                  draft.stoppedRuntimePolicy === 'retain'
+                    ? '恢复时继续使用原运行环境'
+                    : '恢复时创建新运行环境，工作目录和日志不受影响',
+                )}
+              </span>
+            </label>
           </section>
 
           <section class="space-y-4 rounded-lg border border-border bg-card p-5">
@@ -794,6 +815,10 @@
                     <dd>{stringValue(selectedAgent.driver.name)} · {selectedAgent.image || t('默认镜像')}</dd>
                     <dt class="text-muted-foreground">{t('工作目录')}</dt>
                     <dd>{stringValue(selectedAgent.workspace.name) || t('无')}</dd>
+                    <dt class="text-muted-foreground">{t('停止后')}</dt>
+                    <dd>
+                      {t(selectedAgent.stoppedRuntimePolicy === 'retain' ? '保留运行环境' : '释放运行环境')}
+                    </dd>
                     <dt class="text-muted-foreground">{t('自动化')}</dt>
                     <dd>{selectedAgent.hasScheduler ? t('已配置') : t('未配置')}</dd>
                     <dt class="text-muted-foreground">{t('扩展')}</dt>

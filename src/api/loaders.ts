@@ -98,6 +98,7 @@ export type AutomationTriggerInput = {
   name: string;
   kind: string;
   cron?: string;
+  timezone?: string;
   interval?: string;
   timeout?: string;
   topic?: string;
@@ -531,6 +532,7 @@ function triggerSpecFromInput(input: AutomationTriggerInput): TriggerSpec {
     name: input.name.trim(),
     kind: triggerKindFromString(input.kind),
     cron: input.cron?.trim() ?? '',
+    timezone: input.timezone?.trim() ?? '',
     interval: input.interval?.trim() ?? '',
     timeout: input.timeout?.trim() ?? '',
     event: input.kind.trim() === 'event' ? new EventTriggerSpec({ topic: input.topic?.trim() ?? '' }) : undefined,
@@ -543,6 +545,7 @@ function triggerInputFromSpec(spec: TriggerSpec): AutomationTriggerInput {
     name: spec.name,
     kind: triggerKindToString(spec.kind),
     cron: spec.cron,
+    timezone: spec.timezone,
     interval: spec.interval,
     timeout: spec.timeout,
     topic: spec.event?.topic ?? '',

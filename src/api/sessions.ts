@@ -27,6 +27,10 @@ export type SandboxContext = {
   eventCount: number;
   notebookUrl: string;
   proxyPath: string;
+  stoppedRuntimePolicy: string;
+  stoppedRuntimeState: string;
+  stoppedRuntimeLastError: string;
+  stoppedRuntimeReleasedAt: string;
   tags: Array<{ name: string; value: string }>;
 };
 export type SandboxContextDetail = SandboxContext;
@@ -367,6 +371,10 @@ function sessionFromSandbox(item: Sandbox): WorkSession {
     eventCount: item.eventCount,
     notebookUrl: item.notebookUrl,
     proxyPath: item.proxyPath,
+    stoppedRuntimePolicy: item.stoppedRuntimePolicy,
+    stoppedRuntimeState: item.stoppedRuntimeState,
+    stoppedRuntimeLastError: item.stoppedRuntimeLastError,
+    stoppedRuntimeReleasedAt: timestampString(item.stoppedRuntimeReleasedAt),
     tags: item.tags.map((v) => ({ name: v.name, value: v.value })),
   };
 }

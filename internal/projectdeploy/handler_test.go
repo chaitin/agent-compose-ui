@@ -37,7 +37,10 @@ func TestPreviewAndApplyPreserveProjectAndAgentFields(t *testing.T) {
 	handler := New(mustURL(t, backend.URL))
 	preview := performJSON(t, handler, http.MethodPost, "/api/ui/v1/project-deployment-previews", map[string]any{
 		"kind": "update_agent", "projectId": "project-1", "baseSpecHash": "sha256:base", "agentName": "worker",
-		"agent": map[string]any{"provider": "codex", "model": "next-model", "displayName": "Updated worker", "enabled": true},
+		"agent": map[string]any{
+			"provider": "codex", "model": "next-model", "displayName": "Updated worker", "enabled": true,
+			"sandbox": map[string]any{"stoppedRuntimePolicy": "remove", "unknown": "discard"},
+		},
 	}, "local:admin")
 	if preview.Code != http.StatusCreated {
 		t.Fatalf("preview = %d: %s", preview.Code, preview.Body.String())
@@ -115,6 +118,29 @@ func TestListProjectsUsesTotalOffsetPagination(t *testing.T) {
 	}
 	if len(body.Projects) != 3 || len(offsets) != 2 || offsets[0] != 0 || offsets[1] != 2 {
 		t.Fatalf("projects = %d, offsets = %#v", len(body.Projects), offsets)
+	}
+}
+
+func TestProjectViewIncludesStoppedRuntimePolicy(t *testing.T) {
+	project := objectValue(projectFixture(false)["project"])
+	view := projectView(project)
+	if len(view.Agents) != 2 || view.Agents[1].AgentName != "worker" || view.Agents[1].StoppedRuntimePolicy != "retain" {
+		t.Fatalf("agents = %#v", view.Agents)
+	}
+}
+
+func TestPreviewRejectsInvalidStoppedRuntimePolicy(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("backend must not be called for invalid input: %s", r.URL.Path)
+	}))
+	defer backend.Close()
+
+	response := performJSON(t, New(mustURL(t, backend.URL)), http.MethodPost, "/api/ui/v1/project-deployment-previews", map[string]any{
+		"kind": "update_agent", "projectId": "project-1", "agentName": "worker",
+		"agent": map[string]any{"sandbox": map[string]any{"stoppedRuntimePolicy": "discard"}},
+	}, "local:admin")
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "remove 或 retain") {
+		t.Fatalf("response = %d: %s", response.Code, response.Body.String())
 	}
 }
 
@@ -233,7 +259,10 @@ func TestPreviewNormalizesCurrentDaemonProjectSpec(t *testing.T) {
 		"scheduler": map[string]any{
 			"enabled": true, "script": "scheduler.on('x', 'y', function () {})",
 			"sandboxPolicy": "new", "concurrencyPolicy": "parallel",
-			"triggers": []any{map[string]any{"kind": "event", "sandboxPolicy": "sticky"}},
+			"triggers": []any{
+				map[string]any{"kind": "cron", "cron": "0 9 * * *", "timezone": "Asia/Shanghai"},
+				map[string]any{"kind": "event", "sandboxPolicy": "sticky"},
+			},
 		},
 	}, "local:admin")
 	if response.Code != http.StatusCreated {
@@ -249,7 +278,11 @@ func TestPreviewNormalizesCurrentDaemonProjectSpec(t *testing.T) {
 		stringValue(scheduler["concurrencyPolicy"]) != "SCHEDULER_CONCURRENCY_POLICY_PARALLEL" {
 		t.Fatalf("scheduler = %#v", scheduler)
 	}
-	trigger := objectValue(arrayValue(scheduler["triggers"])[0])
+	cron := objectValue(arrayValue(scheduler["triggers"])[0])
+	if stringValue(cron["timezone"]) != "Asia/Shanghai" {
+		t.Fatalf("cron trigger = %#v", cron)
+	}
+	trigger := objectValue(arrayValue(scheduler["triggers"])[1])
 	if stringValue(trigger["kind"]) != "TRIGGER_KIND_EVENT" ||
 		stringValue(trigger["sandboxPolicy"]) != "SCHEDULER_SANDBOX_POLICY_STICKY" {
 		t.Fatalf("trigger = %#v", trigger)
@@ -402,6 +435,7 @@ func projectFixture(redacted bool) map[string]any {
 			"agents": []any{
 				map[string]any{
 					"name": "worker", "provider": "codex", "model": "old-model", "displayName": "Worker",
+					"sandbox":   map[string]any{"stoppedRuntimePolicy": "retain"},
 					"scheduler": map[string]any{"enabled": true, "script": "scheduler.on('x', 'y', function () {})"},
 					"jupyter":   map[string]any{"enabled": true}, "mcpServers": []any{map[string]any{"name": "docs"}},
 					"skills": []any{map[string]any{"name": "review"}}, "volumes": []any{map[string]any{"source": "cache"}},
@@ -425,6 +459,10 @@ func assertCandidatePreserved(t *testing.T, spec map[string]any) {
 		len(arrayValue(worker["mcpServers"])) != 1 || len(arrayValue(worker["skills"])) != 1 ||
 		len(arrayValue(worker["volumes"])) != 1 || worker["build"] == nil {
 		t.Fatalf("worker candidate = %#v", worker)
+	}
+	sandbox := objectValue(worker["sandbox"])
+	if stringValue(sandbox["stoppedRuntimePolicy"]) != "remove" || sandbox["unknown"] != nil {
+		t.Fatalf("worker sandbox = %#v", sandbox)
 	}
 	sibling := objectValue(agents[1])
 	if stringValue(sibling["customFutureField"]) != "keep" || stringValue(sibling["model"]) != "sibling-model" {

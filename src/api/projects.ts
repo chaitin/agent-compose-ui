@@ -14,6 +14,7 @@ export type ProjectAgent = {
   driver: Record<string, unknown>;
   env: ProjectAgentEnv[];
   workspace: Record<string, unknown>;
+  stoppedRuntimePolicy: string;
   capsetIds: string[];
   availability: string;
   health: string;
@@ -50,6 +51,7 @@ export type AgentEditableSpec = {
   driver?: Record<string, unknown>;
   env?: ProjectAgentEnv[];
   workspace?: Record<string, unknown>;
+  sandbox?: { stoppedRuntimePolicy: string };
   capsetIds?: string[];
   enabled: boolean;
   displayName: string;
@@ -147,6 +149,7 @@ function normalizeProject(project: ProjectView): ProjectView {
       driver: agent.driver ?? {},
       env: agent.env ?? [],
       workspace: agent.workspace ?? {},
+      stoppedRuntimePolicy: agent.stoppedRuntimePolicy || 'remove',
       capsetIds: agent.capsetIds ?? [],
       availability: agent.availability ?? '',
       health: agent.health ?? '',

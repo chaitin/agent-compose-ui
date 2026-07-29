@@ -29,6 +29,7 @@
   import { RunEventKind, type RunEvent, type RunSummary } from '../../gen/agentcompose/v2/agentcompose_pb.js';
   import { compactIdentifier } from '../../model/identifiers';
   import { jupyterEntryHref } from '../../model/jupyter';
+  import { stoppedRuntimePresentation } from '../../model/stopped-runtime';
   import { conversationTurns, type ConversationTurn } from '../../model/conversation';
   import ExternalLink from '@lucide/svelte/icons/external-link';
 
@@ -95,6 +96,7 @@
   const runnable = $derived(normalizedStatus === 'running');
   const resumable = $derived(normalizedStatus === 'stopped');
   const terminalAvailable = $derived(normalizedStatus !== 'failed' && normalizedStatus !== 'deleting');
+  const stoppedRuntime = $derived(sandbox ? stoppedRuntimePresentation(sandbox) : null);
 
   onMount(() => () => {
     window.clearTimeout(terminalRetryTimer);
@@ -378,6 +380,25 @@
           {#if !embedded}<CopyLinkButton />{/if}
         </div>{/if}
     </div>
+
+    {#if stoppedRuntime}<div
+        data-stopped-runtime-state
+        class="mb-3 flex shrink-0 flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs {stoppedRuntime.status ===
+        'failed'
+          ? 'border-destructive/30 bg-destructive/10 text-destructive'
+          : stoppedRuntime.status === 'pending'
+            ? 'border-warning/30 bg-warning/10'
+            : 'border-border bg-muted/40 text-muted-foreground'}"
+      >
+        <StatusBadge status={stoppedRuntime.status} label={stoppedRuntime.label} />
+        <span class="min-w-0 break-words">
+          {stoppedRuntime.status === 'failed' ? stoppedRuntime.description : t(stoppedRuntime.description)}
+        </span>
+        {#if sandbox.stoppedRuntimeReleasedAt}<Timestamp
+            value={sandbox.stoppedRuntimeReleasedAt}
+            class="ml-auto"
+          />{/if}
+      </div>{/if}
 
     {#if !embedded}<details class="mb-3 shrink-0 rounded-md border border-border bg-card px-3 py-2 text-xs">
         <summary class="cursor-pointer text-muted-foreground">{t('环境信息')}</summary>

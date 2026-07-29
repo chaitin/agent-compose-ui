@@ -101,28 +101,29 @@ type ProjectView struct {
 }
 
 type AgentView struct {
-	ID               string         `json:"id"`
-	AgentName        string         `json:"agentName"`
-	DisplayName      string         `json:"displayName"`
-	Description      string         `json:"description,omitempty"`
-	Enabled          bool           `json:"enabled"`
-	Provider         string         `json:"provider"`
-	Model            string         `json:"model"`
-	SystemPrompt     string         `json:"systemPrompt,omitempty"`
-	Image            string         `json:"image,omitempty"`
-	Driver           map[string]any `json:"driver,omitempty"`
-	Env              []any          `json:"env,omitempty"`
-	Workspace        map[string]any `json:"workspace,omitempty"`
-	CapsetIDs        []string       `json:"capsetIds,omitempty"`
-	Availability     string         `json:"availability,omitempty"`
-	Health           string         `json:"health,omitempty"`
-	SchedulerEnabled bool           `json:"schedulerEnabled"`
-	HasScheduler     bool           `json:"hasScheduler"`
-	JupyterEnabled   bool           `json:"jupyterEnabled"`
-	MCPCount         int            `json:"mcpCount"`
-	SkillCount       int            `json:"skillCount"`
-	VolumeCount      int            `json:"volumeCount"`
-	HasBuild         bool           `json:"hasBuild"`
+	ID                   string         `json:"id"`
+	AgentName            string         `json:"agentName"`
+	DisplayName          string         `json:"displayName"`
+	Description          string         `json:"description,omitempty"`
+	Enabled              bool           `json:"enabled"`
+	Provider             string         `json:"provider"`
+	Model                string         `json:"model"`
+	SystemPrompt         string         `json:"systemPrompt,omitempty"`
+	Image                string         `json:"image,omitempty"`
+	Driver               map[string]any `json:"driver,omitempty"`
+	Env                  []any          `json:"env,omitempty"`
+	Workspace            map[string]any `json:"workspace,omitempty"`
+	StoppedRuntimePolicy string         `json:"stoppedRuntimePolicy,omitempty"`
+	CapsetIDs            []string       `json:"capsetIds,omitempty"`
+	Availability         string         `json:"availability,omitempty"`
+	Health               string         `json:"health,omitempty"`
+	SchedulerEnabled     bool           `json:"schedulerEnabled"`
+	HasScheduler         bool           `json:"hasScheduler"`
+	JupyterEnabled       bool           `json:"jupyterEnabled"`
+	MCPCount             int            `json:"mcpCount"`
+	SkillCount           int            `json:"skillCount"`
+	VolumeCount          int            `json:"volumeCount"`
+	HasBuild             bool           `json:"hasBuild"`
 }
 
 type listProjectsResponse struct {
@@ -276,6 +277,13 @@ func (h *Handler) preparePreview(ctx context.Context, actorID string, input Muta
 				return PreviewResponse{}, apiError{http.StatusBadRequest, "invalid_request", err.Error()}
 			}
 			input.Agent["env"] = env
+		}
+		if rawSandbox, ok := input.Agent["sandbox"]; ok {
+			sandbox, err := agentSandboxSpec(rawSandbox)
+			if err != nil {
+				return PreviewResponse{}, apiError{http.StatusBadRequest, "invalid_request", err.Error()}
+			}
+			input.Agent["sandbox"] = sandbox
 		}
 	}
 
@@ -579,6 +587,18 @@ func agentEnvSpec(value any) ([]any, error) {
 	return environmentSpec(items, "智能体")
 }
 
+func agentSandboxSpec(value any) (map[string]any, error) {
+	item, ok := value.(map[string]any)
+	if !ok {
+		return nil, errors.New("执行环境停止策略格式无效")
+	}
+	policy := strings.ToLower(strings.TrimSpace(stringValue(item["stoppedRuntimePolicy"])))
+	if policy != "remove" && policy != "retain" {
+		return nil, errors.New("执行环境停止策略必须是 remove 或 retain")
+	}
+	return map[string]any{"stoppedRuntimePolicy": policy}, nil
+}
+
 func environmentSpec(items []any, scope string) ([]any, error) {
 	result := make([]any, 0, len(items))
 	seen := make(map[string]struct{}, len(items))
@@ -601,7 +621,7 @@ func environmentSpec(items []any, scope string) ([]any, error) {
 
 var editableAgentFields = map[string]struct{}{
 	"provider": {}, "model": {}, "systemPrompt": {}, "image": {}, "driver": {}, "env": {}, "workspace": {},
-	"capsetIds": {}, "enabled": {}, "displayName": {}, "description": {},
+	"sandbox": {}, "capsetIds": {}, "enabled": {}, "displayName": {}, "description": {},
 }
 
 func newAgentSpec(name string, patch map[string]any) map[string]any {
@@ -638,6 +658,7 @@ func projectView(project map[string]any) ProjectView {
 		runtime := runtimeAgents[name]
 		driver := objectValue(item["driver"])
 		workspace := objectValue(item["workspace"])
+		sandbox := objectValue(item["sandbox"])
 		enabled := true
 		if value, ok := item["enabled"].(bool); ok {
 			enabled = value
@@ -647,7 +668,8 @@ func projectView(project map[string]any) ProjectView {
 			DisplayName: firstNonEmpty(stringValue(item["displayName"]), name), Description: stringValue(item["description"]),
 			Enabled: enabled, Provider: stringValue(item["provider"]), Model: stringValue(item["model"]),
 			SystemPrompt: stringValue(item["systemPrompt"]), Image: stringValue(item["image"]), Driver: driver,
-			Env: environmentView(item["env"]), Workspace: workspace, CapsetIDs: stringArray(item["capsetIds"]),
+			Env: environmentView(item["env"]), Workspace: workspace,
+			StoppedRuntimePolicy: stringValue(sandbox["stoppedRuntimePolicy"]), CapsetIDs: stringArray(item["capsetIds"]),
 			Availability: stringValue(runtime["availability"]), Health: stringValue(runtime["health"]),
 			SchedulerEnabled: boolValue(runtime["schedulerEnabled"]), HasScheduler: item["scheduler"] != nil,
 			JupyterEnabled: boolValue(objectValue(item["jupyter"])["enabled"]), MCPCount: len(arrayValue(item["mcpServers"])),

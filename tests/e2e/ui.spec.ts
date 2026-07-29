@@ -1648,7 +1648,7 @@ test('automatically connects a real terminal and accepts input', async ({ page }
 });
 
 test('streams StreamAgentRun output through the UI proxy before completion', async ({ page }) => {
-  test.skip(!retainedProjectId, 'requires a retained project');
+  test.skip(!retainedProjectId || !retainedAgentName, 'requires a retained Agent');
   test.setTimeout(60_000);
   await login(page);
   const events = await page.evaluate(
@@ -1670,7 +1670,7 @@ test('streams StreamAgentRun output through the UI proxy before completion', asy
     },
     {
       projectId: retainedProjectId,
-      agentName: 'llm-shell-regression-agent',
+      agentName: retainedAgentName,
     },
   );
 
@@ -1976,10 +1976,14 @@ test('keeps a deterministic StreamAgentRun visible across navigation', async ({ 
       }, runId),
     )
     .toContain('UI_STREAM_CHUNK_1');
-  const liveStream = page.locator('[aria-live="polite"]').filter({ hasText: 'Deterministic UI stream regression' });
+  const liveStream = page
+    .locator('[data-conversation-turn]')
+    .filter({ hasText: 'Deterministic UI stream regression' })
+    .last();
   await expect(liveStream.getByText('UI_STREAM_CHUNK_1', { exact: false })).toBeVisible();
   await expect(liveStream.getByText('UI_STREAM_CHUNK_3', { exact: false })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '回复中…' })).toBeVisible();
+  await expect(liveStream.getByText('回复中…', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '取消本轮', exact: true })).toBeVisible();
   await expect(liveStream.getByText('UI_STREAM_CHUNK_2', { exact: false })).toBeVisible({ timeout: 6_000 });
   await expect(liveStream.getByText('UI_STREAM_CHUNK_3', { exact: false })).toBeVisible({ timeout: 6_000 });
   const streamSandboxId = await page.evaluate((targetRunId) => {
@@ -2132,8 +2136,11 @@ test('shows recovery only for stopped execution environments', async ({ page }) 
   const sandboxIds = await page.evaluate(async () => {
     const { listSandboxContexts } = await import('/src/api/sessions.ts');
     const response = await listSandboxContexts(200);
+    const stopped = response.sessions.find((sandbox) => sandbox.status.trim().toLowerCase() === 'stopped');
     return {
-      stopped: response.sessions.find((sandbox) => sandbox.status.trim().toLowerCase() === 'stopped')?.id ?? '',
+      stopped: stopped?.id ?? '',
+      stoppedRuntimePolicy: stopped?.stoppedRuntimePolicy ?? '',
+      stoppedRuntimeState: stopped?.stoppedRuntimeState ?? '',
       failed: response.sessions.find((sandbox) => sandbox.status.trim().toLowerCase() === 'failed')?.id ?? '',
     };
   });
@@ -2151,12 +2158,42 @@ test('shows recovery only for stopped execution environments', async ({ page }) 
   expect(Math.abs(recoveryBox!.y - headingBox!.y)).toBeLessThan(32);
   await expect(page.getByRole('button', { name: '停止', exact: true })).toHaveCount(0);
   await expect(page.locator('[data-composer]')).toHaveCount(0);
+  if (sandboxIds.stoppedRuntimeState || sandboxIds.stoppedRuntimePolicy === 'retain') {
+    await expect(page.locator('[data-stopped-runtime-state]')).toBeVisible();
+  }
 
   if (sandboxIds.failed) {
     await navigateInApp(page, `/sandboxes/${sandboxIds.failed}`);
     await expect(page.getByRole('button', { name: '恢复', exact: true })).toHaveCount(0);
     await expect(page.getByRole('tab', { name: '终端', exact: true })).toHaveCount(0);
   }
+});
+
+test('resumes and releases a stopped execution environment', async ({ page }) => {
+  test.setTimeout(60_000);
+  await login(page);
+  const sandboxId = await page.evaluate(async () => {
+    const { listSandboxContexts } = await import('/src/api/sessions.ts');
+    const response = await listSandboxContexts(200);
+    return (
+      response.sessions.find(
+        (sandbox) =>
+          sandbox.status.trim().toLowerCase() === 'stopped' &&
+          sandbox.stoppedRuntimePolicy === 'remove' &&
+          sandbox.stoppedRuntimeState === 'released',
+      )?.id ?? ''
+    );
+  });
+  test.skip(!sandboxId, 'No released execution environment is available');
+
+  await navigateInApp(page, `/sandboxes/${sandboxId}`);
+  const workbench = page.locator('[data-sandbox-workbench]');
+  await expect(workbench.locator('[data-stopped-runtime-state]')).toContainText('运行环境已释放');
+  await workbench.getByRole('button', { name: '恢复', exact: true }).click();
+  await expect(workbench.getByRole('button', { name: '停止', exact: true })).toBeVisible({ timeout: 30_000 });
+  await workbench.getByRole('button', { name: '停止', exact: true }).click();
+  await expect(workbench.getByRole('button', { name: '恢复', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(workbench.locator('[data-stopped-runtime-state]')).toContainText('运行环境已释放');
 });
 
 test('separates user and agent messages without mobile overflow', async ({ page }) => {
@@ -2499,7 +2536,13 @@ test('preserves an agent scheduler when deploying an agent edit and redirects le
   const body = (await projectResponse.json()) as {
     projects: Array<{
       projectId: string;
-      agents: Array<{ id: string; agentName: string; displayName: string; hasScheduler: boolean }>;
+      agents: Array<{
+        id: string;
+        agentName: string;
+        displayName: string;
+        hasScheduler: boolean;
+        stoppedRuntimePolicy: string;
+      }>;
     }>;
   };
   const linked = body.projects
@@ -2513,6 +2556,7 @@ test('preserves an agent scheduler when deploying an agent edit and redirects le
   }, `/agents/${linked!.agent.id}`);
   await expect(page).toHaveURL(new RegExp(`/projects/${linked!.project.projectId}/agents/${linked!.agent.agentName}$`));
   await page.getByRole('button', { name: '编辑', exact: true }).click();
+  await expect(page.getByLabel('停止后')).toHaveValue(linked!.agent.stoppedRuntimePolicy || 'remove');
   const previewName = `${linked!.agent.displayName} Preview`;
   try {
     await page.getByLabel('显示名称').fill(previewName);
@@ -2529,6 +2573,7 @@ test('preserves an agent scheduler when deploying an agent edit and redirects le
       .find((agent) => agent.id === linked!.agent.id);
     expect(changed?.displayName).toBe(previewName);
     expect(changed?.hasScheduler).toBe(true);
+    expect(changed?.stoppedRuntimePolicy).toBe(linked!.agent.stoppedRuntimePolicy || 'remove');
   } finally {
     const current = (await (await page.request.get('/api/ui/v1/projects')).json()) as typeof body;
     const changed = current.projects
@@ -2559,6 +2604,98 @@ test('preserves an agent scheduler when deploying an agent edit and redirects le
     .find((agent) => agent.id === linked!.agent.id);
   expect(unchanged?.displayName).toBe(linked!.agent.displayName);
   expect(unchanged?.hasScheduler).toBe(true);
+});
+
+test('preserves a Cron timezone through an automation deployment', async ({ page }) => {
+  test.setTimeout(90_000);
+  await login(page);
+  const result = await page.evaluate(async () => {
+    const { projectClient } = await import('/src/api/client.ts');
+    const { getAutomationTask, listAutomationTasks, previewAutomationTask } = await import('/src/api/loaders.ts');
+    const { projectSpecForUpdate } = await import('/src/api/project-spec.ts');
+    const { applyProjectPreview, listProjectViews } = await import('/src/api/projects.ts');
+    const { AgentSpec, ProjectSpec, SchedulerSpec, TriggerKind, TriggerSpec } =
+      await import('/src/gen/agentcompose/v2/agentcompose_pb.ts');
+    const projects = await listProjectViews();
+    const tasks = await listAutomationTasks();
+    const target = tasks.find((task) =>
+      projects.some(
+        (project) =>
+          project.projectId === task.projectId &&
+          project.editable &&
+          project.agents.some(
+            (agent) => agent.agentName === task.agentName && agent.image.includes('agent-compose-guest'),
+          ),
+      ),
+    );
+    if (!target) return { skipped: true, timezone: '' };
+
+    const current = await projectClient.getProject({
+      project: { selector: { case: 'projectId', value: target.projectId } },
+      includeSpec: true,
+    });
+    if (!current.project?.spec) throw new Error('Cron timezone acceptance project is unavailable');
+    const updateableSpec = projectSpecForUpdate(current.project.spec);
+    const originalSpec = updateableSpec.toJson();
+    const configured = new ProjectSpec({
+      ...updateableSpec,
+      agents: updateableSpec.agents.map((agent) =>
+        agent.name === target.agentName
+          ? new AgentSpec({
+              ...agent,
+              scheduler: new SchedulerSpec({
+                ...agent.scheduler,
+                script: '',
+                triggers: [
+                  new TriggerSpec({
+                    name: 'ui-timezone-roundtrip',
+                    kind: TriggerKind.CRON,
+                    cron: '0 9 * * *',
+                    timezone: 'Asia/Shanghai',
+                  }),
+                ],
+              }),
+            })
+          : agent,
+      ),
+    });
+    const prepared = await projectClient.applyProject({ spec: configured });
+    if (!prepared.applied && !prepared.unchanged) {
+      throw new Error(
+        prepared.issues.map((issue) => `${issue.path}: ${issue.message}`).join('\n') ||
+          'Unable to prepare Cron timezone acceptance data',
+      );
+    }
+
+    let timezone = '';
+    let operationError = '';
+    try {
+      const detail = await getAutomationTask(target.id);
+      const preview = await previewAutomationTask({
+        ...detail,
+        name: `${detail.name} Timezone Roundtrip`,
+        triggers: detail.configuredTriggers,
+      });
+      if (!preview.deployable) throw new Error('Cron timezone roundtrip did not produce a deployment preview');
+      await applyProjectPreview(preview.previewId);
+      const saved = await projectClient.getScheduler({
+        project: { selector: { case: 'projectId', value: target.projectId } },
+        agentName: target.agentName,
+      });
+      timezone = saved.spec?.triggers[0]?.timezone ?? '';
+    } catch (cause) {
+      operationError = cause instanceof Error ? cause.message : String(cause);
+    } finally {
+      const restored = await projectClient.applyProject({ spec: ProjectSpec.fromJson(originalSpec) });
+      if (!restored.applied && !restored.unchanged)
+        operationError ||= 'Cron timezone acceptance project was not restored';
+    }
+    if (operationError) throw new Error(operationError);
+    return { skipped: false, timezone };
+  });
+
+  test.skip(result.skipped, 'No editable automation is available');
+  expect(result.timezone).toBe('Asia/Shanghai');
 });
 
 test('bounds overview run requests without loading project definitions', async ({ page }) => {

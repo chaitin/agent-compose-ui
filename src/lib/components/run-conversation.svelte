@@ -57,7 +57,8 @@
   const searchableEntries = $derived.by(() => {
     const entries: Array<{ key: string; text: string }> = [];
     for (const turn of turns) {
-      if (turn.prompt) entries.push({ key: `${turn.id}:prompt`, text: turn.prompt });
+      const prompt = presentedPrompt(turn);
+      if (prompt) entries.push({ key: `${turn.id}:prompt`, text: prompt });
       const output = isPendingTurn(turn) ? pendingOutput || turn.output : presentedOutput(turn);
       if (output) entries.push({ key: `${turn.id}:output`, text: output });
     }
@@ -75,6 +76,10 @@
   function presentedOutput(turn: ConversationTurn): string {
     const error = turnError(turn);
     return error ? failureSummary(turn.output, error) : turn.output;
+  }
+
+  function presentedPrompt(turn: ConversationTurn): string {
+    return isPendingTurn(turn) ? turn.prompt || pendingPrompt : turn.prompt;
   }
 
   function isPendingTurn(turn: ConversationTurn): boolean {
@@ -174,6 +179,7 @@
         {@const error = turnError(turn)}
         {@const failed = Boolean(error)}
         {@const active = isPendingTurn(turn)}
+        {@const prompt = presentedPrompt(turn)}
         {@const status = turnStatus(turn, active, failed)}
         {@const errorDetail = failed ? failureDetails(turn.output, error) : ''}
         {@const output = active ? pendingOutput || turn.output : presentedOutput(turn)}
@@ -197,13 +203,13 @@
               >{/if}
           </div>
 
-          {#if turn.prompt}<div
+          {#if prompt}<div
               data-message-role="user"
               data-message-content
               class="ml-auto w-fit max-w-[88%] rounded-lg bg-blue-500/20 px-4 py-3 font-mono text-sm text-blue-50"
             >
               <pre class="whitespace-pre-wrap break-words">› <SearchableText
-                  text={turn.prompt}
+                  text={prompt}
                   query={searchQuery}
                   matchOffset={matchOffsets.offsets.get(`${turn.id}:prompt`) ?? 0}
                   {activeMatch}

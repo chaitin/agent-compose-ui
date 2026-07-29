@@ -8,10 +8,12 @@
   import { t } from '$lib/i18n.svelte';
   import { compactIdentifier } from '../../model/identifiers';
   import { presentSandboxTags } from '../../model/sandbox-tags';
+  import { stoppedRuntimePresentation } from '../../model/stopped-runtime';
 
   let { sandbox, detail }: { sandbox: SandboxContextDetail | null; detail: RunDetail } = $props();
   const presentedTags = $derived(presentSandboxTags(sandbox?.tags ?? []));
   const stableTags = $derived(presentedTags.known.filter((tag) => tag.label !== '运行 ID'));
+  const stoppedRuntime = $derived(sandbox ? stoppedRuntimePresentation(sandbox) : null);
 
   function formattedResult(value: string): string {
     try {
@@ -38,6 +40,19 @@
         <div class="mt-1 break-all font-mono text-xs">{sandbox.guestImage || '—'}</div>
       </div>
     </div>
+    {#if stoppedRuntime}<div
+        data-stopped-runtime-state
+        class="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3 text-sm"
+      >
+        <StatusBadge status={stoppedRuntime.status} label={stoppedRuntime.label} />
+        <span class="min-w-0 break-words text-muted-foreground">
+          {stoppedRuntime.status === 'failed' ? stoppedRuntime.description : t(stoppedRuntime.description)}
+        </span>
+        {#if sandbox.stoppedRuntimeReleasedAt}<Timestamp
+            value={sandbox.stoppedRuntimeReleasedAt}
+            class="ml-auto"
+          />{/if}
+      </div>{/if}
     <dl class="grid gap-x-4 gap-y-3 rounded-lg border border-border bg-card p-4 text-sm md:grid-cols-[9rem_1fr]">
       <dt class="text-muted-foreground">{t('创建时间')}</dt>
       <dd><Timestamp value={sandbox.createdAt} mode="full" /></dd>
