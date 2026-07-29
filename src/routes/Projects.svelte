@@ -82,6 +82,8 @@
   let loading = $state(true);
   let saving = $state(false);
   let error = $state('');
+  let auxiliaryWarning = $state('');
+  let capabilitySetsAvailable = $state(true);
   let runPrompt = $state('Reply with OK only.');
   let draft = $state<Draft>(emptyDraft());
   let projectVariables = $state<ProjectAgentEnv[]>([]);
@@ -142,12 +144,30 @@
   async function load(): Promise<void> {
     loading = true;
     error = '';
+    auxiliaryWarning = '';
     try {
-      [projects, workspaces, capabilitySets] = await Promise.all([
+      const [projectResult, workspaceResult, capabilityResult] = await Promise.allSettled([
         listProjectViews(),
         listWorkspacePresets(),
         listCapabilitySets(),
       ]);
+      if (projectResult.status === 'rejected') throw projectResult.reason;
+      projects = projectResult.value;
+      const warnings: string[] = [];
+      if (workspaceResult.status === 'fulfilled') {
+        workspaces = workspaceResult.value;
+      } else {
+        workspaces = [];
+        warnings.push(t('工作目录配置暂时不可用'));
+      }
+      capabilitySetsAvailable = capabilityResult.status === 'fulfilled';
+      if (capabilityResult.status === 'fulfilled') {
+        capabilitySets = capabilityResult.value;
+      } else {
+        capabilitySets = [];
+        warnings.push(t('能力网关暂时不可用，项目仍可查看，能力集暂不可编辑'));
+      }
+      auxiliaryWarning = warnings.join('；');
       if (legacyPath) {
         redirectLegacyAgent();
         return;
@@ -443,6 +463,9 @@
   {#if error}<div data-page-error class="mx-auto w-full max-w-[112rem] shrink-0 px-4 pt-3 sm:px-5 xl:px-6">
       <div class="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
     </div>{/if}
+  {#if auxiliaryWarning}<div class="mx-auto w-full max-w-[112rem] shrink-0 px-4 pt-3 sm:px-5 xl:px-6">
+      <div class="rounded-md bg-warning/10 p-3 text-sm text-warning-foreground">{auxiliaryWarning}</div>
+    </div>{/if}
 
   <div
     data-page-frame
@@ -689,6 +712,7 @@
                 value={draft.capsetIds.join(', ')}
                 oninput={(event) => updateCapsets(event.currentTarget.value)}
                 list="project-agent-capsets"
+                disabled={!capabilitySetsAvailable}
               /><datalist id="project-agent-capsets"
                 >{#each capabilitySets as set (set.id)}<option value={set.id}>{set.name}</option>{/each}</datalist
               ></label

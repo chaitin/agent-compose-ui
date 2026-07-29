@@ -636,20 +636,20 @@ export async function getTopicEvent(eventId: string): Promise<TopicEvent> {
 export async function listTopicEvents(input: {
   topic?: string;
   correlationId?: string;
-  afterSequence?: number;
+  offset?: number;
   limit?: number;
-}): Promise<{ items: TopicEvent[]; nextAfterSequence: number }> {
+}): Promise<{ items: TopicEvent[]; total: number }> {
   const query = new URLSearchParams();
   if (input.topic?.trim()) query.set('topic', input.topic.trim());
   if (input.correlationId?.trim()) query.set('correlation_id', input.correlationId.trim());
-  if (input.afterSequence) query.set('after_sequence', String(input.afterSequence));
+  query.set('offset', String(input.offset ?? 0));
   query.set('limit', String(input.limit ?? 100));
-  const response = await apiFetchJson<{ items?: TopicEventResponse[]; next_after_sequence?: number }>(
+  const response = await apiFetchJson<{ items?: TopicEventResponse[]; total?: number }>(
     `/api/events?${query.toString()}`,
   );
   return {
     items: (response.items ?? []).map(topicEventFromResponse),
-    nextAfterSequence: Number(response.next_after_sequence ?? 0),
+    total: Number(response.total ?? 0),
   };
 }
 

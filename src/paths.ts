@@ -30,3 +30,10 @@ export function stripAppBase(pathname: string): string {
   }
   return pathname;
 }
+
+export function normalizeAppLocation(value: string, fallback = '/'): string {
+  const candidate = value.startsWith('/') && !value.startsWith('//') ? value : fallback;
+  const url = new URL(candidate, window.location.origin);
+  if (url.origin !== window.location.origin) return appPath('/');
+  return `${appPath(stripAppBase(url.pathname))}${url.search}${url.hash}`;
+}

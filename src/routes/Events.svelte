@@ -29,7 +29,8 @@
   let topicsLoading = $state(true);
   let loading = $state(false);
   let error = $state('');
-  let nextAfterSequence = $state(0);
+  let nextOffset = $state(0);
+  let total = $state(0);
   let hasMore = $state(false);
 
   onMount(async () => {
@@ -69,7 +70,7 @@
       const response = await listTopicEvents({
         topic,
         correlationId,
-        afterSequence: append ? nextAfterSequence : undefined,
+        offset: append ? nextOffset : 0,
         limit: PAGE_SIZE,
       });
       applyResponse(response, append);
@@ -84,8 +85,9 @@
     items = append
       ? [...new Map([...items, ...response.items].map((item) => [item.eventId, item])).values()]
       : response.items;
-    nextAfterSequence = response.nextAfterSequence;
-    hasMore = response.items.length === PAGE_SIZE && response.nextAfterSequence > 0;
+    total = response.total;
+    nextOffset = append ? nextOffset + response.items.length : response.items.length;
+    hasMore = nextOffset < total;
     if (append || router.path !== '/events') return;
     const query = new SvelteURLSearchParams();
     if (topic.trim()) query.set('topic', topic.trim());

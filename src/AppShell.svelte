@@ -28,6 +28,7 @@
   import AccountTokens from './routes/AccountTokens.svelte';
   import { getAuthStatus, logout, type AuthStatus } from './api/auth';
   import { getHealthStatus, type HealthStatus } from './api/health';
+  import { normalizeAppLocation } from './paths';
 
   const STORAGE_KEY = 'ac.sidebarCollapsed';
   let collapsed = $state(false);
@@ -91,7 +92,7 @@
     auth = value;
     const next = new URLSearchParams(window.location.search).get('next');
     if (next?.startsWith('/')) {
-      history.replaceState({}, '', next);
+      history.replaceState({}, '', normalizeAppLocation(next));
       router.sync();
     }
     startHealth();

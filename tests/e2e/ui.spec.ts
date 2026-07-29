@@ -169,6 +169,74 @@ async function assertPageLayout(page: Page, route: string): Promise<void> {
   ).toBeLessThanOrEqual(1);
 }
 
+test('uses OAuth-only login when OAuth is enabled', async ({ page }) => {
+  await page.route('**/api/auth/status', (route) =>
+    route.fulfill({ json: { enabled: true, loggedIn: false, oauthEnabled: true } }),
+  );
+  let authorizeURL = '';
+  await page.route('**/oauth/authorize?*', async (route) => {
+    authorizeURL = route.request().url();
+    await route.fulfill({ contentType: 'text/html', body: 'oauth started' });
+  });
+
+  await page.goto('/projects');
+  await expect(page.getByLabel('用户名')).toHaveCount(0);
+  await expect(page.getByLabel('密码')).toHaveCount(0);
+  await page.getByRole('button', { name: '使用 OAuth 登录' }).click();
+  await expect.poll(() => authorizeURL).toContain('/oauth/authorize?');
+  expect(new URL(authorizeURL).searchParams.get('next')).toBe('/projects');
+});
+
+test('keeps projects visible when the capability gateway is unavailable', async ({ page }) => {
+  await login(page);
+  const response = await page.request.get('/api/ui/v1/projects');
+  expect(response.ok()).toBeTruthy();
+  const body = (await response.json()) as { projects: Array<{ name: string }> };
+  expect(body.projects.length).toBeGreaterThan(0);
+  await page.route('**/agentcompose.v2.CapabilityService/ListCapabilitySets', (route) =>
+    route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"gateway unavailable"}' }),
+  );
+
+  await navigateInApp(page, '/projects');
+  await expect(page.getByText(body.projects[0].name, { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('能力网关暂时不可用，项目仍可查看，能力集暂不可编辑')).toBeVisible();
+  await expect(page.locator('[data-page-error]')).toHaveCount(0);
+});
+
+test('loads webhook events newest first with offset pagination', async ({ page }) => {
+  await login(page);
+  const offsets: number[] = [];
+  await page.route('**/api/events?*', async (route) => {
+    const offset = Number(new URL(route.request().url()).searchParams.get('offset') || 0);
+    offsets.push(offset);
+    const sequences = offset === 0 ? [3, 2] : [1];
+    await route.fulfill({
+      json: {
+        items: sequences.map((sequence) => ({
+          event_id: `event-${sequence}`,
+          sequence,
+          topic: 'webhook.pagination',
+          source: 'webhook',
+          correlation_id: '',
+          dispatch_status: 'published_to_bus',
+          created_at: `2026-07-30T00:00:0${sequence}Z`,
+        })),
+        total: 3,
+      },
+    });
+  });
+
+  await navigateInApp(page, '/events?topic=webhook.pagination');
+  const rows = page.locator('tbody tr');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText('#3');
+  await expect(rows.nth(1)).toContainText('#2');
+  await page.getByRole('button', { name: '加载更多' }).click();
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(2)).toContainText('#1');
+  expect(offsets).toEqual([0, 2]);
+});
+
 async function assertTabRailHasNoScrollbar(page: Page): Promise<void> {
   const tabRail = page.locator('[data-tab-scroll]');
   await expect(tabRail).toBeVisible();

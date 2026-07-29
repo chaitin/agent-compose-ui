@@ -165,6 +165,9 @@ const english: Record<string, string> = {
   已发送: 'Sent',
   完成: 'Completed',
   请求失败: 'Request failed',
+  工作目录配置暂时不可用: 'Workspace configuration is temporarily unavailable',
+  '能力网关暂时不可用，项目仍可查看，能力集暂不可编辑':
+    'The capability gateway is temporarily unavailable. Projects remain visible, but capability sets cannot be edited.',
   加载失败: 'Failed to load',
   执行失败: 'Execution failed',
   '回复中…': 'Responding…',
