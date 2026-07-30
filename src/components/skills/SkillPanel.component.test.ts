@@ -36,6 +36,9 @@ test('presents Skills as a toolbar, navigation list and editor', async () => {
   render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'alpha', onYamlChange: vi.fn() });
 
   expect(screen.getByRole('toolbar', { name: 'Skill 操作' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '新建 Skill' })).toHaveClass('primary');
+  expect(screen.getByRole('button', { name: '上传 Skill' })).toHaveClass('secondary');
+  expect(screen.getByRole('button', { name: '刷新' })).toHaveClass('ghost');
   expect(screen.getByRole('navigation', { name: 'Skills 列表' })).toBeInTheDocument();
   expect(screen.getByRole('region', { name: 'Skill 编辑器' })).toBeInTheDocument();
 
