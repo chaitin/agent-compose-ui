@@ -11,6 +11,8 @@
   import { volumeService } from '../../lib/rpc';
   import { RemoveVolumeRequest } from '../../gen/agentcompose/v2/agentcompose_pb';
   import { beginManagedVolumeDeletion } from '../../lib/project-resources/physical-deletion-guard';
+  import MountResourceList, { type MountSelection } from './MountResourceList.svelte';
+  import MountResourceDetail from './MountResourceDetail.svelte';
 
   interface Props { yaml: string; projectKey: string; selectedAgent?: string; onYamlChange: (yaml: string) => void | Promise<void>; onApply: () => Promise<void> }
   let { yaml, projectKey, selectedAgent = '', onYamlChange, onApply }: Props = $props();
@@ -27,17 +29,22 @@
   const instanceId = $props.id();
   const locked = $derived(busy || applyBusy);
   let observedSharedId = '';
+  let selection = $state<MountSelection | null>(null);
 
   const agents = $derived(agentNames(yaml));
   const resources = $derived.by(() => { try { return deriveProjectResources(yaml); } catch { return []; } });
   const binds = $derived(bindMounts(yaml));
   const selectedShared = $derived(catalog.find((entry) => entry.id === sharedId));
   const currentCleanup = $derived(Object.values(cleanups).find((item) => item.projectKey === projectKey));
+  const cacheKeys = $derived(Object.values(CACHE_PRESETS).map((preset) => preset.suffix));
+  const selectedResource = $derived.by(() => { const current = selection; return current?.kind === 'volume' ? resources.find((item) => item.key === current.key) : undefined; });
+  const selectedBind = $derived.by(() => { const current = selection; return current?.kind === 'share' ? binds.find((item) => item.source === current.source && item.agent === current.agent && item.target === current.target) : undefined; });
+  const selectedBrowsableVolume = $derived(selectedResource && validKey && fileBrowsable(selectedResource) ? selectedResource.systemName : '');
 
   $effect(() => {
     const key = projectKey;
     if (key === observedKey) return;
-    observedKey = key; contextGeneration += 1; status = ''; error = ''; catalog = []; sharedId = ''; deletion = null;
+    observedKey = key; contextGeneration += 1; status = ''; error = ''; catalog = []; sharedId = ''; deletion = null; selection = null;
     catalogGeneration += 1;
     if (/^ws_[0-9a-f]{32}$/.test(key)) void loadCatalog(key);
     else catalogLoading = false;
@@ -59,6 +66,12 @@
   $effect(() => { const keys = resources.map((resource) => resource.key); if (!keys.includes(existingKey)) existingKey = keys[0] ?? ''; });
   $effect(() => { if (selectedShared && !selectedShared.writable) sharedReadOnly = true; });
   $effect(() => { const id = sharedId; if (id !== observedSharedId) { observedSharedId = id; sharedReadOnly = true; } });
+  $effect(() => {
+    const current = selection;
+    if (current?.kind === 'volume' && resources.some((item) => item.key === current.key)) return;
+    if (current?.kind === 'share' && binds.some((item) => item.source === current.source && item.agent === current.agent && item.target === current.target)) return;
+    selection = resources[0] ? { kind: 'volume', key: resources[0].key } : binds[0] ? { kind: 'share', source: binds[0].source, agent: binds[0].agent, target: binds[0].target } : null;
+  });
 
   function agentNames(text: string): string[] {
     try { const root = parseYamlObject(text); return root.agents && typeof root.agents === 'object' && !Array.isArray(root.agents) ? Object.keys(root.agents as object) : []; } catch { return []; }
@@ -290,16 +303,13 @@
 <section class="mount-panel" aria-label="数据与挂载" aria-hidden={deletion ? 'true' : undefined} inert={deletion ? true : undefined}>
   {#if error}<p role="alert">{error}</p>{/if}{#if currentCleanup?.inFlight}<p role={currentCleanup.error ? 'alert' : 'status'}>{currentCleanup.error || '正在删除卷数据…'}</p>{:else if currentCleanup?.error}<p role="alert">YAML 已应用，但卷数据删除失败：{currentCleanup.error} <button type="button" disabled={locked} onclick={retryCleanup}>重试删除数据</button></p>{/if}{#if status}<p role="status">{status}</p>{/if}{#if applyStatus}<p role="status">{applyStatus}</p>{/if}
   <div class="toolbar"><button type="button" disabled={!validKey || locked} onclick={apply}>{applyBusy ? '正在应用…' : '应用 YAML'}</button></div>
-  <section><h3>卷与当前挂载</h3>{#if resources.length === 0}<p>尚无卷声明</p>{/if}
-    {#each resources as resource}
-      <article><strong>{resource.key}</strong> <span>{resource.managed ? '托管' : '非托管'}</span> <code>{resource.systemName}</code> <span>{resource.mounts.length} 个挂载 / {new Set(resource.mounts.map((m) => m.agent)).size} 个 Agent</span>
-        {#each resource.mounts as mount}<div>{mount.agent} → <code>{mount.target}</code> · {mount.readOnly ? '只读' : '读写'} <button type="button" disabled={locked} onclick={() => unmount(mount)}>卸载</button></div>{/each}
-        <button type="button" bind:this={deleteTrigger} disabled={!validKey || locked} onclick={(e) => requestRemove(resource, e.currentTarget)}>移除声明…</button>
-        {#if validKey && fileBrowsable(resource)}<VolumeFileBrowser projectKey={projectKey} volume={resource.systemName} />{/if}
-      </article>
-    {/each}
-    {#each binds as mount}<article><strong>共享目录</strong> {mount.agent} → <code>{mount.target}</code> · {mount.readOnly ? '只读' : '读写'} <button type="button" disabled={locked} onclick={() => unmount(mount)}>卸载</button></article>{/each}
-  </section>
+  <div class="resource-browser">
+    <MountResourceList volumes={resources} {cacheKeys} shares={binds} selected={selection} onSelect={(value) => { selection = value; }} />
+    <div class="resource-detail">
+      <MountResourceDetail resource={selectedResource} share={selectedBind} {locked} canBrowse={!!selectedBrowsableVolume} onUnmount={(mount) => { void unmount(mount); }} onRemove={(resource, trigger) => requestRemove(resource, trigger)} />
+      {#if selectedBrowsableVolume}<VolumeFileBrowser projectKey={projectKey} volume={selectedBrowsableVolume} />{/if}
+    </div>
+  </div>
   <form onsubmit={(e) => { e.preventDefault(); void createVolume(); }}><h3>创建隔离持久卷</h3>
     <label>逻辑名称 <input aria-label="逻辑名称" bind:value={logicalName} /></label><label>目标 Agent <select aria-label="创建卷目标 Agent" bind:value={targetAgent}>{#each agents as a}<option value={a}>{a}</option>{/each}</select></label>
     <label>挂载目标 <input aria-label="创建卷挂载目标" bind:value={createTarget} oninput={() => targetTouched = true} /></label><button disabled={!validKey || locked}>创建并挂载</button>
@@ -325,5 +335,5 @@
 {/if}
 
 <style>
-  .mount-panel{padding:12px;overflow:auto;display:grid;gap:12px}.toolbar{display:flex;justify-content:flex-end}form,section section,article{border:1px solid var(--border-color);padding:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}h3{width:100%;margin:0}label{display:grid;gap:3px}button,input,select{font:inherit}.backdrop{position:fixed;inset:0;background:#0008;display:grid;place-items:center;z-index:100}.backdrop>[role=dialog]{background:var(--bg-primary);padding:20px;max-width:520px;border:1px solid var(--border-color)}
+  .mount-panel{padding:12px;overflow:auto;display:grid;gap:12px}.toolbar{display:flex;justify-content:flex-end}.resource-browser{display:grid;grid-template-columns:minmax(210px,28%) 1fr;min-height:260px;border:1px solid var(--border-color)}.resource-detail{min-width:0;overflow:auto}form,section section{border:1px solid var(--border-color);padding:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}h3{width:100%;margin:0}label{display:grid;gap:3px}button,input,select{font:inherit}.backdrop{position:fixed;inset:0;background:#0008;display:grid;place-items:center;z-index:100}.backdrop>[role=dialog]{background:var(--bg-primary);padding:20px;max-width:520px;border:1px solid var(--border-color)}
 </style>

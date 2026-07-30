@@ -19,6 +19,26 @@ function setup(props: Record<string, unknown> = {}) {
   return onYamlChange;
 }
 
+test('groups data resources and opens the selected resource detail', async () => {
+  const source = `volumes:
+  project-memory: { driver: local }
+  bun-cache: { driver: local }
+agents:
+  alpha:
+    volumes:
+      - { type: volume, source: project-memory, target: /data/project-memory }
+      - { type: volume, source: bun-cache, target: /root/.bun }
+      - { type: bind, source: /srv/shared, target: /workspace/shared, read_only: true }
+`;
+  setup({ yaml: source });
+  expect(screen.getByRole('navigation', { name: '数据资源' })).toBeInTheDocument();
+  expect(screen.getByRole('group', { name: '持久数据' })).toBeInTheDocument();
+  expect(screen.getByRole('group', { name: '依赖缓存' })).toBeInTheDocument();
+  expect(screen.getByRole('group', { name: '共享目录' })).toBeInTheDocument();
+  await fireEvent.click(screen.getByRole('button', { name: /project-memory/ }));
+  expect(screen.getByRole('region', { name: 'project-memory 详情' })).toHaveTextContent('/data/project-memory');
+});
+
 test('creates an isolated managed local volume and one mount in a single callback', async () => {
   const onYamlChange = setup();
   await fireEvent.input(screen.getByLabelText('逻辑名称'), { target: { value: 'memory' } });
