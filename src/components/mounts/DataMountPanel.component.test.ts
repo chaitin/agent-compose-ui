@@ -159,6 +159,9 @@ test('resets shared mounts to read-only whenever the selected catalog ID changes
 test('moves resource creation and mounting into typed modals', async () => {
   setup();
   expect(screen.getByRole('toolbar', { name: '数据与挂载操作' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '创建数据卷' })).toHaveClass('primary');
+  expect(screen.getByRole('button', { name: '挂载资源' })).toHaveClass('secondary');
+  expect(screen.getByRole('button', { name: '应用 YAML' })).toHaveClass('ghost');
   expect(screen.queryByLabelText('逻辑名称')).not.toBeInTheDocument();
   await fireEvent.click(screen.getByRole('button', { name: '挂载资源' }));
   await fireEvent.change(screen.getByLabelText('资源类型'), { target: { value: 'cache' } });
