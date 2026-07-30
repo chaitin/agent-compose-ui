@@ -318,8 +318,8 @@
   .modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border-color); background: var(--bg-tertiary); border-radius: 0 0 8px 8px; }
   .modal-footer .btn { padding: 6px 14px; border-radius: 4px; font-size: var(--font-size-sm); border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); }
   .modal-footer .btn:hover:not(:disabled) { border-color: var(--accent-blue); }
-  .modal-footer .btn.danger { background: color-mix(in srgb, var(--accent-red) 8%, var(--bg-secondary)); color: var(--accent-red); border-color: var(--accent-red); font-weight: 600; }
-  .modal-footer .btn.danger:hover { opacity: 0.9; background: color-mix(in srgb, var(--accent-red) 12%, var(--bg-secondary)); color: var(--accent-red); }
+  .modal-footer .btn.danger { background: color-mix(in srgb, var(--accent-red) 8%, var(--bg-secondary)); color: var(--accent-red-bright); border-color: var(--accent-red); font-weight: 600; }
+  .modal-footer .btn.danger:hover { opacity: 0.9; background: color-mix(in srgb, var(--accent-red) 12%, var(--bg-secondary)); color: var(--accent-red-bright); }
   .modal-footer .btn.primary { background: var(--accent-blue-emphasis); color: var(--text-on-accent); border-color: var(--accent-blue-emphasis); font-weight: 600; }
   .modal-footer .btn.primary:hover:not(:disabled) { opacity: 0.9; }
   .modal-footer .btn:disabled { opacity: 0.5; cursor: not-allowed; }
