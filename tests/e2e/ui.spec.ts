@@ -1241,8 +1241,9 @@ test('opens the live webhook event from the authenticated event center', async (
 
   await navigateInApp(page, '/events?topic=webhook.ui-regression.acceptance');
   await expect(page.getByRole('button', { name: /webhook\.ui-regression\.acceptance/ })).toBeVisible();
-  await expect(page.getByTitle(retainedLiveWebhookEventId)).toBeVisible();
-  await page.getByTitle(retainedLiveWebhookEventId).click();
+  const acceptedEvent = page.getByRole('table').getByTitle(retainedLiveWebhookEventId);
+  await expect(acceptedEvent).toBeVisible();
+  await acceptedEvent.click();
   await expect(page.getByRole('heading', { name: 'Webhook 事件详情' })).toBeVisible();
   await expect(page.getByText(/没有产生或绑定对话执行环境/)).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '自动化执行' })).toBeVisible();
