@@ -153,7 +153,7 @@
     padding: 2px 4px;
     border-radius: 3px;
     background: color-mix(in srgb, var(--accent-purple) 14%, transparent);
-    color: var(--accent-purple);
+    color: var(--accent-purple-bright);
     font-family: var(--font-mono);
     font-size: 9px;
     font-weight: 700;

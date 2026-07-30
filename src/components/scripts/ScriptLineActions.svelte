@@ -49,6 +49,6 @@
     white-space: nowrap;
     transition: background 0.15s;
   }
-  button:hover { background: color-mix(in srgb, var(--accent-blue) 25%, transparent); }
+  button:hover { background: color-mix(in srgb, var(--accent-blue) 12%, transparent); }
   .mode-button { font-weight: 600; }
 </style>

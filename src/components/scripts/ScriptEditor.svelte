@@ -107,7 +107,7 @@
   .new-script:focus-visible{outline:2px solid var(--accent-blue);outline-offset:1px}
   .tab-icon {
     background: color-mix(in srgb, var(--accent-purple) 15%, transparent);
-    color: var(--accent-purple);
+    color: var(--accent-purple-bright);
     border-radius: 3px;
     font-size: 9px;
     font-weight: 700;

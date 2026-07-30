@@ -27,7 +27,7 @@ test('matches the demo glyph styling without a floating card', () => {
   expect(source).toContain('padding: 2px 8px');
   expect(source).toContain('border: 1px solid var(--accent-blue)');
   expect(source).toContain('background: color-mix(in srgb, var(--accent-blue) 12%, transparent)');
-  expect(source).toContain('button:hover { background: color-mix(in srgb, var(--accent-blue) 25%, transparent); }');
+  expect(source).toContain('button:hover { background: color-mix(in srgb, var(--accent-blue) 12%, transparent); }');
   expect(source).not.toContain('box-shadow');
   expect(source).not.toContain('action-label');
 });

@@ -65,14 +65,14 @@
     border-color: var(--accent-yellow);
     color: var(--accent-yellow);
   }
-  .pill.warn:hover { background: color-mix(in srgb, var(--accent-yellow) 24%, transparent); }
+  .pill.warn:hover { background: color-mix(in srgb, var(--accent-yellow) 12%, transparent); }
 
   .pill.action {
     background: color-mix(in srgb, var(--accent-blue) 12%, transparent);
     border-color: var(--accent-blue);
     color: var(--accent-blue);
   }
-  .pill.action:hover { background: color-mix(in srgb, var(--accent-blue) 24%, transparent); }
+  .pill.action:hover { background: color-mix(in srgb, var(--accent-blue) 12%, transparent); }
 
   .pill.neutral {
     background: transparent;
