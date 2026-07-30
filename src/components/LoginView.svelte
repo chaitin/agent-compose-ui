@@ -66,7 +66,7 @@
   label { margin-top:6px; color:var(--text-secondary); font-size:var(--font-size-sm); }
   input { width:100%; min-height:38px; padding:7px 10px; background:var(--bg-primary); }
   input:focus-visible,button:focus-visible { outline:2px solid var(--accent-blue); outline-offset:2px; }
-  button { min-height:38px; margin-top:12px; border:1px solid var(--accent-blue-emphasis); border-radius:5px; background:var(--accent-blue-emphasis); color:var(--text-primary); font-weight:600; }
+  button { min-height:38px; margin-top:12px; border:1px solid var(--accent-blue-emphasis); border-radius:5px; background:var(--accent-blue-emphasis); color:var(--text-on-accent); font-weight:600; }
   button:disabled { cursor:wait; opacity:.65; }
   .error { margin-top:5px; color:var(--accent-red); font-size:var(--font-size-sm); }
   @keyframes connect { from { transform:scaleX(0); opacity:0; } }
