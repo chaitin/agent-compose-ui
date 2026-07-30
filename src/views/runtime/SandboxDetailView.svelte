@@ -103,9 +103,14 @@
   function runStatusLabel(status?: RunStatus) {
     return ({ [RunStatus.PENDING]: '等待中', [RunStatus.RUNNING]: '运行中', [RunStatus.SUCCEEDED]: '成功', [RunStatus.FAILED]: '失败', [RunStatus.CANCELED]: '已取消' } as Record<number, string>)[status ?? 0] || '未知';
   }
-  function runStatusClass(status?: RunStatus) {
+  function runStatusClass(status?: RunStatus | 'skipped') {
+    if (status === RunStatus.PENDING) return 'status-pending';
+    if (status === RunStatus.RUNNING) return 'status-running';
+    if (status === RunStatus.SUCCEEDED) return 'status-succeeded';
+    if (status === RunStatus.FAILED) return 'status-failed';
     if (status === RunStatus.CANCELED) return 'status-canceled';
-    return '';
+    if (status === 'skipped') return 'status-skipped';
+    return 'status-unknown';
   }
   function lifecycle(status = snapshot?.sandbox.status || '') {
     const normalized = status.toUpperCase();
@@ -532,7 +537,11 @@
   .timeline-loading{padding:12px;text-align:center;color:var(--text-muted);font-size:var(--font-size-xs)}
   .related-run-list{display:grid;margin-top:8px;border-top:1px solid var(--border-color)}
   .related-run-list>button{display:grid;grid-template-columns:minmax(150px,1fr) 110px 70px minmax(120px,160px);gap:10px;width:100%;padding:8px 0;border:0;border-bottom:1px solid var(--border-color);border-radius:0;background:transparent;text-align:left}.related-run-list>button:last-child{border-bottom:0}.related-run-list code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.related-runs-row p{margin:8px 0;color:var(--text-muted);font-size:var(--font-size-xs)}
+  .related-run-list .status-pending,.related-run-list .status-unknown{color:var(--accent-yellow)}
+  .related-run-list .status-running,.related-run-list .status-succeeded{color:var(--accent-green)}
+  .related-run-list .status-failed{color:var(--accent-red)}
   .related-run-list .status-canceled{color:var(--accent-orange)}
+  .related-run-list .status-skipped{color:var(--text-muted)}
   @keyframes timeline-row-in{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
   @media(max-width:760px){.status-actions{grid-template-columns:minmax(0,1fr) auto}.sandbox-actions{grid-row:3;grid-column:1/-1;border-top:1px solid var(--border-color)}.supplemental-metrics{grid-row:2;grid-column:1/-1}.sandbox-timeline>header,.sandbox-timeline>article{grid-template-columns:100px minmax(0,1fr)}.related-run-list>button{grid-template-columns:1fr 70px}.related-run-list>button time{grid-column:1/-1}}
   @media(prefers-reduced-motion:reduce){.sandbox-timeline>article,.agent-replying span{animation:none}}

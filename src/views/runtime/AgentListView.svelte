@@ -170,6 +170,7 @@
   }
 
   function statusClass(s: AgentOwnedExecution['status'] | undefined): string {
+    if (s === undefined) return 'status-absent';
     if (s === 'running') return 'status-running';
     if (s === 'succeeded') return 'status-ok';
     if (s === 'failed') return 'status-err';
@@ -352,6 +353,7 @@
   .metric b.status-canceled { color: var(--accent-orange); }
   .metric b.status-pending, .metric b.status-unknown { color: var(--accent-yellow); }
   .metric b.status-skipped { color: var(--text-muted); }
+  .metric b.status-absent { color: var(--text-muted); }
   .arrow {
     align-self: center;
     font-size: 14px;
