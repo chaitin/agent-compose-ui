@@ -157,7 +157,7 @@
     background: var(--bg-tertiary);
   }
   .tree-row.active {
-    background: rgba(88, 166, 255, 0.12);
+    background: color-mix(in srgb, var(--accent-blue) 12%, transparent);
     border-left-color: var(--accent-blue);
   }
   .tree-icon {
@@ -171,8 +171,8 @@
     flex-shrink: 0;
   }
   .tree-icon.file-js {
-    background: rgba(247, 223, 30, 0.15);
-    color: var(--accent-yellow);
+    background: color-mix(in srgb, var(--accent-purple) 15%, transparent);
+    color: var(--accent-purple);
     border-radius: 3px;
     font-size: 9px;
     font-weight: 700;
@@ -213,7 +213,7 @@
     display: inline-flex;
   }
   .tree-delete:hover {
-    background: rgba(248, 81, 73, 0.15);
+    background: color-mix(in srgb, var(--accent-red) 15%, transparent);
   }
   .tree-empty {
     padding: 16px 12px;

@@ -85,7 +85,7 @@
     flex: 1;
     min-width: 0;
     min-height: 0;
-    background: #1e1e1e;
+    background: var(--bg-primary);
   }
   .editor-tab {
     display: flex;
@@ -106,8 +106,8 @@
   .new-script:hover{border-color:var(--accent-blue);color:var(--accent-blue)}
   .new-script:focus-visible{outline:2px solid var(--accent-blue);outline-offset:1px}
   .tab-icon {
-    background: rgba(247, 223, 30, 0.15);
-    color: var(--accent-yellow);
+    background: color-mix(in srgb, var(--accent-purple) 15%, transparent);
+    color: var(--accent-purple);
     border-radius: 3px;
     font-size: 9px;
     font-weight: 700;

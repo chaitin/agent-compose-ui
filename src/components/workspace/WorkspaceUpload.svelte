@@ -411,7 +411,7 @@
   }
   .progress-fill {
     height: 100%;
-    background: var(--accent-blue);
+    background: var(--accent-blue-emphasis);
     transition: width 0.15s;
   }
   .confirm-overlay {
@@ -479,9 +479,9 @@
     cursor: pointer;
   }
   .confirm-actions button.primary {
-    background: var(--accent-blue);
-    color: #0d1117;
-    border-color: var(--accent-blue);
+    background: var(--accent-blue-emphasis);
+    color: var(--text-on-accent);
+    border-color: var(--accent-blue-emphasis);
     font-weight: 600;
   }
   .confirm-actions button:disabled {

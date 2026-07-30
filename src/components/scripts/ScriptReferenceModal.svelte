@@ -129,7 +129,7 @@
     font-family: var(--font-mono);
     font-size: var(--font-size-md);
   }
-  .field input:focus { outline: none; border-color: #a371f7; }
+  .field input:focus { outline: none; border-color: var(--accent-blue); }
   .field-error { color: var(--accent-red); font-size: var(--font-size-sm); }
   .file-list {
     min-height: 0;
@@ -148,12 +148,12 @@
     cursor: pointer;
   }
   .file-option:last-child { border-bottom: 0; }
-  .file-option:hover, .file-option.selected { background: rgba(163, 113, 247, 0.09); color: var(--text-primary); }
+  .file-option:hover, .file-option.selected { background: color-mix(in srgb, var(--accent-blue) 9%, transparent); color: var(--text-primary); }
   .file-icon {
     padding: 2px 4px;
     border-radius: 3px;
-    background: rgba(163, 113, 247, 0.14);
-    color: #c9a7ff;
+    background: color-mix(in srgb, var(--accent-purple) 14%, transparent);
+    color: var(--accent-purple);
     font-family: var(--font-mono);
     font-size: 9px;
     font-weight: 700;
@@ -162,7 +162,7 @@
   .empty-state { padding: 28px 16px; border: 1px dashed var(--border-color); border-radius: 6px; color: var(--text-muted); font-size: var(--font-size-md); text-align: center; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
   .btn-primary, .btn-secondary { padding: 6px 14px; border: 1px solid var(--border-color); border-radius: 4px; font-size: var(--font-size-md); }
-  .btn-primary { background: #a371f7; border-color: #a371f7; color: #0d1117; font-weight: 650; }
+  .btn-primary { background: var(--accent-blue-emphasis); border-color: var(--accent-blue-emphasis); color: var(--text-on-accent); font-weight: 650; }
   .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); }
   button:disabled { cursor: not-allowed; opacity: 0.5; }
 </style>
