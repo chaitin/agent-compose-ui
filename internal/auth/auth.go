@@ -129,9 +129,14 @@ func (a *Manager) Protect(next echo.HandlerFunc) echo.HandlerFunc {
 		if !a.enabled {
 			principal := audit.Principal{ID: "local:default", Source: "local", Username: "local", DisplayName: "local", AuthMethod: "disabled"}
 			c.SetRequest(r.WithContext(audit.WithPrincipal(r.Context(), principal)))
-			return next(c)
+			if isPublicAuthRequest(r) || isRuntimeLLMFacadeRequest(r) || isReadOnlyRequest(r) {
+				return next(c)
+			}
+			a.record(r, audit.Input{Actor: principal, Category: "authentication", Action: "access.denied", Method: r.Method, Path: r.URL.Path, Outcome: "denied", Status: http.StatusForbidden})
+			c.Response().Header().Set("Cache-Control", "no-store")
+			return echoJSON(c, http.StatusForbidden, map[string]string{"code": "permission_denied", "message": "authentication is required for this operation"})
 		}
-		if isPublicAuthPath(r.URL.Path) || isRuntimeLLMFacadeRequest(r) {
+		if isPublicAuthRequest(r) || isRuntimeLLMFacadeRequest(r) {
 			return next(c)
 		}
 		if !a.protectsPath(r.URL.Path, r.Header.Get("Accept")) {

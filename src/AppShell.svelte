@@ -189,7 +189,7 @@
         class="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]"
       >
         {#if p === '/'}
-          <Overview />
+          <Overview canWrite={auth.enabled} />
         {:else if p.startsWith('/projects') || p.startsWith('/agents')}
           <Projects />
         {:else if p.startsWith('/automation-runs/')}
@@ -197,17 +197,17 @@
         {:else if p.startsWith('/automations')}
           <Automations />
         {:else if p.startsWith('/events/')}
-          <EventDetail />
+          <EventDetail canWrite={auth.enabled} />
         {:else if p.startsWith('/events')}
           <Events />
         {:else if sandboxDetailId}
-          <SandboxDetail />
+          <SandboxDetail canWrite={auth.enabled} />
         {:else if p.startsWith('/sandboxes')}
           <Sandboxes />
         {:else if p === '/runs/unlinked'}
           <UnlinkedRuns />
         {:else if runDetailId}
-          <RunDetail />
+          <RunDetail canWrite={auth.enabled} />
         {:else if p.startsWith('/settings/caches')}
           <Caches />
         {:else if p.startsWith('/audit')}
@@ -225,7 +225,7 @@
         {:else if p.startsWith('/skills')}
           <SpecResources kind="skills" />
         {:else}
-          <Overview />
+          <Overview canWrite={auth.enabled} />
         {/if}
       </main>
     </div>

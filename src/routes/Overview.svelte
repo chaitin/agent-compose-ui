@@ -20,6 +20,8 @@
   import CircleCheck from '@lucide/svelte/icons/circle-check';
   import { t } from '$lib/i18n.svelte';
 
+  let { canWrite = true }: { canWrite?: boolean } = $props();
+
   type RunView = {
     id: string;
     fullId: string;
@@ -218,13 +220,13 @@
                   <span class="block truncate font-mono text-xs font-medium">{item.title}</span>
                   <span class="block truncate text-[11px] text-destructive">{item.sub}</span>
                 </button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="size-7 shrink-0 text-destructive"
-                  onclick={() => navigate(`/runs/${item.runId}/terminal`)}
-                  title={t('进入终端')}><Terminal class="size-3.5" /></Button
-                >
+                {#if canWrite}<Button
+                    variant="ghost"
+                    size="icon"
+                    class="size-7 shrink-0 text-destructive"
+                    onclick={() => navigate(`/runs/${item.runId}/terminal`)}
+                    title={t('进入终端')}><Terminal class="size-3.5" /></Button
+                  >{/if}
               </div>
             {:else}<p class="grid h-full place-items-center text-sm text-muted-foreground">
                 {t('暂无失败运行')}

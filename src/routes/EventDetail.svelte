@@ -16,6 +16,8 @@
   import { compactIdentifier } from '../model/identifiers';
   import { t } from '$lib/i18n.svelte';
 
+  let { canWrite = true }: { canWrite?: boolean } = $props();
+
   const eventId = $derived(decodeURIComponent(router.path.split('/')[2] || ''));
   let event = $state<TopicEvent | null>(null);
   let runTraces = $state<RunTrace[]>([]);
@@ -155,6 +157,7 @@
               {#key selectedSandboxId}<SandboxWorkbench
                   sandboxId={selectedSandboxId}
                   contextLog={sandboxLog(selectedSandboxId)}
+                  {canWrite}
                   embedded
                 />{/key}
             </div>
