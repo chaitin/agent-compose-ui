@@ -286,7 +286,9 @@
   .section-card-header .btn.primary { background: var(--accent-blue-emphasis); color: var(--text-on-accent); border-color: var(--accent-blue-emphasis); font-weight: 600; }
   .section-card-header .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .loading, .error { padding: 24px; color: var(--text-secondary); font-size: var(--font-size-sm); }
+  .loading, .error { padding: 24px; font-size: var(--font-size-sm); }
+  .loading { color: var(--text-secondary); }
+  .error { color: var(--accent-red); }
   .error button { margin-left: 12px; padding: 4px 10px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--bg-tertiary); color: var(--text-primary); font-size: var(--font-size-xs); }
 
   .modal-backdrop {
