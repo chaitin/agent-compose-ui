@@ -34,9 +34,9 @@
         ></textarea>
       </label>
       <div class="actions">
-        <button type="button" onclick={onSave} disabled={busy || !dirty}>保存 Skill</button>
-        <button type="button" onclick={onDelete} disabled={busy}>删除 Skill</button>
-        {#if conflict}<button type="button" onclick={onReload}>重新加载磁盘内容</button>{/if}
+        <button class="ui-button primary" type="button" onclick={onSave} disabled={busy || !dirty}>保存 Skill</button>
+        <button class="ui-button danger" type="button" onclick={onDelete} disabled={busy}>删除 Skill</button>
+        {#if conflict}<button class="ui-button secondary" type="button" onclick={onReload}>重新加载磁盘内容</button>{/if}
       </div>
     {/if}
   {:else}

@@ -48,6 +48,36 @@ button {
   font-size: inherit;
 }
 
+button.ui-button {
+  min-height: 27px;
+  padding: 3px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  font-size: var(--font-size-sm);
+}
+button.ui-button:hover:not(:disabled) { border-color: var(--accent-blue); color: var(--accent-blue); }
+button.ui-button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 1px; }
+button.ui-button:disabled { cursor: not-allowed; opacity: .5; }
+button.ui-button.primary {
+  border-color: color-mix(in srgb, var(--accent-blue) 55%, var(--border-color));
+  color: var(--accent-blue);
+  background: color-mix(in srgb, var(--accent-blue) 10%, var(--bg-secondary));
+  font-weight: 600;
+}
+button.ui-button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-blue) 16%, var(--bg-secondary)); }
+button.ui-button.secondary { background: var(--bg-tertiary); }
+button.ui-button.ghost { border-color: transparent; color: var(--text-secondary); background: transparent; }
+button.ui-button.ghost:hover:not(:disabled) { border-color: var(--border-color); color: var(--text-primary); background: var(--bg-tertiary); }
+button.ui-button.danger {
+  border-color: color-mix(in srgb, var(--accent-red) 55%, var(--border-color));
+  color: var(--accent-red);
+  background: color-mix(in srgb, var(--accent-red) 10%, var(--bg-secondary));
+  font-weight: 600;
+}
+button.ui-button.danger:hover:not(:disabled) { border-color: var(--accent-red); color: var(--accent-red); background: color-mix(in srgb, var(--accent-red) 16%, var(--bg-secondary)); }
+
 input, select, textarea {
   font-family: inherit;
   font-size: inherit;

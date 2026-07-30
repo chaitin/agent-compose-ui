@@ -21,7 +21,7 @@
     <label>选择 SKILL.md<input aria-label="选择 SKILL.md" type="file" accept=".md,text/markdown,text/plain" onchange={choose} disabled={busy} /></label>
     <label>目标 Agent<select aria-label="目标 Agent" value={agent} onchange={(e) => onAgent(e.currentTarget.value)} disabled={busy}>{#each agents as item}<option value={item}>{item}</option>{/each}</select></label>
     {#if name}<p role="status">将上传为 {name}/SKILL.md</p>{/if}{#if error}<p role="alert">{error}</p>{/if}
-    <div class="actions"><button type="button" onclick={onClose} disabled={busy}>取消</button><button type="submit" disabled={busy || !file || !agent}>确认上传</button></div>
+    <div class="actions"><button class="ui-button ghost" type="button" onclick={onClose} disabled={busy}>取消</button><button class="ui-button primary" type="submit" disabled={busy || !file || !agent}>确认上传</button></div>
   </form>
 </dialog>
 <style>

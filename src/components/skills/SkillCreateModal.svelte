@@ -10,7 +10,7 @@
     <h2 id="skill-create-title">新建 Skill</h2>
     <label>Skill 名称<input bind:this={input} aria-label="Skill 名称" value={name} oninput={(e) => onName(e.currentTarget.value)} pattern="[a-z][a-z0-9_-]*" required disabled={busy} /></label>
     <label>目标 Agent<select aria-label="目标 Agent" value={agent} onchange={(e) => onAgent(e.currentTarget.value)} disabled={busy}>{#each agents as item}<option value={item}>{item}</option>{/each}</select></label>
-    <div class="actions"><button type="button" onclick={onClose} disabled={busy}>取消</button><button type="submit" disabled={busy || !agent}>创建 Skill</button></div>
+    <div class="actions"><button class="ui-button ghost" type="button" onclick={onClose} disabled={busy}>取消</button><button class="ui-button primary" type="submit" disabled={busy || !agent}>创建 Skill</button></div>
   </form>
 </dialog>
 <style>

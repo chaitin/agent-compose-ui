@@ -46,6 +46,17 @@ test('presents Skills as a toolbar, navigation list and editor', async () => {
   expect(await screen.findByRole('textbox', { name: 'demo/SKILL.md' })).toHaveValue('body');
 });
 
+test('uses the shared action hierarchy outside the Skills toolbar', async () => {
+  vi.mocked(skillApi.list).mockRejectedValueOnce(new Error('offline'));
+  render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'alpha', onYamlChange: vi.fn() });
+
+  expect(await screen.findByRole('button', { name: '重试加载' })).toHaveClass('ui-button', 'secondary');
+  await fireEvent.click(screen.getByRole('button', { name: '新建 Skill' }));
+  const dialog = screen.getByRole('dialog', { name: '新建 Skill' });
+  expect(within(dialog).getByRole('button', { name: '取消' })).toHaveClass('ui-button', 'ghost');
+  expect(within(dialog).getByRole('button', { name: '创建 Skill' })).toHaveClass('ui-button', 'primary');
+});
+
 test('confirms before navigating away from a Skill with unsaved changes', async () => {
   const review = { ...entry, path: 'review', name: 'review' };
   vi.mocked(skillApi.list).mockResolvedValue([entry, review]);

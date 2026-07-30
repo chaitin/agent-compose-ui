@@ -303,7 +303,7 @@
 </script>
 
 <section class="mount-panel" aria-label="数据与挂载" aria-hidden={deletion ? 'true' : undefined} inert={deletion ? true : undefined}>
-  {#if error}<p role="alert">{error}</p>{/if}{#if currentCleanup?.inFlight}<p role={currentCleanup.error ? 'alert' : 'status'}>{currentCleanup.error || '正在删除卷数据…'}</p>{:else if currentCleanup?.error}<p role="alert">YAML 已应用，但卷数据删除失败：{currentCleanup.error} <button type="button" disabled={locked} onclick={retryCleanup}>重试删除数据</button></p>{/if}{#if status}<p role="status">{status}</p>{/if}{#if applyStatus}<p role="status">{applyStatus}</p>{/if}
+  {#if error}<p role="alert">{error}</p>{/if}{#if currentCleanup?.inFlight}<p role={currentCleanup.error ? 'alert' : 'status'}>{currentCleanup.error || '正在删除卷数据…'}</p>{:else if currentCleanup?.error}<p role="alert">YAML 已应用，但卷数据删除失败：{currentCleanup.error} <button class="ui-button secondary" type="button" disabled={locked} onclick={retryCleanup}>重试删除数据</button></p>{/if}{#if status}<p role="status">{status}</p>{/if}{#if applyStatus}<p role="status">{applyStatus}</p>{/if}
   <div class="toolbar" role="toolbar" aria-label="数据与挂载操作"><button class="primary" type="button" disabled={!validKey || locked} onclick={() => operationModal = 'create'}>创建数据卷</button><button class="secondary" type="button" disabled={!validKey || locked} onclick={() => operationModal = 'mount'}>挂载资源</button><span></span><button class="ghost" type="button" disabled={!validKey || locked} onclick={apply}>{applyBusy ? '正在应用…' : '应用 YAML'}</button></div>
   <div class="resource-browser">
     <MountResourceList volumes={resources} {cacheKeys} shares={binds} selected={selection} onSelect={(value) => { selection = value; }} />
@@ -314,26 +314,26 @@
   </div>
   {#if operationModal === 'create'}<dialog open aria-label="创建数据卷"><form onsubmit={(e) => { e.preventDefault(); void createVolume(); }}><h3>创建隔离持久卷</h3>
     <label>逻辑名称 <input aria-label="逻辑名称" bind:value={logicalName} /></label><label>目标 Agent <select aria-label="创建卷目标 Agent" bind:value={targetAgent}>{#each agents as a}<option value={a}>{a}</option>{/each}</select></label>
-    <label>挂载目标 <input aria-label="创建卷挂载目标" bind:value={createTarget} oninput={() => targetTouched = true} /></label><button type="button" onclick={() => operationModal = ''}>取消</button><button disabled={!validKey || locked}>创建并挂载</button>
+    <label>挂载目标 <input aria-label="创建卷挂载目标" bind:value={createTarget} oninput={() => targetTouched = true} /></label><button class="ui-button ghost" type="button" onclick={() => operationModal = ''}>取消</button><button class="ui-button primary" disabled={!validKey || locked}>创建并挂载</button>
   </form></dialog>{/if}
   {#if operationModal === 'mount'}<dialog open aria-label="挂载资源"><label>资源类型 <select aria-label="资源类型" value={resourceType} onchange={(event) => { resourceType = event.currentTarget.value as typeof resourceType; }}><option value="volume">持久数据</option><option value="cache">依赖缓存</option><option value="share">共享目录</option></select></label>
   {#if resourceType === 'volume'}<form onsubmit={(e) => { e.preventDefault(); void mountExisting(); }}><h3>挂载现有卷</h3>
     <label>卷 <select aria-label="现有卷" bind:value={existingKey}><option value="">请选择</option>{#each resources as r}<option value={r.key}>{r.key}</option>{/each}</select></label>
-    <label>目标 Agent <select aria-label="现有卷目标 Agent" bind:value={existingAgent}>{#each agents as a}<option value={a}>{a}</option>{/each}</select></label><label>挂载目标 <input aria-label="现有卷挂载目标" bind:value={existingTarget} /></label><button disabled={!validKey || locked}>挂载</button>
+    <label>目标 Agent <select aria-label="现有卷目标 Agent" bind:value={existingAgent}>{#each agents as a}<option value={a}>{a}</option>{/each}</select></label><label>挂载目标 <input aria-label="现有卷挂载目标" bind:value={existingTarget} /></label><button class="ui-button primary" disabled={!validKey || locked}>挂载</button>
   </form>
-  {:else if resourceType === 'cache'}<section><h3>缓存预设</h3><label>缓存预设 <select aria-label="缓存预设"><option>请选择下方预设</option></select></label>{#each agents as agent}<fieldset><legend>{agent}</legend>{#each Object.entries(CACHE_PRESETS) as [name, preset]}<button type="button" disabled={!validKey || locked} aria-pressed={resources.some((r) => r.key === preset.suffix && r.mounts.some((m) => m.agent === agent && m.target === preset.target))} onclick={() => togglePreset(name as keyof typeof CACHE_PRESETS, agent)}>{name} · {preset.target}</button>{/each}</fieldset>{/each}</section>
+  {:else if resourceType === 'cache'}<section><h3>缓存预设</h3><label>缓存预设 <select aria-label="缓存预设"><option>请选择下方预设</option></select></label>{#each agents as agent}<fieldset><legend>{agent}</legend>{#each Object.entries(CACHE_PRESETS) as [name, preset]}<button class="ui-button secondary" type="button" disabled={!validKey || locked} aria-pressed={resources.some((r) => r.key === preset.suffix && r.mounts.some((m) => m.agent === agent && m.target === preset.target))} onclick={() => togglePreset(name as keyof typeof CACHE_PRESETS, agent)}>{name} · {preset.target}</button>{/each}</fieldset>{/each}</section>
   {:else}<form onsubmit={(e) => { e.preventDefault(); void mountShared(); }}><h3>共享目录</h3>
-    {#if catalogLoading}<p role="status">正在加载共享目录…</p>{:else if catalogError}<p role="alert">加载失败：{catalogError} <button type="button" onclick={() => loadCatalog()}>重试</button></p>{/if}
+    {#if catalogLoading}<p role="status">正在加载共享目录…</p>{:else if catalogError}<p role="alert">加载失败：{catalogError} <button class="ui-button secondary" type="button" onclick={() => loadCatalog()}>重试</button></p>{/if}
     <label>目录 <select aria-label="共享目录" bind:value={sharedId} disabled={catalogLoading}><option value="">请选择</option>{#each catalog as entry}<option value={entry.id}>{entry.name} ({entry.writable ? '可写' : '只读'})</option>{/each}</select></label>
     <label>目标 Agent <select aria-label="共享目录目标 Agent" bind:value={sharedAgent}>{#each agents as a}<option value={a}>{a}</option>{/each}</select></label><label>挂载目标 <input aria-label="共享目录挂载目标" bind:value={sharedTarget} /></label>
-    <label><input type="checkbox" aria-label="只读" bind:checked={sharedReadOnly} /> 只读</label>{#if selectedShared?.writable}<button type="button" onclick={() => sharedReadOnly = !sharedReadOnly}>{sharedReadOnly ? '允许写入' : '改为只读'}</button>{/if}<button disabled={!validKey || locked || !sharedId}>挂载目录</button>
-  </form>{/if}<button type="button" onclick={() => operationModal = ''}>关闭</button></dialog>{/if}
+    <label><input type="checkbox" aria-label="只读" bind:checked={sharedReadOnly} /> 只读</label>{#if selectedShared?.writable}<button class="ui-button secondary" type="button" onclick={() => sharedReadOnly = !sharedReadOnly}>{sharedReadOnly ? '允许写入' : '改为只读'}</button>{/if}<button class="ui-button primary" disabled={!validKey || locked || !sharedId}>挂载目录</button>
+  </form>{/if}<button class="ui-button ghost" type="button" onclick={() => operationModal = ''}>关闭</button></dialog>{/if}
 </section>
 
 {#if deletion}
   <div class="backdrop" role="presentation"><div role="dialog" aria-modal="true" aria-labelledby={`${instanceId}-remove-title`} aria-describedby={`${instanceId}-remove-description`} tabindex="-1" onkeydown={dialogKeydown}>
     <h2 id={`${instanceId}-remove-title`}>移除卷声明 {deletion.resource.key}</h2><p>将从 YAML 卸载以下引用并移除声明：</p><ul>{#each deletion.resource.mounts as mount}<li>{mount.agent} → {mount.target}</li>{/each}</ul>
-    <p id={`${instanceId}-remove-description`}>选择“仅移除”不会删除实际 daemon 卷数据；托管卷也可在实际应用 YAML 成功后删除数据。</p><button type="button" bind:this={cancelDelete} onclick={closeDelete}>取消</button><button type="button" bind:this={confirmDelete} disabled={busy} onclick={() => confirmRemove(false)}>仅移除并保留数据</button>{#if fileBrowsable(deletion.resource)}<button type="button" disabled={busy} onclick={() => confirmRemove(true)}>删除数据并移除</button>{/if}
+    <p id={`${instanceId}-remove-description`}>选择“仅移除”不会删除实际 daemon 卷数据；托管卷也可在实际应用 YAML 成功后删除数据。</p><button class="ui-button ghost" type="button" bind:this={cancelDelete} onclick={closeDelete}>取消</button><button class="ui-button secondary" type="button" bind:this={confirmDelete} disabled={busy} onclick={() => confirmRemove(false)}>仅移除并保留数据</button>{#if fileBrowsable(deletion.resource)}<button class="ui-button danger" type="button" disabled={busy} onclick={() => confirmRemove(true)}>删除数据并移除</button>{/if}
   </div></div>
 {/if}
 

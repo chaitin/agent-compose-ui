@@ -22,6 +22,15 @@ test('uses a Workspace-style toolbar, file navigation and preview pane', async (
   expect(await screen.findByRole('textbox', { name: '文件内容' })).toHaveValue('hello');
 });
 
+test('styles file actions by intent', async () => {
+  render(VolumeFileBrowser, { projectKey: KEY_A, volume: 'managed' });
+  expect(screen.getByRole('button', { name: '重新加载' })).toHaveClass('ui-button', 'ghost');
+  await fireEvent.click(await screen.findByRole('button', { name: '删除 a.txt' }));
+  const dialog = screen.getByRole('dialog', { name: '确认删除' });
+  expect(within(dialog).getByRole('button', { name: '取消' })).toHaveClass('ui-button', 'ghost');
+  expect(within(dialog).getByRole('button', { name: '确认删除' })).toHaveClass('ui-button', 'danger');
+});
+
 test('lists, previews and provides a download link without physical paths', async () => {
   render(VolumeFileBrowser, { projectKey: KEY_A, volume: 'managed' });
   await fireEvent.click(await screen.findByRole('button', { name: 'a.txt' }));

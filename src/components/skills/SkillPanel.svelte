@@ -391,8 +391,8 @@
     <div role="dialog" aria-modal="true" aria-labelledby={`${instanceId}-navigate-title`}>
       <h2 id={`${instanceId}-navigate-title`}>放弃未保存更改？</h2>
       <p>切换到 {pendingSelection} 将丢弃当前 Skill 的本地更改。</p>
-      <button type="button" onclick={() => { pendingSelection = ''; }}>继续编辑</button>
-      <button type="button" onclick={confirmSelection}>放弃并切换</button>
+      <button class="ui-button ghost" type="button" onclick={() => { pendingSelection = ''; }}>继续编辑</button>
+      <button class="ui-button danger" type="button" onclick={confirmSelection}>放弃并切换</button>
     </div>
   </div>
 {/if}
@@ -407,8 +407,8 @@
         {#if deletion.notice}<p role="alert">{deletion.notice}</p>{/if}
         {#if deletion.fileError}<p role="alert">{deletion.fileError}</p>{/if}
       </div>
-      <button bind:this={cancelDeleteButton} type="button" onclick={closeDelete} disabled={deleteBusy}>取消</button>
-      <button type="button" onclick={deleteSkill} disabled={deleteBusy}>{deletion.phase === 'yamlCommitted' ? '重试删除文件' : '确认删除'}</button>
+      <button class="ui-button ghost" bind:this={cancelDeleteButton} type="button" onclick={closeDelete} disabled={deleteBusy}>取消</button>
+      <button class="ui-button danger" type="button" onclick={deleteSkill} disabled={deleteBusy}>{deletion.phase === 'yamlCommitted' ? '重试删除文件' : '确认删除'}</button>
     </div>
   </div>
 {/if}

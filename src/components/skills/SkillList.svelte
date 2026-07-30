@@ -19,7 +19,7 @@
     <p role="status">正在加载 Skills…</p>
   {:else if error}
     <p role="alert">加载失败：{error}</p>
-    <button type="button" onclick={onRetry}>重试加载</button>
+    <button class="ui-button secondary" type="button" onclick={onRetry}>重试加载</button>
   {:else if !entries.length}
     <p role="status">暂无 Skills</p>
   {:else}
@@ -28,6 +28,7 @@
         <li>
           <button
             type="button"
+            class="ui-button ghost"
             class:active={selected === entry.name}
             aria-current={selected === entry.name ? 'true' : undefined}
             onclick={() => onSelect(entry.name)}

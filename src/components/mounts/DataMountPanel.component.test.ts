@@ -61,6 +61,13 @@ test('creates an isolated managed local volume and one mount in a single callbac
   expect(result.agents.alpha.volumes).toEqual([{ type: 'volume', source: 'memory', target: '/data/memory', read_only: false }]);
 });
 
+test('styles mount modal actions by intent', async () => {
+  setup();
+  await fireEvent.click(screen.getByRole('button', { name: '创建数据卷' }));
+  expect(screen.getByRole('button', { name: '取消' })).toHaveClass('ui-button', 'ghost');
+  expect(screen.getByRole('button', { name: '创建并挂载' })).toHaveClass('ui-button', 'primary');
+});
+
 test('rejects a duplicate target across bind and volume mounts without a callback', async () => {
   const source = 'volumes:\n  cache: {}\nagents:\n  alpha:\n    volumes:\n      - { type: bind, source: /srv/docs, target: /data//memory, read_only: true }\n';
   const onYamlChange = setup({ yaml: source });
