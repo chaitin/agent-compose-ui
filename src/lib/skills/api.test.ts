@@ -32,6 +32,31 @@ test('creates, reads, writes and removes with the strict project-files contract'
   ]);
 });
 
+test('creates a skill folder and uploads one SKILL.md through existing endpoints', async () => {
+  const uploaded = { path: 'review/SKILL.md', name: 'SKILL.md', isDir: false, size: 4, modTime: 'now', sha256: SHA };
+  const fetch = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ path: 'review' }), { status: 201 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ file: uploaded }), { status: 201 }));
+  vi.stubGlobal('fetch', fetch);
+  const file = new File(['body'], 'SKILL.md', { type: 'text/markdown' });
+
+  await skillApi.mkdir('ws_1', 'review');
+  await expect(skillApi.upload('ws_1', 'review/SKILL.md', file)).resolves.toEqual(uploaded);
+
+  expect(fetch.mock.calls[0]).toEqual(['/api/project-files/folder', expect.objectContaining({
+    method: 'POST',
+    body: JSON.stringify({ projectKey: 'ws_1', path: 'review' }),
+  })]);
+  expect(fetch.mock.calls[1][0]).toBe('/api/project-files/upload');
+  const init = fetch.mock.calls[1][1] as RequestInit;
+  expect(init.method).toBe('POST');
+  expect(init.headers).toBeUndefined();
+  expect(init.body).toBeInstanceOf(FormData);
+  expect((init.body as FormData).get('projectKey')).toBe('ws_1');
+  expect((init.body as FormData).get('path')).toBe('review/SKILL.md');
+  expect((init.body as FormData).get('file')).toBe(file);
+});
+
 test('accepts an empty text file as valid read content', async () => {
   const file = { path: 'demo/SKILL.md', name: 'SKILL.md', isDir: false, size: 0, modTime: 'now', sha256: SHA, content: '' };
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ file }))));

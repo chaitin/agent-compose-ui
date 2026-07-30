@@ -36,10 +36,11 @@ interface ResponsePayload { status: number; body: unknown }
 async function request(path: string, init: RequestInit = {}): Promise<ResponsePayload> {
   let response: Response;
   try {
+    const multipart = typeof FormData !== 'undefined' && init.body instanceof FormData;
     response = await fetch(`${BASE}${path}`, {
       ...init,
       credentials: 'same-origin',
-      headers: init.body ? { 'content-type': 'application/json', ...init.headers } : init.headers,
+      headers: init.body && !multipart ? { 'content-type': 'application/json', ...init.headers } : init.headers,
     });
   } catch (error) {
     throw new SkillApiError(0, 'network_error', '无法连接项目文件服务', error);
@@ -122,5 +123,20 @@ export const skillApi = {
   },
   async remove(projectKey: string, path: string, recursive: boolean): Promise<void> {
     await request(`/folder?${query({ projectKey, path, recursive })}`, { method: 'DELETE' });
+  },
+  async mkdir(projectKey: string, path: string): Promise<void> {
+    const payload = await request('/folder', { method: 'POST', body: JSON.stringify({ projectKey, path }) });
+    const createdPath = envelopeField(payload, 'path');
+    if (createdPath !== path) invalidResponse(payload.status);
+  },
+  async upload(projectKey: string, path: string, file: File): Promise<FileEntry> {
+    const body = new FormData();
+    body.set('projectKey', projectKey);
+    body.set('path', path);
+    body.set('file', file);
+    const payload = await request('/upload', { method: 'POST', body });
+    const uploaded = envelopeField(payload, 'file');
+    if (!validFileEntry(uploaded)) invalidResponse(payload.status);
+    return uploaded;
   },
 };
