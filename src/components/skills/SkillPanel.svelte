@@ -4,8 +4,10 @@
   import { listAgentNames, removeSkillReferences, type SkillReference } from '../../lib/skills/references';
   import { upsertAgentSkill } from '../../lib/project-resources/yaml-mutations';
   import SkillEditor from './SkillEditor.svelte';
+  import SkillCreateModal from './SkillCreateModal.svelte';
   import SkillList from './SkillList.svelte';
   import SkillToolbar from './SkillToolbar.svelte';
+  import SkillUploadModal from './SkillUploadModal.svelte';
 
   interface Props {
     projectKey: string;
@@ -40,7 +42,7 @@
   let deleteTrigger = $state<HTMLButtonElement>();
   let cancelDeleteButton = $state<HTMLButtonElement>();
   let deleteDialog = $state<HTMLDivElement>();
-  let createNameInput = $state<HTMLInputElement>();
+  let modal = $state<'create' | 'upload' | ''>('');
   let pendingSelection = $state('');
   const instanceId = $props.id();
   type DeleteState = {
@@ -76,6 +78,7 @@
     error = '';
     deletion = null;
     pendingSelection = '';
+    modal = '';
     entries = [];
     if (/^ws_[0-9a-f]{32}$/.test(key)) void loadList(key);
     else {
@@ -201,20 +204,39 @@
       if (operation !== createGeneration || context !== contextGeneration || key !== projectKey) return;
       status = `已创建 ${name}`;
       newName = '';
+      modal = '';
       const listed = await loadList(key);
       if (!listed || operation !== createGeneration || context !== contextGeneration || key !== projectKey) return;
       await openSkill(name, key);
     } catch (value) {
       if (!created) {
-        if (operation === createGeneration && context === contextGeneration) error = `创建失败：${message(value)}`;
+        if (operation === createGeneration && context === contextGeneration) { error = `创建失败：${message(value)}`; modal = ''; }
       } else {
         try {
           await skillApi.remove(key, name, true);
-          if (operation === createGeneration && context === contextGeneration) error = `YAML 更新失败，刚创建的目录已回滚：${message(value)}`;
+          if (operation === createGeneration && context === contextGeneration) { error = `YAML 更新失败，刚创建的目录已回滚：${message(value)}`; modal = ''; }
         } catch (rollbackError) {
-          if (operation === createGeneration && context === contextGeneration) error = `YAML 更新失败，且目录回滚失败（请手动删除 ${name}）：${message(value)}；${message(rollbackError)}`;
+          if (operation === createGeneration && context === contextGeneration) { error = `YAML 更新失败，且目录回滚失败（请手动删除 ${name}）：${message(value)}；${message(rollbackError)}`; modal = ''; }
         }
       }
+    } finally { if (operation === createGeneration) createBusy = false; }
+  }
+
+  async function uploadSkill(name: string, file: File): Promise<void> {
+    if (!validProjectKey || !targetAgent || createBusy) return;
+    const key = projectKey; const agent = targetAgent; const context = contextGeneration; const operation = ++createGeneration;
+    createBusy = true; error = ''; status = ''; let folder = false;
+    try {
+      await skillApi.mkdir(key, name); folder = true;
+      await skillApi.upload(key, `${name}/SKILL.md`, file);
+      if (context !== contextGeneration || key !== projectKey) throw new Error('项目上下文已变化');
+      await onYamlChange(upsertAgentSkill(yaml, agent, { name, source: 'file', path: `./skills/${name}` }));
+      if (operation !== createGeneration || context !== contextGeneration || key !== projectKey) return;
+      status = `已上传 ${name}`; modal = '';
+      if (await loadList(key)) await openSkill(name, key);
+    } catch (value) {
+      if (folder) await skillApi.remove(key, name, true).catch(() => undefined);
+      if (operation === createGeneration && context === contextGeneration) error = `上传失败，已回滚：${message(value)}`;
     } finally { if (operation === createGeneration) createBusy = false; }
   }
 
@@ -327,24 +349,15 @@
   }
 </script>
 
-<div class="skill-shell" inert={deletion || pendingSelection ? true : undefined} aria-hidden={deletion || pendingSelection ? 'true' : undefined}>
+<div class="skill-shell" inert={deletion || pendingSelection || modal ? true : undefined} aria-hidden={deletion || pendingSelection || modal ? 'true' : undefined}>
   <SkillToolbar
     busy={createBusy || saveBusy || deleteBusy || !validProjectKey}
-    onCreate={() => createNameInput?.focus()}
-    onUpload={() => { status = '单文件上传将在上传面板中完成'; }}
+    onCreate={() => { modal = 'create'; }}
+    onUpload={() => { modal = 'upload'; }}
     onRefresh={() => { void loadList(); }}
   />
-  <div class="skill-panel" inert={deletion || pendingSelection ? true : undefined} aria-hidden={deletion || pendingSelection ? 'true' : undefined}>
+  <div class="skill-panel" inert={deletion || pendingSelection || modal ? true : undefined} aria-hidden={deletion || pendingSelection || modal ? 'true' : undefined}>
   <aside>
-    <form onsubmit={(event) => { event.preventDefault(); void createSkill(); }}>
-      <label>Skill 名称 <input bind:this={createNameInput} aria-label="Skill 名称" bind:value={newName} pattern="[a-z][a-z0-9_-]*" required disabled={createBusy} /></label>
-      <label>目标 Agent
-        <select aria-label="目标 Agent" bind:value={targetAgent} disabled={!agents.length || createBusy}>
-          {#each agents as agent}<option value={agent}>{agent}</option>{/each}
-        </select>
-      </label>
-      <button type="submit" disabled={createBusy || !validProjectKey || !targetAgent}>创建 Skill</button>
-    </form>
     <SkillList {entries} {selected} {loading} error={listError} busy={createBusy || deleteBusy} onSelect={selectSkill} onRetry={() => { void loadList(); }} />
   </aside>
 
@@ -366,6 +379,12 @@
   </main>
   </div>
 </div>
+
+{#if modal === 'create'}
+  <SkillCreateModal {agents} busy={createBusy} name={newName} agent={targetAgent} onName={(value) => { newName = value; }} onAgent={(value) => { targetAgent = value; }} onSubmit={() => { void createSkill(); }} onClose={() => { modal = ''; }} />
+{:else if modal === 'upload'}
+  <SkillUploadModal {agents} busy={createBusy} agent={targetAgent} onAgent={(value) => { targetAgent = value; }} onSubmit={(name, file) => { void uploadSkill(name, file); }} onClose={() => { modal = ''; }} />
+{/if}
 
 {#if pendingSelection}
   <div class="dialog-backdrop">
@@ -399,9 +418,6 @@
   .skill-panel { display: grid; grid-template-columns: minmax(220px, 30%) 1fr; min-height: 0; }
   aside { border-right: 1px solid var(--border-color); padding: 10px; overflow: auto; }
   main { padding: 10px; min-width: 0; overflow: auto; }
-  form { display: grid; gap: 6px; margin-bottom: 10px; }
-  label { display: grid; gap: 3px; color: var(--text-secondary); }
-  input, select { color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border-color); }
   .dialog-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: #0008; }
   [role='dialog'] { width: min(440px, 90vw); padding: 18px; background: var(--bg-secondary); border: 1px solid var(--border-color); }
 </style>

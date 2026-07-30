@@ -13,7 +13,7 @@ function deferred<T>() {
 
 vi.mock('../../lib/skills/api', async () => {
   const actual = await vi.importActual<typeof import('../../lib/skills/api')>('../../lib/skills/api');
-  return { ...actual, skillApi: { list: vi.fn(), create: vi.fn(), read: vi.fn(), write: vi.fn(), remove: vi.fn() } };
+  return { ...actual, skillApi: { list: vi.fn(), create: vi.fn(), mkdir: vi.fn(), upload: vi.fn(), read: vi.fn(), write: vi.fn(), remove: vi.fn() } };
 });
 
 const yaml = `name: test\nagents:\n  beta: {}\n  alpha:\n    skills:\n      - name: demo\n        source: file\n        path: ./skills/demo\n`;
@@ -25,6 +25,8 @@ const KEY_B = 'ws_fedcba9876543210fedcba9876543210';
 beforeEach(() => {
   vi.mocked(skillApi.list).mockReset().mockResolvedValue([entry]);
   vi.mocked(skillApi.create).mockReset();
+  vi.mocked(skillApi.mkdir).mockReset().mockResolvedValue();
+  vi.mocked(skillApi.upload).mockReset();
   vi.mocked(skillApi.read).mockReset().mockResolvedValue(file);
   vi.mocked(skillApi.write).mockReset();
   vi.mocked(skillApi.remove).mockReset().mockResolvedValue();
@@ -69,7 +71,43 @@ test('does not request project files before receiving a canonical storage key', 
   render(SkillPanel, { projectKey: 'daemon-project-id', yaml, selectedAgent: 'alpha', onYamlChange: vi.fn() });
   await Promise.resolve();
   expect(skillApi.list).not.toHaveBeenCalled();
-  expect(screen.getByRole('button', { name: '创建 Skill' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '新建 Skill' })).toBeDisabled();
+});
+
+test('opens creation from the toolbar instead of showing a persistent form', async () => {
+  render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'alpha', onYamlChange: vi.fn() });
+  expect(screen.queryByRole('textbox', { name: 'Skill 名称' })).not.toBeInTheDocument();
+  await fireEvent.click(screen.getByRole('button', { name: '新建 Skill' }));
+  expect(screen.getByRole('dialog', { name: '新建 Skill' })).toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: 'Skill 名称' })).toHaveFocus();
+});
+
+test('uploads one UTF-8 SKILL.md through existing folder and upload APIs', async () => {
+  vi.mocked(skillApi.list).mockResolvedValue([]);
+  vi.mocked(skillApi.upload).mockResolvedValue({ ...file, path: 'review/SKILL.md' });
+  const onYamlChange = vi.fn();
+  render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'beta', onYamlChange });
+  await screen.findByText('暂无 Skills');
+  await fireEvent.click(screen.getByRole('button', { name: '上传 Skill' }));
+  const dialog = screen.getByRole('dialog', { name: '上传 Skill' });
+  const upload = new File(['---\nname: review\ndescription: review\n---\n'], 'SKILL.md', { type: 'text/markdown' });
+  await fireEvent.change(within(dialog).getByLabelText('选择 SKILL.md'), { target: { files: [upload] } });
+  await fireEvent.click(within(dialog).getByRole('button', { name: '确认上传' }));
+  await waitFor(() => expect(skillApi.mkdir).toHaveBeenCalledWith(KEY_A, 'review'));
+  expect(skillApi.upload).toHaveBeenCalledWith(KEY_A, 'review/SKILL.md', upload);
+  expect(onYamlChange).toHaveBeenCalledWith(expect.stringContaining('./skills/review'));
+});
+
+test('rejects unsupported Skill upload names before API calls', async () => {
+  render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'alpha', onYamlChange: vi.fn() });
+  await fireEvent.click(screen.getByRole('button', { name: '上传 Skill' }));
+  const dialog = screen.getByRole('dialog', { name: '上传 Skill' });
+  await fireEvent.change(within(dialog).getByLabelText('选择 SKILL.md'), {
+    target: { files: [new File(['body'], 'skills.zip', { type: 'application/zip' })] },
+  });
+  expect(within(dialog).getByRole('alert')).toHaveTextContent('仅支持名为 SKILL.md');
+  expect(skillApi.mkdir).not.toHaveBeenCalled();
+  expect(skillApi.upload).not.toHaveBeenCalled();
 });
 
 test('loads, selects and saves SKILL.md with optimistic concurrency', async () => {
@@ -103,6 +141,7 @@ test('creates files before YAML and compensates if YAML callback fails', async (
   const onYamlChange = vi.fn(() => { throw new Error('editor rejected'); });
   render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'beta', onYamlChange });
   await screen.findByText('暂无 Skills');
+  await fireEvent.click(screen.getByRole('button', { name: '新建 Skill' }));
   await fireEvent.input(screen.getByRole('textbox', { name: 'Skill 名称' }), { target: { value: 'new-skill' } });
   await fireEvent.click(screen.getByRole('button', { name: '创建 Skill' }));
   await waitFor(() => expect(skillApi.remove).toHaveBeenCalledWith(KEY_A, 'new-skill', true));
@@ -116,6 +155,7 @@ test('creates standard Skill YAML that the real apply parser accepts', async () 
   const onYamlChange = vi.fn();
   render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'beta', onYamlChange });
   await screen.findByText('暂无 Skills');
+  await fireEvent.click(screen.getByRole('button', { name: '新建 Skill' }));
   await fireEvent.input(screen.getByRole('textbox', { name: 'Skill 名称' }), { target: { value: 'new-skill' } });
   await fireEvent.click(screen.getByRole('button', { name: '创建 Skill' }));
   await waitFor(() => expect(onYamlChange).toHaveBeenCalledOnce());
@@ -184,6 +224,7 @@ test('compensates a captured create identity when props and input change midflig
   const onYamlChange = vi.fn(() => { throw new Error('rejected'); });
   const view = render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'alpha', onYamlChange });
   await screen.findByText('暂无 Skills');
+  await fireEvent.click(screen.getByRole('button', { name: '新建 Skill' }));
   const input = screen.getByRole('textbox', { name: 'Skill 名称' });
   await fireEvent.input(input, { target: { value: 'captured' } });
   await fireEvent.click(screen.getByRole('button', { name: '创建 Skill' }));
@@ -199,6 +240,7 @@ test('rebases a deferred create onto the latest same-project YAML', async () => 
   const onYamlChange = vi.fn();
   const view = render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'alpha', onYamlChange });
   await screen.findByText('暂无 Skills');
+  await fireEvent.click(screen.getByRole('button', { name: '新建 Skill' }));
   await fireEvent.input(screen.getByRole('textbox', { name: 'Skill 名称' }), { target: { value: 'fresh' } });
   await fireEvent.click(screen.getByRole('button', { name: '创建 Skill' }));
   const latestYaml = `${yaml}\nx-concurrent: preserved\n`;
@@ -217,6 +259,7 @@ test('uses the current equivalent callback after a same-project parent rerender'
   const currentCallback = vi.fn();
   const view = render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'alpha', onYamlChange: oldCallback });
   await screen.findByText('暂无 Skills');
+  await fireEvent.click(screen.getByRole('button', { name: '新建 Skill' }));
   await fireEvent.input(screen.getByRole('textbox', { name: 'Skill 名称' }), { target: { value: 'callback-fresh' } });
   await fireEvent.click(screen.getByRole('button', { name: '创建 Skill' }));
   await view.rerender({
@@ -240,6 +283,7 @@ test('compensates create when the captured target Agent disappears during the re
   const onYamlChange = vi.fn();
   const view = render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'alpha', onYamlChange });
   await screen.findByText('暂无 Skills');
+  await fireEvent.click(screen.getByRole('button', { name: '新建 Skill' }));
   await fireEvent.input(screen.getByRole('textbox', { name: 'Skill 名称' }), { target: { value: 'orphan-safe' } });
   await fireEvent.click(screen.getByRole('button', { name: '创建 Skill' }));
   await view.rerender({ projectKey: KEY_A, yaml: 'name: test\nagents:\n  beta: {}\n', selectedAgent: 'beta', onYamlChange });
@@ -258,6 +302,7 @@ test('does not continue an old create into the new project after its list resolv
   const onYamlChange = vi.fn();
   const view = render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'alpha', onYamlChange });
   await screen.findByText('暂无 Skills');
+  await fireEvent.click(screen.getByRole('button', { name: '新建 Skill' }));
   await fireEvent.input(screen.getByRole('textbox', { name: 'Skill 名称' }), { target: { value: 'race' } });
   await fireEvent.click(screen.getByRole('button', { name: '创建 Skill' }));
   await waitFor(() => expect(skillApi.list).toHaveBeenCalledTimes(2));
