@@ -14,7 +14,8 @@
     } catch { error = 'SKILL.md 必须是 UTF-8 文本。'; }
   }
 </script>
-<dialog open aria-labelledby="skill-upload-title" onkeydown={(e) => { if (e.key === 'Escape' && !busy) onClose(); }}>
+<div class="resource-modal-backdrop">
+<dialog class="resource-modal-card" open aria-labelledby="skill-upload-title" onkeydown={(e) => { if (e.key === 'Escape' && !busy) onClose(); }}>
   <form onsubmit={(e) => { e.preventDefault(); if (file && name) onSubmit(name, file); }}>
     <h2 id="skill-upload-title">上传 Skill</h2>
     <p>仅上传单个 UTF-8 <code>SKILL.md</code>；不支持 ZIP 或目录包。</p>
@@ -24,8 +25,9 @@
     <div class="actions"><button class="ui-button ghost" type="button" onclick={onClose} disabled={busy}>取消</button><button class="ui-button primary" type="submit" disabled={busy || !file || !agent}>确认上传</button></div>
   </form>
 </dialog>
+</div>
 <style>
-  dialog { position: fixed; inset: 0; z-index: 1000; width: min(480px, 90vw); padding: 0; color: inherit; background: var(--bg-secondary); border: 1px solid var(--border-color); }
+  dialog { width: min(480px, 100%); padding: 0; }
   form { display: grid; gap: 12px; padding: 18px; }
   label { display: grid; gap: 4px; } .actions { display: flex; justify-content: flex-end; gap: 8px; }
 </style>

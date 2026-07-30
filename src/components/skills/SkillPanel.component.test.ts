@@ -53,8 +53,18 @@ test('uses the shared action hierarchy outside the Skills toolbar', async () => 
   expect(await screen.findByRole('button', { name: '重试加载' })).toHaveClass('ui-button', 'secondary');
   await fireEvent.click(screen.getByRole('button', { name: '新建 Skill' }));
   const dialog = screen.getByRole('dialog', { name: '新建 Skill' });
+  expect(dialog).toHaveClass('resource-modal-card');
+  expect(dialog.parentElement).toHaveClass('resource-modal-backdrop');
   expect(within(dialog).getByRole('button', { name: '取消' })).toHaveClass('ui-button', 'ghost');
   expect(within(dialog).getByRole('button', { name: '创建 Skill' })).toHaveClass('ui-button', 'primary');
+});
+
+test('uses the resource-panel modal boundary for Skill upload', async () => {
+  render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'alpha', onYamlChange: vi.fn() });
+  await fireEvent.click(screen.getByRole('button', { name: '上传 Skill' }));
+  const dialog = screen.getByRole('dialog', { name: '上传 Skill' });
+  expect(dialog).toHaveClass('resource-modal-card');
+  expect(dialog.parentElement).toHaveClass('resource-modal-backdrop');
 });
 
 test('confirms before navigating away from a Skill with unsaved changes', async () => {

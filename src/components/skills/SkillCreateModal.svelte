@@ -5,7 +5,8 @@
   let input = $state<HTMLInputElement>();
   $effect(() => { void tick().then(() => input?.focus()); });
 </script>
-<dialog open aria-labelledby="skill-create-title" onkeydown={(event) => { if (event.key === 'Escape' && !busy) onClose(); }}>
+<div class="resource-modal-backdrop">
+<dialog class="resource-modal-card" open aria-labelledby="skill-create-title" onkeydown={(event) => { if (event.key === 'Escape' && !busy) onClose(); }}>
   <form onsubmit={(event) => { event.preventDefault(); onSubmit(); }}>
     <h2 id="skill-create-title">新建 Skill</h2>
     <label>Skill 名称<input bind:this={input} aria-label="Skill 名称" value={name} oninput={(e) => onName(e.currentTarget.value)} pattern="[a-z][a-z0-9_-]*" required disabled={busy} /></label>
@@ -13,8 +14,9 @@
     <div class="actions"><button class="ui-button ghost" type="button" onclick={onClose} disabled={busy}>取消</button><button class="ui-button primary" type="submit" disabled={busy || !agent}>创建 Skill</button></div>
   </form>
 </dialog>
+</div>
 <style>
-  dialog { position: fixed; inset: 0; z-index: 1000; width: min(440px, 90vw); padding: 0; color: inherit; background: var(--bg-secondary); border: 1px solid var(--border-color); }
+  dialog { width: min(440px, 100%); padding: 0; }
   form { display: grid; gap: 12px; padding: 18px; }
   label { display: grid; gap: 4px; } .actions { display: flex; justify-content: flex-end; gap: 8px; }
 </style>

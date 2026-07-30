@@ -296,6 +296,8 @@
     margin-left: auto;
   }
   .panel-body {
+    position: relative;
+    isolation: isolate;
     display: flex;
     flex: 1;
     min-height: 0;

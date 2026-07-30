@@ -78,6 +78,35 @@ button.ui-button.danger {
 }
 button.ui-button.danger:hover:not(:disabled) { border-color: var(--accent-red); color: var(--accent-red); background: color-mix(in srgb, var(--accent-red) 16%, var(--bg-secondary)); }
 
+.resource-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 18px;
+  overflow: auto;
+  background: rgba(1, 4, 9, .7);
+}
+.resource-modal-card,
+dialog.resource-modal-card {
+  position: relative;
+  inset: auto;
+  box-sizing: border-box;
+  width: min(620px, 100%);
+  max-height: 100%;
+  margin: 0;
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid var(--accent-blue);
+  border-radius: 8px;
+  color: var(--text-primary);
+  background: #1b2430;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, .65), 0 0 0 1px color-mix(in srgb, var(--accent-blue) 12%, transparent);
+}
+
 input, select, textarea {
   font-family: inherit;
   font-size: inherit;

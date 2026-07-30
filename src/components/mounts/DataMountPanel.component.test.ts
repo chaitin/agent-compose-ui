@@ -64,8 +64,19 @@ test('creates an isolated managed local volume and one mount in a single callbac
 test('styles mount modal actions by intent', async () => {
   setup();
   await fireEvent.click(screen.getByRole('button', { name: '创建数据卷' }));
+  const dialog = screen.getByRole('dialog', { name: '创建数据卷' });
+  expect(dialog).toHaveClass('resource-modal-card');
+  expect(dialog.parentElement).toHaveClass('resource-modal-backdrop');
   expect(screen.getByRole('button', { name: '取消' })).toHaveClass('ui-button', 'ghost');
   expect(screen.getByRole('button', { name: '创建并挂载' })).toHaveClass('ui-button', 'primary');
+});
+
+test('uses the resource-panel modal boundary for mounting resources', async () => {
+  setup();
+  await fireEvent.click(screen.getByRole('button', { name: '挂载资源' }));
+  const dialog = screen.getByRole('dialog', { name: '挂载资源' });
+  expect(dialog).toHaveClass('resource-modal-card');
+  expect(dialog.parentElement).toHaveClass('resource-modal-backdrop');
 });
 
 test('rejects a duplicate target across bind and volume mounts without a callback', async () => {
