@@ -950,7 +950,7 @@
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .btn-primary { background: var(--accent-blue-emphasis); color: var(--text-on-accent); border-color: var(--accent-blue-emphasis); }
   .btn-danger { background: transparent; color: var(--accent-red); border-color: var(--accent-red); }
-  .btn-danger:hover { background: color-mix(in srgb, var(--accent-red) 16%, var(--bg-secondary)); color: var(--accent-red); }
+  .btn-danger:hover { background: color-mix(in srgb, var(--accent-red) 12%, var(--bg-secondary)); color: var(--accent-red); }
   .btn-secondary:hover { border-color: var(--text-muted); }
   .diff-overlay {
     position: fixed;
