@@ -79,18 +79,18 @@
 </main>
 
 <style>
-  .dashboard { display: grid; gap: 1.2rem; padding: 1.5rem; color: var(--text, #e8edf5); }
+  .dashboard { display: grid; gap: 1.2rem; padding: 1.5rem; color: var(--text-primary); }
   header { display: flex; align-items: end; justify-content: space-between; gap: 1rem; }
   h2, p { margin: 0; }
   h2 { font-size: 1.55rem; }
-  .eyebrow { margin-bottom: .35rem; color: var(--accent, #7dd3fc); font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
-  time { color: var(--muted, #94a3b8); font-size: .82rem; }
+  .eyebrow { margin-bottom: .35rem; color: var(--accent-blue); font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+  time { color: var(--text-muted); font-size: .82rem; }
   .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .9rem; }
-  article { display: grid; gap: .65rem; min-height: 7rem; padding: 1rem; border: 1px solid var(--border, #293548); border-radius: .75rem; background: var(--panel, #111827); }
-  article span { color: var(--muted, #94a3b8); font-size: .85rem; }
+  article { display: grid; gap: .65rem; min-height: 7rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: .75rem; background: var(--bg-secondary); }
+  article span { color: var(--text-muted); font-size: .85rem; }
   article strong { align-self: end; font-size: 2rem; line-height: 1; }
-  .state { padding: 1rem; border: 1px solid var(--border, #293548); border-radius: .65rem; color: var(--muted, #94a3b8); }
-  .error { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-color: #7f1d1d; color: #fecaca; }
+  .state { padding: 1rem; border: 1px solid var(--border-color); border-radius: .65rem; color: var(--text-muted); }
+  .error { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-color: var(--accent-red); color: var(--accent-red); }
   button { padding: .45rem .8rem; border: 1px solid currentColor; border-radius: .45rem; background: transparent; color: inherit; cursor: pointer; }
   @media (max-width: 640px) { header { align-items: start; flex-direction: column; } .cards { grid-template-columns: 1fr; } }
 </style>

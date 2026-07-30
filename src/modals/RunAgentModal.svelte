@@ -257,8 +257,8 @@
   }
   .run-btn {
     padding: 5px 20px;
-    background: var(--accent-blue);
-    color: #fff;
+    background: var(--accent-blue-emphasis);
+    color: var(--text-on-accent);
     border: none;
     border-radius: 4px;
     font-size: var(--font-size-md);

@@ -283,7 +283,7 @@
   .section-card-header .desc { color: var(--text-muted); font-size: var(--font-size-xs); margin-left: 8px; }
   .section-card-header .spacer { flex: 1; }
   .section-card-header .btn { padding: 5px 12px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary); font-size: var(--font-size-sm); }
-  .section-card-header .btn.primary { background: var(--accent-green); color: #0d1117; border-color: var(--accent-green); font-weight: 600; }
+  .section-card-header .btn.primary { background: var(--accent-blue-emphasis); color: var(--text-on-accent); border-color: var(--accent-blue-emphasis); font-weight: 600; }
   .section-card-header .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .loading, .error { padding: 24px; color: var(--text-secondary); font-size: var(--font-size-sm); }
@@ -316,9 +316,9 @@
   .modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border-color); background: var(--bg-tertiary); border-radius: 0 0 8px 8px; }
   .modal-footer .btn { padding: 6px 14px; border-radius: 4px; font-size: var(--font-size-sm); border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); }
   .modal-footer .btn:hover:not(:disabled) { border-color: var(--accent-blue); }
-  .modal-footer .btn.danger { background: var(--accent-red); color: #fff; border-color: var(--accent-red); font-weight: 600; }
+  .modal-footer .btn.danger { background: var(--accent-red); color: var(--text-on-accent); border-color: var(--accent-red); font-weight: 600; }
   .modal-footer .btn.danger:hover { opacity: 0.9; }
-  .modal-footer .btn.primary { background: var(--accent-green); color: #0d1117; border-color: var(--accent-green); font-weight: 600; }
+  .modal-footer .btn.primary { background: var(--accent-blue-emphasis); color: var(--text-on-accent); border-color: var(--accent-blue-emphasis); font-weight: 600; }
   .modal-footer .btn.primary:hover:not(:disabled) { opacity: 0.9; }
   .modal-footer .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
