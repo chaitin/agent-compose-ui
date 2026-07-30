@@ -16,7 +16,7 @@ export interface ScriptWorkspaceApi {
   deleteFolder(path: string, recursive: boolean): Promise<void>;
 }
 
-export type ResourceTab = 'scripts' | 'workspace' | 'skills' | 'mounts';
+export type ResourceTab = 'scripts' | 'workspace' | 'images' | 'skills' | 'mounts';
 
 const DEFAULT_NEW_SCRIPT = '// 新脚本\n';
 
@@ -55,6 +55,11 @@ export class ScriptWorkspace {
 
   openScriptsTab(): void {
     this.activeTab = 'scripts';
+    this.panelOpen = true;
+  }
+
+  openImagesTab(): void {
+    this.activeTab = 'images';
     this.panelOpen = true;
   }
 

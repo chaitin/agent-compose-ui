@@ -31,6 +31,9 @@ const mocks = vi.hoisted(() => ({
   savedSpec: { name: 'P1', agents: [] } as any,
   buildPlans: [] as Array<any>,
   changedBuildAgents: new Set<string>(),
+  createProjectImageBuildPlans: vi.fn(),
+  checkProjectImageFiles: vi.fn(),
+  openImagesTab: vi.fn(),
   runProjectImageBuildPlans: vi.fn(),
   checkProjectDependencies: vi.fn(),
   getGlobalEnv: vi.fn(),
@@ -50,7 +53,7 @@ vi.mock('../lib/rpc', () => ({
 vi.mock('../lib/project-dependency-preflight', () => ({ checkProjectDependencies: mocks.checkProjectDependencies }));
 vi.mock('../lib/yaml', () => ({ yamlToSpec: () => ({ spec: mocks.currentSpec }) }));
 vi.mock('../lib/scripts/api', () => ({ scriptApi: { readFile: vi.fn(), ensureProject: vi.fn(), writeManifest: vi.fn() }, scriptErrorMessage: (error: unknown) => String(error) }));
-vi.mock('../lib/scripts/workspace.svelte', () => ({ scriptWorkspace: { tree: [], files: new Map(), panelOpen: false } }));
+vi.mock('../lib/scripts/workspace.svelte', () => ({ scriptWorkspace: { tree: [], files: new Map(), panelOpen: false, openImagesTab: mocks.openImagesTab } }));
 vi.mock('../lib/scripts/tree', () => ({ countScriptFiles: () => 0 }));
 vi.mock('../lib/scripts/request-pipeline', () => ({ prepareScriptRequest: vi.fn() }));
 vi.mock('../lib/scripts/project-lifecycle', () => ({ canonicalProjectId: (id: string) => id }));
@@ -63,10 +66,11 @@ vi.mock('../lib/workspace/bindings', () => ({
 }));
 vi.mock('../lib/project-image-build', () => ({
   changedBuildAgentNames: () => mocks.changedBuildAgents,
-  createProjectImageBuildPlans: () => mocks.buildPlans,
+  createProjectImageBuildPlans: mocks.createProjectImageBuildPlans,
   ProjectImageBuildRunError: class extends Error {},
   runProjectImageBuildPlans: mocks.runProjectImageBuildPlans,
 }));
+vi.mock('../lib/project-image-files', () => ({ checkProjectImageFiles: mocks.checkProjectImageFiles }));
 vi.mock('../lib/toolbar-actions', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/toolbar-actions')>();
   return {
@@ -123,6 +127,8 @@ beforeEach(() => {
   mocks.buildPlans = [];
   mocks.changedBuildAgents = new Set();
   mocks.runProjectImageBuildPlans.mockResolvedValue([]);
+  mocks.createProjectImageBuildPlans.mockImplementation(() => mocks.buildPlans);
+  mocks.checkProjectImageFiles.mockResolvedValue([]);
   mocks.checkProjectDependencies.mockResolvedValue({ warnings: [] });
   mocks.getGlobalEnv.mockResolvedValue({ env: [] });
   mocks.ensureWorkspaceBinding.mockResolvedValue({
@@ -194,18 +200,19 @@ test('rejects saving a browser draft with a duplicate draft name', async () => {
   expect(mocks.store.addToast).not.toHaveBeenCalledWith('草稿已保存到此浏览器', 'success');
 });
 
-test('defaults to skipping image builds when no build configuration changed', async () => {
+test('hides image build controls when no build configuration changed', async () => {
   mocks.buildPlans = [{ agentName: 'reviewer', imageRef: 'reviewer:dev', contextDisplay: '.', dockerfile: 'Dockerfile', request: {}, error: '' }];
   render(Toolbar);
 
   await fireEvent.click(screen.getByRole('button', { name: '启用' }));
 
-  expect(await screen.findByRole('radio', { name: /仅应用配置，不构建镜像/ })).toBeChecked();
+  expect(await screen.findByText('确认启用后，当前配置将覆盖上次启用的版本。')).toBeInTheDocument();
+  expect(screen.queryByText('本次镜像处理')).toBeNull();
   expect(screen.getByText('确认启用后，当前配置将覆盖上次启用的版本。')).toBeInTheDocument();
   expect(screen.queryByRole('checkbox', { name: /reviewer/ })).toBeNull();
 });
 
-test('build mode hides image details, exposes build options, and builds every valid YAML image', async () => {
+test('builds only valid agents whose build definition changed', async () => {
   mocks.buildPlans = [
     { agentName: 'reviewer', imageRef: 'reviewer:dev', contextDisplay: '.', dockerfile: 'Dockerfile', request: {}, error: '' },
     { agentName: 'writer', imageRef: 'writer:dev', contextDisplay: '.', dockerfile: 'Dockerfile', request: {}, error: '' },
@@ -215,7 +222,7 @@ test('build mode hides image details, exposes build options, and builds every va
 
   await fireEvent.click(screen.getByRole('button', { name: '启用' }));
 
-  expect(await screen.findByRole('radio', { name: /构建 YAML 中配置的镜像/ })).toBeChecked();
+  expect(await screen.findByText('本次镜像处理')).toBeInTheDocument();
   expect(screen.queryByRole('checkbox', { name: /reviewer/ })).toBeNull();
   expect(screen.queryByRole('checkbox', { name: /writer/ })).toBeNull();
   expect(screen.getByRole('checkbox', { name: '不使用缓存' })).toBeVisible();
@@ -224,7 +231,38 @@ test('build mode hides image details, exposes build options, and builds every va
 
   await fireEvent.click(screen.getByRole('button', { name: '构建并启用' }));
   await waitFor(() => expect(mocks.runProjectImageBuildPlans).toHaveBeenCalled());
-  expect(mocks.runProjectImageBuildPlans.mock.calls[0][0].selectedAgentNames).toEqual(new Set(['reviewer', 'writer']));
+  expect(mocks.checkProjectImageFiles).toHaveBeenCalledWith(expect.objectContaining({ selectedAgentNames: new Set(['writer']) }));
+  expect(mocks.runProjectImageBuildPlans.mock.calls[0][0].selectedAgentNames).toEqual(new Set(['writer']));
+});
+
+test('uses the canonical draft source path for relative image build plans', async () => {
+  mocks.store.activeProjectId = '';
+  mocks.store.activeDraftId = 'draft-1';
+  mocks.store.projects = [];
+  mocks.changedBuildAgents = new Set(['writer']);
+  mocks.buildPlans = [{ agentName: 'writer', imageRef: 'writer:dev', contextDisplay: 'workspace/writer', dockerfile: 'Dockerfile', request: {}, error: '' }];
+  render(Toolbar);
+
+  await fireEvent.click(screen.getByRole('button', { name: '启用' }));
+
+  await waitFor(() => expect(mocks.createProjectImageBuildPlans).toHaveBeenCalledWith(
+    mocks.currentSpec,
+    '/data/work/projects/ws_0123456789abcdef0123456789abcdef/agent-compose.yml',
+  ));
+});
+
+test('opens image files and suppresses confirmation when a changed build is incomplete', async () => {
+  mocks.changedBuildAgents = new Set(['writer']);
+  mocks.buildPlans = [{ agentName: 'writer', imageRef: 'writer:dev', contextDisplay: 'workspace/writer', dockerfile: 'Dockerfile', request: {}, error: '' }];
+  mocks.checkProjectImageFiles.mockResolvedValueOnce([{ agentName: 'writer', imageRef: 'writer:dev', ready: false, message: '缺少 Dockerfile' }]);
+  render(Toolbar);
+
+  await fireEvent.click(screen.getByRole('button', { name: '启用' }));
+
+  await waitFor(() => expect(mocks.openImagesTab).toHaveBeenCalledOnce());
+  expect(mocks.store.addToast).toHaveBeenCalledWith('writer:dev：缺少 Dockerfile，请上传完整镜像项目目录', 'error');
+  expect(screen.queryByText('确认本次变更')).toBeNull();
+  expect(mocks.runProjectImageBuildPlans).not.toHaveBeenCalled();
 });
 
 test('keeps changed content in a dedicated scrolling list', async () => {

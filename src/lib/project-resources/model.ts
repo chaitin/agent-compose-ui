@@ -9,11 +9,18 @@ export type AgentMount = {
   type: 'volume';
 };
 
+export type ProjectMount = AgentMount | (Omit<AgentMount, 'type'> & { type: 'bind' });
+
 export type ProjectDataResource = {
   key: string;
   systemName: string;
   mounts: AgentMount[];
   managed: boolean;
+};
+
+export type ProjectResourceSummary = {
+  resources: ProjectDataResource[];
+  mounts: ProjectMount[];
 };
 
 type MapValue = Record<string, unknown>;
@@ -67,13 +74,13 @@ function declarationResource(key: string, value: unknown): ProjectDataResource {
   };
 }
 
-function agentMounts(agent: string, value: unknown): AgentMount[] {
+function agentMounts(agent: string, value: unknown): ProjectMount[] {
   assertSafeKey('agents', agent);
   if (!isPlainRecord(value)) throw new Error(`agents.${agent} must be a mapping`);
   if (!hasOwn(value, 'volumes') || value.volumes === undefined) return [];
   if (!Array.isArray(value.volumes)) throw new Error(`agents.${agent}.volumes must be a list`);
 
-  return value.volumes.flatMap((mount, index): AgentMount[] => {
+  return value.volumes.flatMap((mount, index): ProjectMount[] => {
     const path = `agents.${agent}.volumes[${index}]`;
     if (!isPlainRecord(mount)) throw new Error(`${path} must be a mapping`);
     if (typeof mount.type !== 'string') throw new Error(`${path}.type must be a string`);
@@ -82,10 +89,10 @@ function agentMounts(agent: string, value: unknown): AgentMount[] {
     if (mount.read_only !== undefined && typeof mount.read_only !== 'boolean') {
       throw new Error(`${path}.read_only must be a boolean`);
     }
-    if (mount.type !== 'volume') return [];
+    if (mount.type !== 'volume' && mount.type !== 'bind') return [];
     return [{
       agent,
-      type: 'volume',
+      type: mount.type,
       source: mount.source,
       target: mount.target,
       readOnly: mount.read_only ?? false,
@@ -93,17 +100,23 @@ function agentMounts(agent: string, value: unknown): AgentMount[] {
   });
 }
 
-export function deriveProjectResources(yaml: string): ProjectDataResource[] {
+export function deriveProjectResourceSummary(yaml: string): ProjectResourceSummary {
   const root = parseYamlObject(yaml);
   if (!isPlainRecord(root)) throw new Error('root must be a mapping');
   const declarations = optionalMap(root, 'volumes');
   const resources = Object.entries(declarations).map(([key, value]) => declarationResource(key, value));
   const byKey = new Map(resources.map((resource) => [resource.key, resource]));
+  const mounts: ProjectMount[] = [];
 
   for (const [agent, definition] of Object.entries(optionalMap(root, 'agents'))) {
     for (const mount of agentMounts(agent, definition)) {
-      byKey.get(mount.source)?.mounts.push(mount);
+      mounts.push(mount);
+      if (mount.type === 'volume') byKey.get(mount.source)?.mounts.push(mount);
     }
   }
-  return resources;
+  return { resources, mounts };
+}
+
+export function deriveProjectResources(yaml: string): ProjectDataResource[] {
+  return deriveProjectResourceSummary(yaml).resources;
 }

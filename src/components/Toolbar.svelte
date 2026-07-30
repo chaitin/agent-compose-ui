@@ -43,6 +43,7 @@
     type ProjectImageBuildRunResult,
   } from '../lib/project-image-build';
   import { checkProjectDependencies } from '../lib/project-dependency-preflight';
+  import { checkProjectImageFiles } from '../lib/project-image-files';
   import { llmConfigWarning } from '../lib/llm-config-preflight';
   import { parseWorkspaceBinding, isWorkspaceBindingValid } from '../lib/workspace-binding';
   import { workspaceBindings, getProjectBindingOverride, setProjectBindingOverride, clearProjectBindingOverride, legacyKeyFromSourcePath } from '../lib/workspace/bindings';
@@ -364,15 +365,30 @@
       : undefined;
     if (!previewGeneration.isCurrent(generation)) return;
     if (currentProject && !savedSpec) throw new Error('无法读取已保存的智能体应用配置');
+    const allBuildPlans = createProjectImageBuildPlans(frozenSpec, canonicalSourcePath);
+    const changedBuildAgents = changedBuildAgentNames(savedSpec, frozenSpec);
+    buildPlans = allBuildPlans.filter((plan) => !plan.error && changedBuildAgents.has(plan.agentName));
+    const hasChangedBuild = buildPlans.length > 0;
+    buildChoice = hasChangedBuild ? 'build' : 'skip';
+    selectedBuildAgents = new Set(buildPlans.map((plan) => plan.agentName));
+    if (selectedBuildAgents.size > 0) {
+      const checks = await checkProjectImageFiles({
+        spec: frozenSpec,
+        sourcePath: canonicalSourcePath,
+        selectedAgentNames: selectedBuildAgents,
+      });
+      if (!previewGeneration.isCurrent(generation)) return;
+      const incomplete = checks.find((check) => !check.ready);
+      if (incomplete) {
+        clearPreview();
+        scriptWorkspace.openImagesTab();
+        store.addToast(`${incomplete.imageRef || incomplete.agentName}：${incomplete.message}，请上传完整镜像项目目录`, 'error');
+        return;
+      }
+    }
+    if (!previewGeneration.isCurrent(generation)) return;
     pendingApply = { ...preview, generation, draftId: currentProjectId ? '' : store.activeDraftId };
     pendingMode = mode;
-    buildPlans = createProjectImageBuildPlans(frozenSpec, currentProject?.summary.sourcePath?.trim() || '');
-    const changedBuildAgents = changedBuildAgentNames(savedSpec, frozenSpec);
-    const hasChangedBuild = buildPlans.some((plan) => !plan.error && changedBuildAgents.has(plan.agentName));
-    buildChoice = hasChangedBuild ? 'build' : 'skip';
-    selectedBuildAgents = new Set(hasChangedBuild
-      ? buildPlans.filter((plan) => !plan.error).map((plan) => plan.agentName)
-      : []);
     forceNoCache = false;
     forcePull = false;
     buildResults = [];
@@ -475,14 +491,6 @@
       saving = false;
       running = false;
     }
-  }
-
-  function setBuildChoice(choice: 'build' | 'skip') {
-    buildChoice = choice;
-    selectedBuildAgents = new Set(choice === 'build'
-      ? buildPlans.filter((plan) => !plan.error).map((plan) => plan.agentName)
-      : []);
-    buildError = '';
   }
 
   function mergedBuildResults(next: ProjectImageBuildRunResult[]): ProjectImageBuildRunResult[] {
@@ -851,23 +859,10 @@
           <section class="build-section" aria-labelledby="build-heading">
             <div class="section-heading" id="build-heading"><span>本次镜像处理</span><span>{buildPlans.length} 个可构建智能体</span></div>
             {#if buildResults.length === 0}
-              <label class="build-mode" class:selected={buildChoice === 'build'}>
-                <input type="radio" name="build-choice" value="build" checked={buildChoice === 'build'} onchange={() => setBuildChoice('build')} />
-                <span><strong>构建 YAML 中配置的镜像</strong><small>先构建全部有效镜像，再应用当前配置。</small></span>
-              </label>
-              <label class="build-mode skip" class:selected={buildChoice === 'skip'}>
-                <input type="radio" name="build-choice" value="skip" checked={buildChoice === 'skip'} onchange={() => setBuildChoice('skip')} />
-                <span><strong>仅应用配置，不构建镜像</strong><small>可能使用已有镜像；本地缺失时后端会尝试从仓库拉取。</small></span>
-              </label>
-              {#if buildChoice === 'build'}
-                <div class="build-options"><strong>本次构建选项</strong><div>
-                  <label><input type="checkbox" bind:checked={forceNoCache} /> 不使用缓存</label>
-                  <label><input type="checkbox" bind:checked={forcePull} /> 拉取最新基础镜像</label>
-                </div></div>
-                {#each buildPlans.filter((plan) => !!plan.error) as plan}
-                  <div class="build-plan-error">{plan.agentName}：{plan.error}</div>
-                {/each}
-              {/if}
+              <div class="build-options"><strong>本次构建选项</strong><div>
+                <label><input type="checkbox" bind:checked={forceNoCache} /> 不使用缓存</label>
+                <label><input type="checkbox" bind:checked={forcePull} /> 拉取最新基础镜像</label>
+              </div></div>
               <p class="build-side-effect">构建成功的镜像会保留在 daemon，即使后续应用配置失败。</p>
             {:else}
               <div class="build-progress-list">
@@ -1168,8 +1163,7 @@
   .diff-footer > span { color: var(--text-muted); font-size: var(--font-size-xs); }
   .diff-footer > span::before { content: '●'; margin-right: 7px; color: var(--accent-green); font-size: 7px; }
   .diff-footer .btn { min-width: 72px; }
-  .build-section { margin-top:18px }.build-mode { display:flex;gap:9px;padding:11px 12px;border:1px solid var(--border-color);background:rgba(13,17,23,.48);cursor:pointer }
-  .build-mode.selected { border-color:rgba(63,185,80,.5);background:rgba(63,185,80,.06) }.build-mode>span { display:flex;flex-direction:column }.build-mode strong { color:var(--text-primary);font-size:var(--font-size-sm) }.build-mode small { margin-top:2px;color:var(--text-muted);font-size:var(--font-size-xs) }.build-mode:first-of-type { border-radius:7px 7px 0 0 }.build-mode.skip { border-radius:0 0 7px 7px }
+  .build-section { margin-top:18px }
   .build-plan-error { margin-top:7px;color:var(--accent-red);font-size:var(--font-size-xs) }
   .build-options { margin:10px 0;padding:9px 11px;border:1px solid var(--border-color);border-radius:6px;color:var(--text-muted);font-size:var(--font-size-xs) }.build-options>strong { color:var(--text-secondary);font-size:var(--font-size-xs) }.build-options div { display:flex;gap:16px;margin-top:7px }.build-options label { display:flex;align-items:center;gap:5px }.build-side-effect { margin:10px 0 0;padding-left:9px;border-left:2px solid var(--accent-yellow);color:var(--accent-yellow);font-size:var(--font-size-xs) }
   .build-progress-list { border:1px solid var(--border-color);border-radius:7px;overflow:hidden }.build-result { display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border-color);background:rgba(13,17,23,.48) }.build-result>span:nth-child(2) { display:flex;flex:1;flex-direction:column }.build-result strong { color:var(--text-primary);font-size:var(--font-size-sm) }.build-result small { color:var(--text-muted);font:var(--font-size-xs) var(--font-mono) }.build-result em { color:var(--text-muted);font-size:var(--font-size-xs);font-style:normal }.result-symbol { width:18px;color:var(--accent-yellow);text-align:center }.build-result.failed .result-symbol,.build-result.failed em { color:var(--accent-red) }

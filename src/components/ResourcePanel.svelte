@@ -2,8 +2,12 @@
   import { tick } from 'svelte';
   import type { ResourceTab, ScriptWorkspace } from '../lib/scripts/workspace.svelte';
   import { countScriptFiles } from '../lib/scripts/tree';
+  import { yamlToSpec } from '../lib/yaml';
+  import { buildFileSources } from '../lib/project-image-files';
+  import { deriveProjectResourceSummary } from '../lib/project-resources/model';
   import ScriptPanel from './scripts/ScriptPanel.svelte';
   import WorkspacePanel from './workspace/WorkspacePanel.svelte';
+  import ImageBuildPanel from './images/ImageBuildPanel.svelte';
   import SkillPanel from './skills/SkillPanel.svelte';
   import DataMountPanel from './mounts/DataMountPanel.svelte';
   import { workspaceFiles } from '../lib/workspace/store.svelte';
@@ -29,7 +33,7 @@
     onBindingResolved = () => {}, yaml = '', selectedAgent = '', onYamlChange = () => {}, onApply = async () => {},
   }: Props = $props();
   const instanceId = $props.id();
-  const resourceTabs: readonly ResourceTab[] = ['scripts', 'workspace', 'skills', 'mounts'];
+  const resourceTabs: readonly ResourceTab[] = ['scripts', 'workspace', 'images', 'skills', 'mounts'];
 
   let panelHeight = $state(240);
   let resizing = false;
@@ -41,6 +45,22 @@
 
   const scriptFileCount = $derived(workspace.tree ? countScriptFiles(workspace.tree) : 0);
   const workspaceFileCount = $derived(workspaceFiles.files.filter((f) => !f.dir).length);
+  const yamlResourceCounts = $derived.by(() => countYamlResources(yaml));
+
+  function countYamlResources(text: string): { images: number; skills: number; mounts: number } {
+    const parsed = yamlToSpec(text);
+    if (parsed.error) return { images: 0, skills: 0, mounts: 0 };
+    const imageAndSkillCounts = {
+      images: buildFileSources(parsed.spec).length,
+      skills: parsed.spec.agents.reduce((total, agent) => total + agent.skills.length, 0),
+    };
+    try {
+      const summary = deriveProjectResourceSummary(text);
+      return { ...imageAndSkillCounts, mounts: summary.resources.length + summary.mounts.length };
+    } catch {
+      return { ...imageAndSkillCounts, mounts: 0 };
+    }
+  }
 
   $effect(() => {
     const shouldResolve = workspace.panelOpen && (workspace.activeTab === 'skills' || workspace.activeTab === 'mounts');
@@ -174,8 +194,9 @@
       <span>Workspace 文件</span>
       <span class="count">{workspaceFileCount}</span>
     </button>
-    <button id={tabId('skills')} type="button" class="resource-tab" class:active={workspace.activeTab === 'skills'} role="tab" aria-selected={workspace.activeTab === 'skills'} aria-controls={panelId('skills')} tabindex={workspace.activeTab === 'skills' ? 0 : -1} onclick={() => selectTab('skills')} onkeydown={(event) => handleTabKeydown(event, 'skills')}><span>Skills</span></button>
-    <button id={tabId('mounts')} type="button" class="resource-tab" class:active={workspace.activeTab === 'mounts'} role="tab" aria-selected={workspace.activeTab === 'mounts'} aria-controls={panelId('mounts')} tabindex={workspace.activeTab === 'mounts' ? 0 : -1} onclick={() => selectTab('mounts')} onkeydown={(event) => handleTabKeydown(event, 'mounts')}><span>数据与挂载</span></button>
+    <button id={tabId('images')} type="button" class="resource-tab" class:active={workspace.activeTab === 'images'} role="tab" aria-selected={workspace.activeTab === 'images'} aria-controls={panelId('images')} tabindex={workspace.activeTab === 'images' ? 0 : -1} onclick={() => selectTab('images')} onkeydown={(event) => handleTabKeydown(event, 'images')}><span>镜像</span><span class="count">{yamlResourceCounts.images}</span></button>
+    <button id={tabId('skills')} type="button" class="resource-tab" class:active={workspace.activeTab === 'skills'} role="tab" aria-selected={workspace.activeTab === 'skills'} aria-controls={panelId('skills')} tabindex={workspace.activeTab === 'skills' ? 0 : -1} onclick={() => selectTab('skills')} onkeydown={(event) => handleTabKeydown(event, 'skills')}><span>Skills</span><span class="count">{yamlResourceCounts.skills}</span></button>
+    <button id={tabId('mounts')} type="button" class="resource-tab" class:active={workspace.activeTab === 'mounts'} role="tab" aria-selected={workspace.activeTab === 'mounts'} aria-controls={panelId('mounts')} tabindex={workspace.activeTab === 'mounts' ? 0 : -1} onclick={() => selectTab('mounts')} onkeydown={(event) => handleTabKeydown(event, 'mounts')}><span>数据与挂载</span><span class="count">{yamlResourceCounts.mounts}</span></button>
     </div>
     {#if !workspace.serviceAvailable && workspace.activeTab === 'scripts'}
       <span class="header-status" title="脚本服务不可用">●</span>
@@ -188,6 +209,8 @@
         <ScriptPanel {workspace} />
       {:else if workspace.activeTab === 'workspace'}
         <WorkspacePanel />
+      {:else if workspace.activeTab === 'images'}
+        <ImageBuildPanel {yaml} {projectIdentity} {bindingProjectKey} {bindingSourcePath} {bindingLegacyKey} {onBindingResolved} />
       {:else if workspace.activeTab === 'skills'}
         {#if bindingLoading}<div class="resource-placeholder" role="status">正在解析项目存储…</div>
         {:else if bindingError}<div class="resource-placeholder" role="alert">项目存储不可用：{bindingError}<button type="button" onclick={resolveSkillBinding}>重试</button></div>
@@ -213,7 +236,8 @@
     position: relative;
   }
   .resource-panel:not(.open) {
-    height: 32px;
+    min-height: 32px;
+    height: auto;
   }
   .resource-panel.open {
     min-height: 120px;
@@ -234,56 +258,75 @@
   }
   .resource-tabs {
     display: flex;
-    align-items: center;
-    gap: 4px;
+    align-items: stretch;
+    gap: 2px;
     background: var(--bg-tertiary);
     border-bottom: 1px solid var(--border-color);
-    padding: 0 8px;
-    height: 32px;
+    padding: 0 4px;
+    min-height: 32px;
+    height: auto;
     flex-shrink: 0;
   }
   .resource-toggle {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 8px;
-    border: none;
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: var(--font-size-md);
-    font-family: var(--font-sans);
-    cursor: pointer;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .resource-toggle:hover { color: var(--text-primary); }
-  .resource-toggle .chevron { font-size: 10px; }
-  .resource-toggle .title { font-weight: 600; }
-  .resource-tablist { display: flex; align-items: center; gap: 4px; height: 100%; min-width: 0; flex: 1; overflow-x: auto; }
-  .resource-tab {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
+    gap: 3px;
+    padding: 4px;
     border: none;
     background: transparent;
     color: var(--text-secondary);
     font-size: var(--font-size-sm);
     font-family: var(--font-sans);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0;
+    flex: 0 0 auto;
+    align-self: stretch;
+  }
+  .resource-toggle:hover { color: var(--text-primary); }
+  .resource-toggle .chevron { font-size: 10px; }
+  .resource-toggle .title { font-weight: 600; }
+  .resource-tablist {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    min-height: 32px;
+    height: auto;
+    min-width: 0;
+    flex: 1;
+    white-space: normal;
+    align-items: stretch;
+  }
+  .resource-tab {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 3px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: max(10px, var(--font-size-xs));
+    font-family: var(--font-sans);
     border-bottom: 2px solid transparent;
     margin-bottom: -1px;
     cursor: pointer;
+    min-width: 0;
+    justify-content: center;
+    white-space: normal;
+    line-height: 1.1;
+    align-self: stretch;
   }
+  .resource-tab > span:first-child { min-width: 0; overflow-wrap: anywhere; }
   .resource-tab:hover { color: var(--text-primary); }
   .resource-tab.active { color: var(--text-primary); border-bottom-color: var(--accent-blue); }
   .resource-tab .count {
     background: var(--bg-secondary);
     color: var(--text-secondary);
     border: 1px solid var(--border-color);
-    padding: 0 6px;
+    padding: 0 3px;
     border-radius: 10px;
     font-size: 10px;
     font-family: var(--font-mono);
+    flex: 0 0 auto;
   }
   .resource-tab.active .count {
     background: var(--bg-primary);
@@ -294,6 +337,7 @@
     color: var(--accent-red);
     font-size: var(--font-size-xs);
     margin-left: auto;
+    align-self: center;
   }
   .panel-body {
     position: relative;

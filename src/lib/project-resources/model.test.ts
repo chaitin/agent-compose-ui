@@ -1,7 +1,28 @@
 import { describe, expect, test } from 'vitest';
-import { deriveProjectResources } from './model';
+import { deriveProjectResourceSummary, deriveProjectResources } from './model';
 
 describe('deriveProjectResources', () => {
+  test('summarizes declared resources and all validated volume and bind mounts', () => {
+    expect(deriveProjectResourceSummary(`
+volumes:
+  data: {}
+  cache: {}
+agents:
+  worker:
+    volumes:
+      - { type: volume, source: data, target: /data }
+      - { type: volume, source: missing, target: /missing }
+      - { type: bind, source: /srv/shared, target: /shared }
+`)).toMatchObject({
+      resources: [{ key: 'data' }, { key: 'cache' }],
+      mounts: [
+        { type: 'volume', source: 'data', target: '/data' },
+        { type: 'volume', source: 'missing', target: '/missing' },
+        { type: 'bind', source: '/srv/shared', target: '/shared' },
+      ],
+    });
+  });
+
   test('uses explicit system names and defaults empty or absent names to the declaration key', () => {
     const resources = deriveProjectResources(`
 volumes:

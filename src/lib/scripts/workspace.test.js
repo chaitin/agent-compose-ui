@@ -27,6 +27,18 @@ test('shared workspace is initialized after the class declaration', () => {
   );
 });
 
+test('openImagesTab selects images and expands the resource panel', () => {
+  const { api } = makeApi();
+  const workspace = createScriptWorkspace(api);
+  workspace.activeTab = 'scripts';
+  workspace.panelOpen = false;
+
+  workspace.openImagesTab();
+
+  expect(workspace.activeTab).toBe('images');
+  expect(workspace.panelOpen).toBe(true);
+});
+
 test('edits stay in memory until explicitly saved', async () => {
   const { api, writes } = makeApi();
   const workspace = createScriptWorkspace(api);
