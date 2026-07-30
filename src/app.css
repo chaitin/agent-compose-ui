@@ -96,9 +96,7 @@ dialog.resource-modal-card {
   inset: auto;
   box-sizing: border-box;
   width: min(620px, 100%);
-  max-height: 100%;
   margin: 0;
-  overflow: auto;
   padding: 18px;
   border: 1px solid var(--accent-blue);
   border-radius: 8px;
@@ -106,6 +104,33 @@ dialog.resource-modal-card {
   background: #1b2430;
   box-shadow: 0 16px 42px rgba(0, 0, 0, .65), 0 0 0 1px color-mix(in srgb, var(--accent-blue) 12%, transparent);
 }
+.resource-modal-card.command-modal,
+dialog.resource-modal-card.command-modal {
+  display: grid;
+  gap: 10px;
+  width: min(760px, 100%);
+  padding: 13px 16px 12px;
+  border-top-width: 3px;
+  overflow: visible;
+}
+.command-modal h2,
+.command-modal h3,
+.command-modal p { margin: 0; }
+.command-modal h2,
+.command-modal h3 { font-size: var(--font-size-lg); line-height: 1.25; }
+.command-modal-form { display: grid; gap: 10px; }
+.command-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.command-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: center; gap: 8px 12px; min-width: 0; }
+.command-field { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--text-secondary); font-size: var(--font-size-sm); white-space: nowrap; }
+.command-field > input:not([type='checkbox']),
+.command-field > select { flex: 1; min-width: 0; }
+.command-status { min-width: 0; color: var(--text-muted); font-size: var(--font-size-sm); overflow-wrap: anywhere; }
+.command-status[role='alert'] { color: var(--accent-red); }
+.command-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+.command-footer .command-status { margin-right: auto; }
+.command-presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+.command-presets fieldset { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; margin: 0; padding: 7px; border: 1px solid var(--border-color); }
+.command-presets legend { padding: 0 4px; color: var(--text-secondary); font-size: var(--font-size-xs); }
 
 input, select, textarea {
   font-family: inherit;

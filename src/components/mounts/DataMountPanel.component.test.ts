@@ -66,7 +66,9 @@ test('styles mount modal actions by intent', async () => {
   await fireEvent.click(screen.getByRole('button', { name: '创建数据卷' }));
   const dialog = screen.getByRole('dialog', { name: '创建数据卷' });
   expect(dialog).toHaveClass('resource-modal-card');
+  expect(dialog).toHaveClass('command-modal');
   expect(dialog.parentElement).toHaveClass('resource-modal-backdrop');
+  expect(screen.getByLabelText('逻辑名称').closest('.command-fields')).toBe(screen.getByLabelText('创建卷挂载目标').closest('.command-fields'));
   expect(screen.getByRole('button', { name: '取消' })).toHaveClass('ui-button', 'ghost');
   expect(screen.getByRole('button', { name: '创建并挂载' })).toHaveClass('ui-button', 'primary');
 });
@@ -76,7 +78,9 @@ test('uses the resource-panel modal boundary for mounting resources', async () =
   await fireEvent.click(screen.getByRole('button', { name: '挂载资源' }));
   const dialog = screen.getByRole('dialog', { name: '挂载资源' });
   expect(dialog).toHaveClass('resource-modal-card');
+  expect(dialog).toHaveClass('command-modal');
   expect(dialog.parentElement).toHaveClass('resource-modal-backdrop');
+  expect(screen.getByLabelText('现有卷').closest('.command-fields')).toBe(screen.getByLabelText('现有卷挂载目标').closest('.command-fields'));
 });
 
 test('rejects a duplicate target across bind and volume mounts without a callback', async () => {

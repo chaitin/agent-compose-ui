@@ -41,10 +41,10 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="resource-modal-backdrop modal-backdrop" onclick={onCancel} role="presentation">
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="resource-modal-card modal-card" role="dialog" aria-modal="true" onclick={(e) => e.stopPropagation()} onkeydown={onKeydown} tabindex="-1">
+  <div class="resource-modal-card command-modal modal-card" role="dialog" aria-modal="true" onclick={(e) => e.stopPropagation()} onkeydown={onKeydown} tabindex="-1">
     <div class="modal-title">{mode === 'file' ? '新建脚本文件' : '新建文件夹'}</div>
-
-    <label class="field">
+    <div class="command-fields">
+    <label class="command-field field">
       <span class="field-label">{mode === 'file' ? '文件名' : '目录名'}</span>
       <input
         type="text"
@@ -54,7 +54,7 @@
       />
     </label>
 
-    <label class="field">
+    <label class="command-field field">
       <span class="field-label">所属目录</span>
       <select bind:value={selectedDir}>
         <option value="">（根目录）</option>
@@ -63,13 +63,10 @@
         {/each}
       </select>
     </label>
+    </div>
 
-    <div class="preview">完整路径：<code>{fullPath || '—'}</code></div>
-    {#if error}
-      <div class="field-error">{error}</div>
-    {/if}
-
-    <div class="modal-actions">
+    <div class="command-footer modal-actions">
+      <div class:field-error={!!error} class="command-status preview">{error || '完整路径：'}{#if !error}<code>{fullPath || '—'}</code>{/if}</div>
       <button class="btn-secondary" onclick={onCancel}>取消</button>
       <button class="btn-primary" disabled={!canSubmit} onclick={submit}>创建</button>
     </div>
@@ -81,7 +78,7 @@
     z-index: 1000;
   }
   .modal-card {
-    width: 360px;
+    width: min(660px, 100%);
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -93,8 +90,7 @@
   }
   .field {
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    gap: 7px;
   }
   .field-label {
     font-size: var(--font-size-sm);
@@ -129,7 +125,6 @@
     display: flex;
     justify-content: flex-end;
     gap: 8px;
-    margin-top: 4px;
   }
   .btn-primary, .btn-secondary {
     padding: 6px 14px;
