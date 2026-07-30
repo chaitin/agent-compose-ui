@@ -58,12 +58,12 @@ button.ui-button {
   background: var(--bg-tertiary);
   font-size: var(--font-size-sm);
 }
-button.ui-button:hover:not(:disabled) { border-color: var(--accent-blue); color: var(--accent-blue); }
+button.ui-button:hover:not(:disabled) { border-color: var(--accent-blue); color: var(--accent-blue-bright); }
 button.ui-button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 1px; }
 button.ui-button:disabled { cursor: not-allowed; opacity: .5; }
 button.ui-button.primary {
   border-color: color-mix(in srgb, var(--accent-blue) 55%, var(--border-color));
-  color: var(--accent-blue);
+  color: var(--accent-blue-bright);
   background: color-mix(in srgb, var(--accent-blue) 10%, var(--bg-secondary));
   font-weight: 600;
 }
@@ -89,7 +89,7 @@ button.ui-button.danger:hover:not(:disabled) { border-color: var(--accent-red); 
   min-height: 0;
   padding: 18px;
   overflow: auto;
-  background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
+  background: rgba(1, 4, 9, .72);
 }
 .resource-modal-card,
 dialog.resource-modal-card {
@@ -103,7 +103,7 @@ dialog.resource-modal-card {
   border-radius: 6px;
   color: var(--text-primary);
   background: var(--bg-secondary);
-  box-shadow: 0 18px 54px color-mix(in srgb, var(--bg-primary) 72%, transparent);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, .72);
 }
 .resource-modal-card.command-modal,
 dialog.resource-modal-card.command-modal {
@@ -122,7 +122,7 @@ dialog.resource-modal-card.command-modal {
 .command-modal-form { display: grid; gap: 10px; }
 .command-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; margin: -13px -16px 2px; padding: 10px 14px; border-bottom: 1px solid var(--border-color); border-radius: 5px 5px 0 0; background: var(--bg-primary); }
 .command-title { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
-.command-context { color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: .08em; white-space: nowrap; }
+.command-context { color: var(--text-secondary); font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: .08em; white-space: nowrap; }
 .command-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: center; gap: 8px 12px; min-width: 0; }
 .command-field { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--text-secondary); font-size: var(--font-size-sm); white-space: nowrap; }
 .command-field > input:not([type='checkbox']),
