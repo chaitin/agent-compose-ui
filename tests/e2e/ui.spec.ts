@@ -206,8 +206,27 @@ test('keeps projects visible when the capability gateway is unavailable', async 
 test('loads webhook events newest first with offset pagination', async ({ page }) => {
   await login(page);
   const offsets: number[] = [];
+  let topicsRequested = false;
+  await page.route('**/api/events/topics?*', async (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get('source')).toBe('webhook');
+    topicsRequested = true;
+    await route.fulfill({
+      json: {
+        items: [{ topic: 'webhook.pagination', event_count: 3, latest_event_at: '2026-07-30T00:00:03Z' }],
+        total: 1,
+      },
+    });
+  });
   await page.route('**/api/events?*', async (route) => {
-    const offset = Number(new URL(route.request().url()).searchParams.get('offset') || 0);
+    const url = new URL(route.request().url());
+    if (url.pathname !== '/api/events') {
+      await route.continue();
+      return;
+    }
+    expect(url.searchParams.get('source')).toBe('webhook');
+    expect(url.searchParams.get('view')).toBe('summary');
+    const offset = Number(url.searchParams.get('offset') || 0);
     offsets.push(offset);
     const sequences = offset === 0 ? [3, 2] : [1];
     await route.fulfill({
@@ -235,6 +254,38 @@ test('loads webhook events newest first with offset pagination', async ({ page }
   await expect(rows).toHaveCount(3);
   await expect(rows.nth(2)).toContainText('#1');
   expect(offsets).toEqual([0, 2]);
+  expect(topicsRequested).toBe(true);
+});
+
+test('loads webhook event detail through one trace request', async ({ page }) => {
+  await login(page);
+  const eventRequests: string[] = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith('/api/events/event-trace')) eventRequests.push(path);
+  });
+  await page.route('**/api/events/event-trace/trace', (route) =>
+    route.fulfill({
+      json: {
+        event: {
+          event_id: 'event-trace',
+          sequence: 1,
+          topic: 'webhook.trace',
+          source: 'webhook',
+          correlation_id: 'corr-trace',
+          dispatch_status: 'published_to_bus',
+          created_at: '2026-07-30T00:00:01Z',
+        },
+        runs: [],
+        sandboxes: [],
+        descendants_truncated: false,
+      },
+    }),
+  );
+
+  await navigateInApp(page, '/events/event-trace');
+  await expect(page.getByRole('heading', { name: 'Webhook 事件详情' })).toBeVisible();
+  expect(eventRequests).toEqual(['/api/events/event-trace/trace']);
 });
 
 async function assertTabRailHasNoScrollbar(page: Page): Promise<void> {
@@ -1186,13 +1237,13 @@ test('opens the live webhook event from the authenticated event center', async (
   await page.getByLabel('密码').fill(e2ePassword);
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/events/${retainedLiveWebhookEventId}$`));
-  await expect(page.getByRole('heading', { name: '事件详情' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Webhook 事件详情' })).toBeVisible();
 
   await navigateInApp(page, '/events?topic=webhook.ui-regression.acceptance');
   await expect(page.getByRole('button', { name: /webhook\.ui-regression\.acceptance/ })).toBeVisible();
   await expect(page.getByTitle(retainedLiveWebhookEventId)).toBeVisible();
   await page.getByTitle(retainedLiveWebhookEventId).click();
-  await expect(page.getByRole('heading', { name: '事件详情' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Webhook 事件详情' })).toBeVisible();
   await expect(page.getByText(/没有产生或绑定对话执行环境/)).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '自动化执行' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '事件时间线' })).toBeVisible();
@@ -1202,7 +1253,7 @@ test('opens the live webhook event from the authenticated event center', async (
   await expect(page.getByText('no_subscriber', { exact: true })).toBeVisible();
   await page.reload();
   await expect(page).toHaveURL(new RegExp(`/events/${retainedLiveWebhookEventId}$`));
-  await expect(page.getByRole('heading', { name: '事件详情' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Webhook 事件详情' })).toBeVisible();
   await expect(page.getByRole('button', { name: '复制链接' })).toBeVisible();
 });
 
@@ -1322,7 +1373,7 @@ test('dispatches a webhook event to a real automation trigger', async ({ page })
     .toMatch(/succeeded|success/i);
 
   await navigateInApp(page, `/events/${accepted.event_id}`);
-  await expect(page.getByRole('heading', { name: '事件详情' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Webhook 事件详情' })).toBeVisible();
   await expect(page.getByText(/没有产生或绑定对话执行环境/)).toHaveCount(0);
   await expect(page.getByText('Webhook Payload')).toHaveCount(0);
   await expect(page.getByText(/WEBHOOK_AUTOMATION_TRIGGER_OK/)).toHaveCount(0);
@@ -1379,7 +1430,7 @@ test('dispatches a webhook into a linked agent conversation', async ({ page }) =
     .toBeGreaterThan(0);
 
   await navigateInApp(page, `/events/${accepted.event_id}`);
-  await expect(page.getByRole('heading', { name: '事件详情' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Webhook 事件详情' })).toBeVisible();
   const workbench = page.locator('[data-sandbox-workbench]');
   await expect(workbench.getByText('WEBHOOK_AGENT_CONVERSATION_OK', { exact: true })).toBeVisible({
     timeout: 30_000,
@@ -3067,7 +3118,7 @@ test('persists system, OctoBus, MCP, Skill, and editor configuration', async ({ 
   const acceptedEvent = page.getByRole('table').getByTitle(acceptedWebhook.event_id);
   await expect(acceptedEvent).toBeVisible();
   await acceptedEvent.click();
-  await expect(page.getByRole('heading', { name: '事件详情' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Webhook 事件详情' })).toBeVisible();
   await expect(page.getByText('webhook.ui-regression.acceptance', { exact: true }).last()).toBeVisible();
   await expect(page.getByText(/WEBHOOK_EVENT_DETAIL_OK/)).toHaveCount(0);
   await expect(page.getByText('Webhook Payload')).toHaveCount(0);

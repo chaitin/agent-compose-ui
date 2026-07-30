@@ -10,12 +10,7 @@
   import { t } from '$lib/i18n.svelte';
   import { navigate, router } from '$lib/router.svelte';
   import { listWebhookSources, type WebhookSource } from '../api/config';
-  import {
-    listConfiguredEventTopics,
-    listTopicEvents,
-    type ConfiguredEventTopic,
-    type TopicEvent,
-  } from '../api/loaders';
+  import { listEventTopics, listTopicEvents, type EventTopic, type TopicEvent } from '../api/loaders';
   import { dispatchStatus, eventSourceLabel } from '../model/event-status';
 
   const PAGE_SIZE = 100;
@@ -24,7 +19,7 @@
   let topic = $state(initial.get('topic') ?? '');
   let correlationId = $state(initial.get('correlationId') ?? '');
   let items = $state<TopicEvent[]>([]);
-  let configuredTopics = $state<ConfiguredEventTopic[]>([]);
+  let eventTopics = $state<EventTopic[]>([]);
   let webhookSources = $state<WebhookSource[]>([]);
   let topicsLoading = $state(true);
   let loading = $state(false);
@@ -33,19 +28,14 @@
   let total = $state(0);
   let hasMore = $state(false);
 
-  onMount(async () => {
-    await loadTopics();
-    if (topic || correlationId) await load();
-    else if (configuredTopics.length) {
-      topic = [...configuredTopics].sort((left, right) => Number(right.enabled) - Number(left.enabled))[0].topic;
-      await load();
-    }
+  onMount(() => {
+    void Promise.all([loadTopics(), load()]);
   });
 
   async function loadTopics(): Promise<void> {
     topicsLoading = true;
     try {
-      [configuredTopics, webhookSources] = await Promise.all([listConfiguredEventTopics(), listWebhookSources()]);
+      [eventTopics, webhookSources] = await Promise.all([listEventTopics(), listWebhookSources()]);
     } catch (cause) {
       error = cause instanceof Error ? cause.message : t('事件主题配置加载失败');
     } finally {
@@ -60,10 +50,6 @@
   }
 
   async function load(append = false): Promise<void> {
-    if (!topic.trim() && !correlationId.trim()) {
-      error = t('请输入完整事件主题或关联 ID');
-      return;
-    }
     loading = true;
     error = '';
     try {
@@ -97,18 +83,18 @@
   }
 </script>
 
-<CollectionPage title="事件" description="查看事件投递与关联运行" compactHeader>
+<CollectionPage title="Webhook 事件" description="查看 Webhook 投递与关联运行" compactHeader>
   {#snippet toolbar()}
     <div class="space-y-2">
       <select
-        value={configuredTopics.some((item) => item.topic === topic) && !correlationId ? topic : ''}
+        value={eventTopics.some((item) => item.topic === topic) && !correlationId ? topic : ''}
         class="h-8 w-full rounded-md border border-input bg-background px-2 text-sm lg:hidden"
-        aria-label={t('已配置事件主题')}
-        onchange={(event) => event.currentTarget.value && selectTopic(event.currentTarget.value)}
+        aria-label={t('已接收事件主题')}
+        onchange={(event) => selectTopic(event.currentTarget.value)}
       >
-        <option value="">{t(topicsLoading ? '正在加载事件主题…' : '选择事件主题')}</option>
-        {#each configuredTopics as item (item.topic)}
-          <option value={item.topic}>{item.enabled ? '●' : '○'} {item.topic}</option>
+        <option value="">{t(topicsLoading ? '正在加载事件主题…' : '全部 Webhook 主题')}</option>
+        {#each eventTopics as item (item.topic)}
+          <option value={item.topic}>{item.topic} ({item.eventCount})</option>
         {/each}
       </select>
 
@@ -140,10 +126,10 @@
       class="hidden min-h-0 space-y-4 overflow-y-auto pr-1 lg:block"
     >
       <section class="rounded-lg border border-border bg-card p-3">
-        <h2 class="px-1 text-sm font-medium">{t('已配置事件主题')}</h2>
-        <p class="mt-1 px-1 text-xs text-muted-foreground">{t('来自自动化的事件触发条件')}</p>
+        <h2 class="px-1 text-sm font-medium">{t('已接收事件主题')}</h2>
+        <p class="mt-1 px-1 text-xs text-muted-foreground">{t('来自历史 Webhook 事件')}</p>
         <div class="mt-3 space-y-1">
-          {#each configuredTopics as item (item.topic)}
+          {#each eventTopics as item (item.topic)}
             <button
               class="w-full rounded-md border px-3 py-2 text-left transition-colors hover:bg-accent {topic ===
                 item.topic && !correlationId
@@ -153,15 +139,13 @@
             >
               <div class="flex items-center justify-between gap-2">
                 <span class="min-w-0 break-all font-mono text-xs">{item.topic}</span>
-                <StatusBadge status={item.enabled ? 'enabled' : 'disabled'} label={t(item.enabled ? '启用' : '停用')} />
+                <span class="shrink-0 text-[11px] text-muted-foreground">{item.eventCount}</span>
               </div>
-              <div class="mt-1 truncate text-[11px] text-muted-foreground" title={item.automationNames.join('、')}>
-                {item.automationNames.join('、')}
-              </div>
+              <Timestamp value={item.latestEventAt} class="mt-1 text-[11px] text-muted-foreground" />
             </button>
           {:else}
             <p class="px-1 py-3 text-xs text-muted-foreground">
-              {t(topicsLoading ? '正在加载事件主题…' : '没有配置事件触发条件')}
+              {t(topicsLoading ? '正在加载事件主题…' : '还没有接收到 Webhook 事件')}
             </p>
           {/each}
         </div>
@@ -213,7 +197,7 @@
           </button>
         {:else}
           <p class="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-            {t(loading ? '正在查询事件…' : topic || correlationId ? '没有匹配事件' : '输入查询条件查看事件')}
+            {t(loading ? '正在查询事件…' : '没有匹配的 Webhook 事件')}
           </p>
         {/each}
       </div>
@@ -260,7 +244,7 @@
             {:else}
               <tr>
                 <td colspan="5" class="p-10 text-center text-muted-foreground">
-                  {t(loading ? '正在查询事件…' : topic || correlationId ? '没有匹配事件' : '输入查询条件查看事件')}
+                  {t(loading ? '正在查询事件…' : '没有匹配的 Webhook 事件')}
                 </td>
               </tr>
             {/each}

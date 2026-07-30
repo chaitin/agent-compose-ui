@@ -7,6 +7,10 @@
   import type { EventRunTrace } from '../../model/event-detail';
 
   let { runTraces, layout = 'stack' }: { runTraces: EventRunTrace[]; layout?: 'stack' | 'grid' } = $props();
+
+  function deliveryKey(trace: EventRunTrace): string {
+    return [trace.delivery.eventId, trace.delivery.schedulerId, trace.delivery.triggerId].join('\u0000');
+  }
 </script>
 
 <section class="rounded-lg border border-border bg-card p-4">
@@ -15,7 +19,7 @@
     <span class="text-xs text-muted-foreground">{runTraces.length} {t('条')}</span>
   </div>
   <div class={layout === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-2'}>
-    {#each runTraces as trace (trace.delivery.runId)}
+    {#each runTraces as trace (deliveryKey(trace))}
       {@const status = deliveryStatus(trace.delivery.status)}
       <details
         class="group min-w-0 rounded-md border border-border bg-background"
@@ -23,7 +27,7 @@
       >
         <summary class="flex cursor-pointer list-none items-start justify-between gap-3 p-3 marker:hidden">
           <div class="min-w-0">
-            <h3 class="truncate text-sm font-medium">{trace.task?.name || t('自动化任务')}</h3>
+            <h3 class="truncate text-sm font-medium">{trace.scheduler?.name || t('自动化任务')}</h3>
             <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
               <span>{trace.delivery.triggerId || t('无触发条件')}</span>
               <span>{trace.run ? `${trace.run.durationMs} ms` : '—'}</span>

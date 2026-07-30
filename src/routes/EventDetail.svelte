@@ -10,29 +10,17 @@
   import StatusBadge from '$lib/components/status-badge.svelte';
   import Timestamp from '$lib/components/timestamp.svelte';
   import { router } from '$lib/router.svelte';
-  import {
-    getAutomationRunById,
-    getAutomationTask,
-    getTopicEvent,
-    listAutomationEvents,
-    listTopicEventRuns,
-    listTopicEventSessions,
-    type TopicEvent,
-    type TopicEventRun,
-    type TopicEventSession,
-  } from '../api/loaders';
-  import { getSandboxContext, type SandboxContextDetail } from '../api/sessions';
+  import { getTopicEventTrace, type TopicEvent, type TopicEventTraceSandbox } from '../api/loaders';
   import type { EventRunTrace as RunTrace } from '../model/event-detail';
   import { dispatchStatus } from '../model/event-status';
   import { compactIdentifier } from '../model/identifiers';
   import { t } from '$lib/i18n.svelte';
 
-  type LinkedSandbox = { link: TopicEventSession; sandbox: SandboxContextDetail | null };
-
   const eventId = $derived(decodeURIComponent(router.path.split('/')[2] || ''));
   let event = $state<TopicEvent | null>(null);
   let runTraces = $state<RunTrace[]>([]);
-  let linkedSandboxes = $state<LinkedSandbox[]>([]);
+  let linkedSandboxes = $state<TopicEventTraceSandbox[]>([]);
+  let traceTruncated = $state(false);
   let selectedSandboxId = $state('');
   let error = $state('');
   let loading = $state(true);
@@ -50,25 +38,15 @@
   async function load(targetEventId = eventId): Promise<void> {
     loading = true;
     error = '';
+    traceTruncated = false;
     try {
-      const [nextEvent, deliveries, links] = await Promise.all([
-        getTopicEvent(targetEventId),
-        listTopicEventRuns(targetEventId),
-        listTopicEventSessions(targetEventId),
-      ]);
-      const nextRunTraces = await Promise.all(deliveries.map(loadRunTrace));
-      const combinedLinks = uniqueLinks([...links, ...inferLinks(targetEventId, nextRunTraces)]);
-      const nextSandboxes = await Promise.all(
-        combinedLinks.map(async (link) => ({
-          link,
-          sandbox: link.sessionId ? await getSandboxContext(link.sessionId).catch(() => null) : null,
-        })),
-      );
-      event = nextEvent;
-      runTraces = nextRunTraces;
-      linkedSandboxes = nextSandboxes.sort((left, right) => sandboxTime(right) - sandboxTime(left));
-      if (!linkedSandboxes.some((item) => item.link.sessionId === selectedSandboxId))
-        selectedSandboxId = linkedSandboxes[0]?.link.sessionId ?? '';
+      const trace = await getTopicEventTrace(targetEventId);
+      event = trace.event;
+      runTraces = trace.runs;
+      linkedSandboxes = uniqueSandboxes(trace.sandboxes);
+      traceTruncated = trace.descendantsTruncated;
+      if (!linkedSandboxes.some((item) => item.link.sandboxId === selectedSandboxId))
+        selectedSandboxId = linkedSandboxes[0]?.link.sandboxId ?? '';
     } catch (cause) {
       error = errorMessage(cause);
     } finally {
@@ -76,40 +54,20 @@
     }
   }
 
-  async function loadRunTrace(delivery: TopicEventRun): Promise<RunTrace> {
-    if (!delivery.runId) return { delivery, run: null, task: null, events: [] };
-    const run = await getAutomationRunById(delivery.runId).catch(() => null);
-    if (!run) return { delivery, run: null, task: null, events: [] };
-    const [task, events] = await Promise.all([
-      getAutomationTask(run.loaderId).catch(() => null),
-      listAutomationEvents(run.loaderId, 200).catch(() => []),
-    ]);
-    return { delivery, run, task, events: events.filter((item) => item.runId === delivery.runId) };
-  }
-
-  function uniqueLinks(links: TopicEventSession[]): TopicEventSession[] {
-    return [...new Map(links.filter((item) => item.sessionId).map((item) => [item.sessionId, item])).values()];
-  }
-
-  function inferLinks(targetEventId: string, traces: RunTrace[]): TopicEventSession[] {
-    return traces.flatMap((trace) =>
-      trace.events
-        .filter((item) => item.linkedSessionId && (!item.topicEventId || item.topicEventId === targetEventId))
-        .map((item) => ({
-          sessionId: item.linkedSessionId,
-          relation: item.type || 'scheduler_event',
-          loaderId: item.loaderId,
-          runId: item.runId,
-          triggerId: item.triggerId,
-          loaderEventId: item.id,
-          eventId: targetEventId,
-          createdAt: item.createdAt,
-        })),
-    );
-  }
-
-  function sandboxTime(item: LinkedSandbox): number {
+  function sandboxTime(item: TopicEventTraceSandbox): number {
     return Date.parse(item.sandbox?.updatedAt || item.sandbox?.createdAt || item.link.createdAt) || 0;
+  }
+
+  function uniqueSandboxes(items: TopicEventTraceSandbox[]): TopicEventTraceSandbox[] {
+    const seen: string[] = [];
+    return [...items]
+      .sort((left, right) => sandboxTime(right) - sandboxTime(left))
+      .filter((item) => {
+        const id = item.link.sandboxId;
+        if (!id || seen.includes(id)) return false;
+        seen.push(id);
+        return true;
+      });
   }
 
   function timeline(): Array<{ id: string; createdAt: string; type: string; message: string }> {
@@ -137,7 +95,7 @@
 </script>
 
 <div data-page-layout="workbench" class="flex min-h-full flex-col lg:h-full lg:min-h-0 lg:overflow-hidden">
-  <PageHeader title="事件详情" compact>
+  <PageHeader title="Webhook 事件详情" compact>
     {#snippet meta()}
       {#if event && eventStatus}
         <span class="max-w-72 truncate font-mono text-xs text-muted-foreground" title={event.topic}>{event.topic}</span>
@@ -158,6 +116,9 @@
 
   <PageContent compact class="flex min-h-0 flex-1 flex-col space-y-2 lg:overflow-hidden">
     {#if error}<div data-page-error class="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>{/if}
+    {#if traceTruncated}<div class="rounded-md bg-warning/10 p-3 text-sm text-warning-foreground">
+        {t('事件因果链过长，当前只显示前 1000 个关联事件的追踪结果')}
+      </div>{/if}
     {#if loading && !event}<p class="text-sm text-muted-foreground">{t('正在加载事件详情…')}</p>
     {:else if event}
       {#if linkedSandboxes.length}
@@ -166,14 +127,14 @@
               data-sandbox-selector="desktop"
               class="hidden shrink-0 gap-2 overflow-x-auto pb-1 sm:flex"
             >
-              {#each linkedSandboxes as item (item.link.sessionId)}<Button
+              {#each linkedSandboxes as item (item.link.sandboxId)}<Button
                   size="sm"
-                  variant={item.link.sessionId === selectedSandboxId ? 'default' : 'outline'}
-                  aria-pressed={item.link.sessionId === selectedSandboxId}
-                  data-sandbox-id={item.link.sessionId}
-                  onclick={() => (selectedSandboxId = item.link.sessionId)}
+                  variant={item.link.sandboxId === selectedSandboxId ? 'default' : 'outline'}
+                  aria-pressed={item.link.sandboxId === selectedSandboxId}
+                  data-sandbox-id={item.link.sandboxId}
+                  onclick={() => (selectedSandboxId = item.link.sandboxId)}
                   >{item.sandbox?.agentName || item.sandbox?.title || t('执行环境')} · {compactIdentifier(
-                    item.link.sessionId,
+                    item.link.sandboxId,
                   )}</Button
                 >{/each}
             </div>
@@ -183,9 +144,9 @@
               bind:value={selectedSandboxId}
               class="h-9 w-full shrink-0 rounded-md border border-input bg-background px-3 text-sm sm:hidden"
             >
-              {#each linkedSandboxes as item (item.link.sessionId)}<option value={item.link.sessionId}
+              {#each linkedSandboxes as item (item.link.sandboxId)}<option value={item.link.sandboxId}
                   >{item.sandbox?.agentName || item.sandbox?.title || t('执行环境')} · {compactIdentifier(
-                    item.link.sessionId,
+                    item.link.sandboxId,
                   )}</option
                 >{/each}
             </select>{/if}

@@ -166,7 +166,7 @@ export type TopicEvent = {
 
 export type TopicEventRun = {
   eventId: string;
-  loaderId: string;
+  schedulerId: string;
   runId: string;
   triggerId: string;
   status: string;
@@ -176,45 +176,51 @@ export type TopicEventRun = {
 };
 
 export type TopicEventSession = {
-  sessionId: string;
+  sandboxId: string;
   relation: string;
-  loaderId: string;
+  schedulerId: string;
   runId: string;
   triggerId: string;
-  loaderEventId: string;
+  schedulerEventId: string;
   eventId: string;
   createdAt: string;
 };
 
-export type ConfiguredEventTopic = {
+export type EventTopic = {
   topic: string;
-  enabled: boolean;
-  automationNames: string[];
+  eventCount: number;
+  latestEventAt: string;
+};
+
+export type TopicEventTraceRun = {
+  delivery: TopicEventRun;
+  scheduler: { id: string; projectId: string; agentName: string; name: string } | null;
+  run: { id: string; status: string; startedAt: string; completedAt: string; durationMs: number; error: string } | null;
+  events: AutomationEvent[];
+};
+
+export type TopicEventTraceSandbox = {
+  link: TopicEventSession;
+  sandbox: {
+    id: string;
+    title: string;
+    status: string;
+    projectId: string;
+    agentName: string;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+};
+
+export type TopicEventTrace = {
+  event: TopicEvent;
+  runs: TopicEventTraceRun[];
+  sandboxes: TopicEventTraceSandbox[];
+  descendantsTruncated: boolean;
 };
 
 export async function listAutomationTasks(): Promise<AutomationTask[]> {
   return (await listAllSchedulers()).map(taskFromV2);
-}
-
-export async function listConfiguredEventTopics(): Promise<ConfiguredEventTopic[]> {
-  const tasks = await listAutomationTasks();
-  const details = await Promise.allSettled(tasks.map((task) => getAutomationTask(task.id)));
-  const topics = new Map<string, ConfiguredEventTopic>();
-  for (const result of details) {
-    if (result.status !== 'fulfilled') continue;
-    const task = result.value;
-    for (const trigger of task.triggers) {
-      const topic = trigger.topic.trim();
-      if (trigger.kind !== 'event' || !topic) continue;
-      const current = topics.get(topic) ?? { topic, enabled: false, automationNames: [] };
-      current.enabled ||= task.enabled && trigger.enabled;
-      if (!current.automationNames.includes(task.name)) current.automationNames.push(task.name);
-      topics.set(topic, current);
-    }
-  }
-  return [...topics.values()].sort(
-    (left, right) => Number(right.enabled) - Number(left.enabled) || left.topic.localeCompare(right.topic),
-  );
 }
 
 export async function getAutomationTask(id: string): Promise<AutomationTaskDetail> {
@@ -640,6 +646,8 @@ export async function listTopicEvents(input: {
   limit?: number;
 }): Promise<{ items: TopicEvent[]; total: number }> {
   const query = new URLSearchParams();
+  query.set('source', 'webhook');
+  query.set('view', 'summary');
   if (input.topic?.trim()) query.set('topic', input.topic.trim());
   if (input.correlationId?.trim()) query.set('correlation_id', input.correlationId.trim());
   query.set('offset', String(input.offset ?? 0));
@@ -653,43 +661,100 @@ export async function listTopicEvents(input: {
   };
 }
 
-export async function listTopicEventRuns(eventId: string): Promise<TopicEventRun[]> {
-  const response = await apiFetchJson<{ runs: TopicEventRunResponse[] }>(
-    `/api/events/${encodeURIComponent(eventId)}/runs`,
-  );
-  return response.runs.map((item) => ({
-    eventId: item.event_id,
-    loaderId: item.loader_id,
-    runId: item.run_id || '',
-    triggerId: item.trigger_id,
-    status: item.status,
-    error: item.error || '',
-    createdAt: item.created_at,
-    updatedAt: item.updated_at,
-  }));
+export async function listEventTopics(): Promise<EventTopic[]> {
+  const items: EventTopic[] = [];
+  let offset = 0;
+  for (;;) {
+    const query = new URLSearchParams({ source: 'webhook', offset: String(offset), limit: '500' });
+    const response = await apiFetchJson<{ items?: EventTopicResponse[]; total?: number }>(
+      `/api/events/topics?${query.toString()}`,
+    );
+    const page = (response.items ?? []).map((item) => ({
+      topic: item.topic,
+      eventCount: Number(item.event_count || 0),
+      latestEventAt: item.latest_event_at,
+    }));
+    items.push(...page);
+    offset += page.length;
+    if (page.length === 0 || offset >= Number(response.total ?? 0)) return items;
+  }
 }
 
-export async function listTopicEventSessions(eventId: string): Promise<TopicEventSession[]> {
-  // Older daemons return sessions/session_id, while newer daemons use
-  // sandboxes/sandbox_id after the session-to-sandbox rename.
-  const response = await apiFetchJson<TopicEventSessionsResponse>(
-    `/api/events/${encodeURIComponent(eventId)}/sessions`,
-  );
-  const items = Array.isArray(response.sessions)
-    ? response.sessions
-    : Array.isArray(response.sandboxes)
-      ? response.sandboxes
-      : [];
-  return items.map((item) => ({
-    sessionId: item.session_id || item.sandbox_id || '',
-    relation: item.relation,
-    loaderId: item.loader_id || '',
-    runId: item.run_id || '',
-    triggerId: item.trigger_id || '',
-    loaderEventId: item.loader_event_id || '',
-    eventId: item.event_id,
-    createdAt: item.created_at,
-  }));
+export async function getTopicEventTrace(eventId: string): Promise<TopicEventTrace> {
+  const response = await apiFetchJson<TopicEventTraceResponse>(`/api/events/${encodeURIComponent(eventId)}/trace`);
+  const event = topicEventFromResponse(response.event);
+  return {
+    event,
+    descendantsTruncated: Boolean(response.descendants_truncated),
+    runs: (response.runs ?? []).map((item) => ({
+      delivery: {
+        eventId: item.delivery.event_id,
+        schedulerId: item.delivery.scheduler_id,
+        runId: item.delivery.run_id || '',
+        triggerId: item.delivery.trigger_id,
+        status: item.delivery.status,
+        error: item.delivery.error || '',
+        createdAt: item.delivery.created_at,
+        updatedAt: item.delivery.updated_at,
+      },
+      scheduler: item.scheduler
+        ? {
+            id: item.scheduler.scheduler_id,
+            projectId: item.scheduler.project_id,
+            agentName: item.scheduler.agent_name,
+            name: item.scheduler.name,
+          }
+        : null,
+      run: item.run
+        ? {
+            id: item.run.run_id,
+            status: item.run.status,
+            startedAt: item.run.started_at,
+            completedAt: item.run.completed_at || '',
+            durationMs: Number(item.run.duration_ms || 0),
+            error: item.run.error || '',
+          }
+        : null,
+      events: (item.events ?? []).map((schedulerEvent) => ({
+        id: schedulerEvent.event_id,
+        loaderId: item.delivery.scheduler_id,
+        runId: item.delivery.run_id || '',
+        triggerId: item.delivery.trigger_id,
+        type: schedulerEvent.type,
+        level: schedulerEvent.level,
+        message: schedulerEvent.message,
+        payloadJson: '',
+        linkedSessionId: schedulerEvent.linked_sandbox_id || '',
+        linkedCellId: '',
+        linkedAgentSessionId: '',
+        createdAt: schedulerEvent.created_at,
+        topicEventId: event.eventId,
+      })),
+    })),
+    sandboxes: (response.sandboxes ?? []).map((item) => ({
+      link: {
+        sandboxId: item.sandbox_id,
+        relation: item.relation,
+        schedulerId: item.scheduler_id || '',
+        runId: item.run_id || '',
+        triggerId: item.trigger_id || '',
+        schedulerEventId: item.scheduler_event_id || '',
+        eventId: item.event_id,
+        createdAt: item.created_at,
+      },
+      sandbox: item.sandbox
+        ? {
+            id: item.sandbox.sandbox_id,
+            title: item.sandbox.title,
+            status: item.sandbox.status,
+            projectId: item.sandbox.project_id || '',
+            agentName: item.sandbox.agent_name || '',
+            createdAt: item.sandbox.created_at,
+            updatedAt: item.sandbox.updated_at,
+          }
+        : null,
+    })),
+  };
 }
 
 function topicEventIdFromPayload(raw: string): string {
@@ -733,9 +798,15 @@ type TopicEventResponse = {
   payload?: Record<string, unknown>;
 };
 
+type EventTopicResponse = {
+  topic: string;
+  event_count: number;
+  latest_event_at: string;
+};
+
 type TopicEventRunResponse = {
   event_id: string;
-  loader_id: string;
+  scheduler_id: string;
   run_id?: string;
   trigger_id: string;
   status: string;
@@ -744,21 +815,48 @@ type TopicEventRunResponse = {
   updated_at: string;
 };
 
-type TopicEventSessionResponse = {
-  session_id?: string;
-  sandbox_id?: string;
-  relation: string;
-  loader_id?: string;
-  run_id?: string;
-  trigger_id?: string;
-  loader_event_id?: string;
-  event_id: string;
-  created_at: string;
-};
-
-type TopicEventSessionsResponse = {
-  sessions?: TopicEventSessionResponse[];
-  sandboxes?: TopicEventSessionResponse[];
+type TopicEventTraceResponse = {
+  event: TopicEventResponse;
+  descendants_truncated?: boolean;
+  runs?: Array<{
+    delivery: TopicEventRunResponse;
+    scheduler?: { scheduler_id: string; project_id: string; agent_name: string; name: string };
+    run?: {
+      run_id: string;
+      status: string;
+      started_at: string;
+      completed_at?: string;
+      duration_ms: number;
+      error?: string;
+    };
+    events?: Array<{
+      event_id: string;
+      type: string;
+      level: string;
+      message: string;
+      linked_sandbox_id?: string;
+      created_at: string;
+    }>;
+  }>;
+  sandboxes?: Array<{
+    event_id: string;
+    sandbox_id: string;
+    relation: string;
+    scheduler_id?: string;
+    run_id?: string;
+    trigger_id?: string;
+    scheduler_event_id?: string;
+    created_at: string;
+    sandbox?: {
+      sandbox_id: string;
+      title: string;
+      status: string;
+      project_id?: string;
+      agent_name?: string;
+      created_at: string;
+      updated_at: string;
+    };
+  }>;
 };
 
 function topicEventFromResponse(item: TopicEventResponse): TopicEvent {
