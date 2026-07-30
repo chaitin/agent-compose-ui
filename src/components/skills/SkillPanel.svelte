@@ -414,7 +414,7 @@
 {/if}
 
 <style>
-  .skill-shell { display: grid; grid-template-rows: auto 1fr; height: 100%; min-height: 0; }
+  .skill-shell { display: grid; grid-template-rows: auto 1fr; width: 100%; height: 100%; min-height: 0; }
   .skill-panel { display: grid; grid-template-columns: minmax(220px, 30%) 1fr; min-height: 0; }
   aside { border-right: 1px solid var(--border-color); padding: 10px; overflow: auto; }
   main { padding: 10px; min-width: 0; overflow: auto; }

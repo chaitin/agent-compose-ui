@@ -3,6 +3,13 @@ import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('./YamlEditor.svelte', import.meta.url), 'utf8');
 
+test('does not render the YAML editor status footer', () => {
+  expect(source).not.toContain('class="yaml-editor-footer"');
+  expect(source).not.toContain('智能体:');
+  expect(source).not.toContain('调度器:');
+  expect(source).not.toContain('class="lang-badge"');
+});
+
 test('renders script references as clickable Monaco links', () => {
   expect(source).toContain('listScriptRanges(store.editorContent)');
   expect(source).toContain("inlineClassName: 'script-ref-link'");

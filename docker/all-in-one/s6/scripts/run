@@ -1,0 +1,5 @@
+#!/bin/sh
+set -a
+. /run/agent-compose/internal.env
+set +a
+exec bun /app/script-service/server.mjs

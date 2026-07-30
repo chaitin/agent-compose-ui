@@ -4,7 +4,7 @@
   import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
   import * as monaco from 'monaco-editor';
   import { store } from '../lib/stores.svelte';
-  import { countAgents, countSchedulers, yamlToSpec } from '../lib/yaml';
+  import { yamlToSpec } from '../lib/yaml';
   import Toolbar from './Toolbar.svelte';
   import ResourcePanel from './ResourcePanel.svelte';
   import ScriptLineActions from './scripts/ScriptLineActions.svelte';
@@ -77,9 +77,6 @@
   function persistSkillBinding(binding: { projectKey: string; sourcePath: string }, identity: string): void {
     if (identity.startsWith('draft:')) store.persistActiveDraftBinding(binding, identity.slice('draft:'.length));
   }
-
-  let agentCount = $derived(countAgents(store.editorContent));
-  let schedulerCount = $derived(countSchedulers(store.editorContent));
 
   async function loadGlobalEnv(): Promise<void> {
     try {
@@ -702,11 +699,6 @@
       />
     {/if}
   </div>
-  <div class="yaml-editor-footer">
-    <span>智能体: {agentCount}</span>
-    <span>调度器: {schedulerCount}</span>
-    <span class="lang-badge">YAML</span>
-  </div>
 </div>
 
 <style>
@@ -745,8 +737,7 @@
   .yaml-editor.collapsed { min-width: 28px; }
   .yaml-editor.collapsed .collapse-strip { display: flex; }
   .yaml-editor.collapsed .yaml-editor-header,
-  .yaml-editor.collapsed .editor-stack,
-  .yaml-editor.collapsed .yaml-editor-footer { display: none; }
+  .yaml-editor.collapsed .editor-stack { display: none; }
   .yaml-editor-header {
     display: flex;
     justify-content: space-between;
@@ -769,16 +760,6 @@
   }
   .editor-stack { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; }
   .yaml-editor-body { flex: 1; min-height: 0; }
-  .yaml-editor-footer {
-    display: flex;
-    gap: 16px;
-    padding: 2px 12px;
-    background: var(--bg-secondary);
-    border-top: 1px solid var(--border-color);
-    font-size: var(--font-size-sm);
-    color: var(--text-muted);
-    flex-shrink: 0;
-  }
   :global(.script-ref-link) {
     color: #c9a7ff !important;
     background: rgba(163, 113, 247, 0.09);
@@ -794,5 +775,4 @@
   }
   :global(.monaco-scrollable-element > .scrollbar > .slider) { width: 4px !important; }
   :global(.monaco-editor .decorationsOverviewRuler) { width: 4px !important; }
-  .lang-badge { margin-left: auto; color: var(--text-secondary); }
 </style>
