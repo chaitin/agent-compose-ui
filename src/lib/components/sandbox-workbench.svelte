@@ -22,11 +22,18 @@
     listSandboxHistoryCells,
     resumeSandboxContext,
     stopSandboxContext,
+    watchSandbox,
     type SandboxContextDetail,
     type SandboxRunTarget,
   } from '../../api/sessions';
   import { listRuns } from '../../api/runs';
-  import { RunEventKind, type RunEvent, type RunSummary } from '../../gen/agentcompose/v2/agentcompose_pb.js';
+  import {
+    RunEventKind,
+    SandboxWatchEventType,
+    type RunEvent,
+    type RunSummary,
+    type WatchSandboxResponse,
+  } from '../../gen/agentcompose/v2/agentcompose_pb.js';
   import { compactIdentifier } from '../../model/identifiers';
   import { jupyterEntryHref } from '../../model/jupyter';
   import { stoppedRuntimePresentation } from '../../model/stopped-runtime';
@@ -69,18 +76,21 @@
   let terminalAutoAttempts = 0;
   let terminalRetryTimer: number | undefined;
   let contextLogQuery = $state('');
+  let liveContextLog = $state('');
+  let discoveringRuns = false;
 
   const activeStream = $derived(runStreams.forSandbox(sandboxId));
   const hasConversation = $derived(conversationRuns.length > 0 || Boolean(activeStream?.prompt));
+  const combinedContextLog = $derived([contextLog.trimEnd(), liveContextLog.trimEnd()].filter(Boolean).join('\n'));
   const visibleContextLog = $derived(
     contextLogQuery.trim()
-      ? contextLog
+      ? combinedContextLog
           .split('\n')
           .filter((line) => line.toLowerCase().includes(contextLogQuery.toLowerCase()))
           .join('\n')
-      : contextLog,
+      : combinedContextLog,
   );
-  const contextLogLineCount = $derived(contextLog ? contextLog.split('\n').length : 0);
+  const contextLogLineCount = $derived(combinedContextLog ? combinedContextLog.split('\n').length : 0);
   const targets = $derived.by(() => {
     const values = runs
       .filter((run) => run.projectId && run.agentName)
@@ -107,8 +117,23 @@
   $effect(() => {
     if (sandboxId && sandboxId !== loadedSandboxId) {
       loadedSandboxId = sandboxId;
+      liveContextLog = '';
       void load();
     }
+  });
+
+  $effect(() => {
+    const watchedSandboxId = sandboxId;
+    if (!watchedSandboxId) return;
+    const controller = new AbortController();
+    void watchSandbox(
+      watchedSandboxId,
+      (event) => handleSandboxWatchEvent(watchedSandboxId, event),
+      controller.signal,
+    ).catch((cause) => {
+      if (!controller.signal.aborted) console.warn('sandbox subscription disconnected', cause);
+    });
+    return () => controller.abort();
   });
 
   $effect(() => {
@@ -155,7 +180,7 @@
       target = nextTarget;
       selectedTargetKey = targetKey(nextTarget ?? firstTarget(nextRuns));
       const conversationAvailable = nextConversationRuns.length > 0;
-      const logsAvailable = nextRuns.length > 0 || Boolean(contextLog.trim());
+      const logsAvailable = nextRuns.length > 0 || Boolean(combinedContextLog.trim());
       tab =
         initialTab === 'records'
           ? 'records'
@@ -177,6 +202,41 @@
       turns = [];
     } finally {
       loading = false;
+    }
+  }
+
+  function handleSandboxWatchEvent(watchedSandboxId: string, event: WatchSandboxResponse): void {
+    if (watchedSandboxId !== sandboxId) return;
+    if (event.eventType === SandboxWatchEventType.CELL_OUTPUT && event.chunk) {
+      liveContextLog += event.chunk;
+      return;
+    }
+    if (event.eventType === SandboxWatchEventType.CELL_STARTED) {
+      void discoverRunsFromWatch(watchedSandboxId, false);
+      return;
+    }
+    if (event.eventType === SandboxWatchEventType.CELL_COMPLETED) {
+      void discoverRunsFromWatch(watchedSandboxId, true);
+    }
+  }
+
+  async function discoverRunsFromWatch(watchedSandboxId: string, refreshCompletedState: boolean): Promise<void> {
+    if (discoveringRuns) return;
+    discoveringRuns = true;
+    try {
+      const [nextRuns, nextEvents] = await Promise.all([
+        listRuns({ sandboxId: watchedSandboxId, limit: 200 }),
+        listSandboxExecutionEvents(watchedSandboxId),
+      ]);
+      if (watchedSandboxId !== sandboxId) return;
+      runs = nextRuns;
+      events = nextEvents;
+      conversationRuns = conversationRunsFor(nextRuns, nextEvents, turns);
+      if (refreshCompletedState) sandbox = await getSandboxContext(watchedSandboxId);
+    } catch (cause) {
+      console.warn('refresh runs after sandbox event failed', cause);
+    } finally {
+      discoveringRuns = false;
     }
   }
 
@@ -297,7 +357,7 @@
   }
 
   function downloadContextLog(): void {
-    const url = URL.createObjectURL(new Blob([contextLog], { type: 'text/plain' }));
+    const url = URL.createObjectURL(new Blob([combinedContextLog], { type: 'text/plain' }));
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = `sandbox-${compactIdentifier(sandboxId)}.log`;
@@ -425,7 +485,7 @@
     <Tabs.Root bind:value={tab} class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <Tabs.List data-tab-scroll class="shrink-0 justify-start">
         {#if hasConversation || runnable}<Tabs.Trigger value="conversation">{t('对话')}</Tabs.Trigger>{/if}
-        {#if runs.length || contextLog}<Tabs.Trigger value="logs">{t('运行日志')}</Tabs.Trigger>{/if}
+        {#if runs.length || combinedContextLog}<Tabs.Trigger value="logs">{t('运行日志')}</Tabs.Trigger>{/if}
         <Tabs.Trigger value="records">{t('智能体记录')}</Tabs.Trigger>
         {#if terminalAvailable}<Tabs.Trigger value="terminal">{t('终端')}</Tabs.Trigger>{/if}
       </Tabs.List>

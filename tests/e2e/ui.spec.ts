@@ -43,7 +43,9 @@ scheduler.on('webhook.ui-regression.acceptance', 'ui-webhook-agent-conversation'
 const webhookShellContextScript = `${agentShellAutomationScript}
 
 scheduler.on('webhook.ui-regression.acceptance', 'ui-webhook-shell-context', function handleWebhook() {
-  return scheduler.shell("printf 'WEBHOOK_SHELL_CONTEXT_OK\\n'");
+  return scheduler.shell(
+    "printf 'WEBHOOK_SHELL_CONTEXT_1\\n'; sleep 5; printf 'WEBHOOK_SHELL_CONTEXT_2\\n'; sleep 5; printf 'WEBHOOK_SHELL_CONTEXT_3\\n'"
+  );
 });`;
 const webhookMultiConversationScript = `${agentShellAutomationScript}
 
@@ -1472,9 +1474,13 @@ test('shows an event execution context when a webhook creates a sandbox', async 
     await navigateInApp(page, `/events/${accepted.event_id}`);
     const workbench = page.locator('[data-sandbox-workbench]');
     await expect(workbench).toBeVisible();
-    await expect(workbench.getByRole('tabpanel', { name: '运行日志' })).toContainText('WEBHOOK_SHELL_CONTEXT_OK', {
+    const logs = workbench.getByRole('tabpanel', { name: '运行日志' });
+    await expect(logs).toContainText('WEBHOOK_SHELL_CONTEXT_1', {
       timeout: 30_000,
     });
+    await expect(logs).not.toContainText('WEBHOOK_SHELL_CONTEXT_3');
+    await expect(logs).toContainText('WEBHOOK_SHELL_CONTEXT_2', { timeout: 10_000 });
+    await expect(logs).toContainText('WEBHOOK_SHELL_CONTEXT_3', { timeout: 10_000 });
     await expect(workbench.getByText('失败', { exact: true })).toHaveCount(0);
     await expect(workbench.getByRole('link', { name: 'Jupyter', exact: true })).toHaveCount(0);
     await expect(page.getByText(/linked-shell-context/)).toHaveCount(0);

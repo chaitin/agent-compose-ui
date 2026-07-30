@@ -1,4 +1,9 @@
-import { RunEventKind, type RunEvent, type Sandbox } from '../gen/agentcompose/v2/agentcompose_pb.js';
+import {
+  RunEventKind,
+  type RunEvent,
+  type Sandbox,
+  type WatchSandboxResponse,
+} from '../gen/agentcompose/v2/agentcompose_pb.js';
 import { runClient, sandboxClient } from './client';
 import { presentAgentOutput } from '../model/agent-output';
 import { timestampToISOString as timestampString } from '../model/timestamps';
@@ -66,6 +71,14 @@ export const listSandboxHistoryCells = listWorkSessionCells;
 export const refreshSandboxHistoryCells = refreshWorkSessionCells;
 export const listSandboxHistoryEvents = listWorkSessionEvents;
 export const getSandboxRunTarget = getWorkSessionRunTarget;
+
+export async function watchSandbox(
+  id: string,
+  onEvent: (event: WatchSandboxResponse) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  for await (const event of sandboxClient.watchSandbox({ sandboxId: id }, { signal })) onEvent(event);
+}
 
 export async function listWorkSessions(
   limit = 50,
