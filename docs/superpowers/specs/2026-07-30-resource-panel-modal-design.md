@@ -20,14 +20,18 @@ The panel body becomes the positioning boundary. All five dialogs use the same r
 
 ## Visual Treatment
 
-Use the approved blue-gray layered treatment:
+Use the approved IDE Workbench treatment:
 
 - A dark translucent overlay separates the dialog from the underlying file-management content.
-- The dialog surface is slightly lighter and bluer than the panel background.
-- A thin blue border and restrained shadow make the card boundary clear.
+- The dialog uses a matte graphite surface (`#151b23`) and a darker title bar (`#11171e`).
+- A neutral gray hairline border (`#303944`) and restrained shadow define the card without a bright blue outline.
+- The title bar includes a short monospace command context such as `SCRIPT / CREATE`, `SKILL / UPLOAD`, or `VOLUME / MOUNT`.
+- Inputs use a darker inset surface (`#0c1117`) and a neutral border (`#35404d`). Blue appears only for keyboard focus, path values, and the primary action.
+- Do not add a colored rail on any card edge.
 - Dialogs share the same radius, spacing, maximum viewport-relative width, and focus treatment.
 - Dialog width may vary with content, but placement and surface styling do not.
 - Existing semantic action button colors remain unchanged.
+- Opening uses one restrained fade-and-rise transition of about 100ms and disables it under reduced motion.
 
 ## Compact Command Layout
 
