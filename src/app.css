@@ -88,7 +88,7 @@ button.ui-button.danger:hover:not(:disabled) { border-color: var(--accent-red); 
   min-height: 0;
   padding: 18px;
   overflow: auto;
-  background: rgba(1, 4, 9, .7);
+  background: rgba(1, 4, 9, .72);
 }
 .resource-modal-card,
 dialog.resource-modal-card {
@@ -98,11 +98,11 @@ dialog.resource-modal-card {
   width: min(620px, 100%);
   margin: 0;
   padding: 18px;
-  border: 1px solid var(--accent-blue);
-  border-radius: 8px;
-  color: var(--text-primary);
-  background: #1b2430;
-  box-shadow: 0 16px 42px rgba(0, 0, 0, .65), 0 0 0 1px color-mix(in srgb, var(--accent-blue) 12%, transparent);
+  border: 1px solid #303944;
+  border-radius: 6px;
+  color: #dce7f2;
+  background: #151b23;
+  box-shadow: 0 18px 54px rgba(0, 0, 0, .72);
 }
 .resource-modal-card.command-modal,
 dialog.resource-modal-card.command-modal {
@@ -110,8 +110,8 @@ dialog.resource-modal-card.command-modal {
   gap: 10px;
   width: min(760px, 100%);
   padding: 13px 16px 12px;
-  border-top-width: 3px;
   overflow: visible;
+  animation: command-modal-in 100ms ease-out;
 }
 .command-modal h2,
 .command-modal h3,
@@ -119,18 +119,31 @@ dialog.resource-modal-card.command-modal {
 .command-modal h2,
 .command-modal h3 { font-size: var(--font-size-lg); line-height: 1.25; }
 .command-modal-form { display: grid; gap: 10px; }
-.command-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.command-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; margin: -13px -16px 2px; padding: 10px 14px; border-bottom: 1px solid #29323d; border-radius: 5px 5px 0 0; background: #11171e; }
+.command-title { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+.command-context { color: #7d8b99; font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: .08em; white-space: nowrap; }
 .command-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: center; gap: 8px 12px; min-width: 0; }
-.command-field { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--text-secondary); font-size: var(--font-size-sm); white-space: nowrap; }
+.command-field { display: flex; align-items: center; gap: 7px; min-width: 0; color: #8e9aa8; font-size: var(--font-size-sm); white-space: nowrap; }
 .command-field > input:not([type='checkbox']),
 .command-field > select { flex: 1; min-width: 0; }
+.command-modal input:not([type='checkbox']),
+.command-modal select { border-color: #35404d; border-radius: 3px; background: #0c1117; color: #dce7f2; }
+.command-modal input:focus,
+.command-modal select:focus { border-color: var(--accent-blue); outline: 1px solid color-mix(in srgb, var(--accent-blue) 35%, transparent); outline-offset: 0; }
+.command-modal .command-path,
+.command-modal .command-path code { color: #9ccaff; font-family: var(--font-mono); }
 .command-status { min-width: 0; color: var(--text-muted); font-size: var(--font-size-sm); overflow-wrap: anywhere; }
-.command-status[role='alert'] { color: var(--accent-red); }
+.command-status[role='alert'] { padding-left: 7px; border-left: 2px solid var(--accent-red); color: var(--accent-red); }
 .command-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
 .command-footer .command-status { margin-right: auto; }
+.command-modal button.ui-button { border-radius: 3px; }
+.command-modal button.ui-button.primary { border-color: #3c74a6; background: #17314a; color: #8bc5ff; }
+.command-modal button.ui-button.primary:hover:not(:disabled) { border-color: var(--accent-blue); background: #1b3b59; color: #a8d6ff; }
 .command-presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
 .command-presets fieldset { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; margin: 0; padding: 7px; border: 1px solid var(--border-color); }
 .command-presets legend { padding: 0 4px; color: var(--text-secondary); font-size: var(--font-size-xs); }
+@keyframes command-modal-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .resource-modal-card.command-modal, dialog.resource-modal-card.command-modal { animation: none; } }
 
 input, select, textarea {
   font-family: inherit;

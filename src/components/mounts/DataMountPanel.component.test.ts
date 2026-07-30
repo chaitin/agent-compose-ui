@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, expect, test, vi } from 'vitest';
 import yaml from 'js-yaml';
 import DataMountPanel from './DataMountPanel.svelte';
@@ -69,6 +69,7 @@ test('styles mount modal actions by intent', async () => {
   expect(dialog).toHaveClass('command-modal');
   expect(dialog.parentElement).toHaveClass('resource-modal-backdrop');
   expect(screen.getByLabelText('逻辑名称').closest('.command-fields')).toBe(screen.getByLabelText('创建卷挂载目标').closest('.command-fields'));
+  expect(within(dialog).getByText('VOLUME / CREATE')).toHaveClass('command-context');
   expect(screen.getByRole('button', { name: '取消' })).toHaveClass('ui-button', 'ghost');
   expect(screen.getByRole('button', { name: '创建并挂载' })).toHaveClass('ui-button', 'primary');
 });
@@ -81,6 +82,7 @@ test('uses the resource-panel modal boundary for mounting resources', async () =
   expect(dialog).toHaveClass('command-modal');
   expect(dialog.parentElement).toHaveClass('resource-modal-backdrop');
   expect(screen.getByLabelText('现有卷').closest('.command-fields')).toBe(screen.getByLabelText('现有卷挂载目标').closest('.command-fields'));
+  expect(within(dialog).getByText('VOLUME / MOUNT')).toHaveClass('command-context');
 });
 
 test('rejects a duplicate target across bind and volume mounts without a callback', async () => {

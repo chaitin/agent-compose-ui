@@ -42,7 +42,7 @@
 <div class="resource-modal-backdrop modal-backdrop" onclick={onCancel} role="presentation">
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="resource-modal-card command-modal modal-card" role="dialog" aria-modal="true" onclick={(e) => e.stopPropagation()} onkeydown={onKeydown} tabindex="-1">
-    <div class="modal-title">{mode === 'file' ? '新建脚本文件' : '新建文件夹'}</div>
+    <div class="command-header"><div class="command-title"><div class="modal-title">{mode === 'file' ? '新建脚本文件' : '新建文件夹'}</div><span class="command-context">SCRIPT / CREATE</span></div></div>
     <div class="command-fields">
     <label class="command-field field">
       <span class="field-label">{mode === 'file' ? '文件名' : '目录名'}</span>
@@ -66,9 +66,9 @@
     </div>
 
     <div class="command-footer modal-actions">
-      <div class:field-error={!!error} class="command-status preview">{error || '完整路径：'}{#if !error}<code>{fullPath || '—'}</code>{/if}</div>
-      <button class="btn-secondary" onclick={onCancel}>取消</button>
-      <button class="btn-primary" disabled={!canSubmit} onclick={submit}>创建</button>
+      <div class:field-error={!!error} class="command-status preview">{error || '完整路径：'}{#if !error}<code class="command-path">{fullPath || '—'}</code>{/if}</div>
+      <button class="ui-button ghost" onclick={onCancel}>取消</button>
+      <button class="ui-button primary" disabled={!canSubmit} onclick={submit}>创建</button>
     </div>
   </div>
 </div>
@@ -125,26 +125,5 @@
     display: flex;
     justify-content: flex-end;
     gap: 8px;
-  }
-  .btn-primary, .btn-secondary {
-    padding: 6px 14px;
-    border-radius: 4px;
-    font-size: var(--font-size-md);
-    cursor: pointer;
-    border: 1px solid var(--border-color);
-  }
-  .btn-primary {
-    background: var(--accent-blue);
-    color: #0d1117;
-    border-color: var(--accent-blue);
-    font-weight: 600;
-  }
-  .btn-primary:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  .btn-secondary {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
   }
 </style>

@@ -23,3 +23,11 @@ test('uses a compact command layout without card scrolling', () => {
   const cardRule = appStyles.match(/\.resource-modal-card,[\s\S]*?\n\}/)?.[0] ?? '';
   assert.doesNotMatch(cardRule, /max-height|overflow:\s*auto/);
 });
+
+test('uses workbench chrome and a script command context', () => {
+  assert.match(source, /SCRIPT \/ CREATE/);
+  const cardRule = appStyles.match(/\.resource-modal-card,[\s\S]*?\n\}/)?.[0] ?? '';
+  assert.match(cardRule, /border:\s*1px solid #303944/);
+  assert.match(cardRule, /background:\s*#151b23/);
+  assert.doesNotMatch(cardRule, /border:[^;]*var\(--accent-blue\)/);
+});

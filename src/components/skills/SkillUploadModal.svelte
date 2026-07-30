@@ -17,7 +17,7 @@
 <div class="resource-modal-backdrop">
 <dialog class="resource-modal-card command-modal" open aria-labelledby="skill-upload-title" onkeydown={(e) => { if (e.key === 'Escape' && !busy) onClose(); }}>
   <form class="command-modal-form" onsubmit={(e) => { e.preventDefault(); if (file && name) onSubmit(name, file); }}>
-    <div class="command-header"><h2 id="skill-upload-title">上传 Skill</h2><p class="command-status">单个 UTF-8 <code>SKILL.md</code></p></div>
+    <div class="command-header"><div class="command-title"><h2 id="skill-upload-title">上传 Skill</h2><span class="command-context">SKILL / UPLOAD</span></div><p class="command-status">单个 UTF-8 <code>SKILL.md</code></p></div>
     <div class="command-fields"><label class="command-field">选择文件<input aria-label="选择 SKILL.md" type="file" accept=".md,text/markdown,text/plain" onchange={choose} disabled={busy} /></label>
     <label class="command-field">目标 Agent<select aria-label="目标 Agent" value={agent} onchange={(e) => onAgent(e.currentTarget.value)} disabled={busy}>{#each agents as item}<option value={item}>{item}</option>{/each}</select></label></div>
     <div class="command-footer">{#if name}<p class="command-status" role="status">将上传为 {name}/SKILL.md</p>{:else if error}<p class="command-status" role="alert">{error}</p>{/if}<button class="ui-button ghost" type="button" onclick={onClose} disabled={busy}>取消</button><button class="ui-button primary" type="submit" disabled={busy || !file || !agent}>确认上传</button></div>

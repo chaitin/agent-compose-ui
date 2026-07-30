@@ -57,6 +57,7 @@ test('uses the shared action hierarchy outside the Skills toolbar', async () => 
   expect(dialog).toHaveClass('command-modal');
   expect(dialog.parentElement).toHaveClass('resource-modal-backdrop');
   expect(screen.getByLabelText('Skill 名称').closest('.command-fields')).toBe(screen.getByLabelText('目标 Agent').closest('.command-fields'));
+  expect(within(dialog).getByText('SKILL / CREATE')).toHaveClass('command-context');
   expect(within(dialog).getByRole('button', { name: '取消' })).toHaveClass('ui-button', 'ghost');
   expect(within(dialog).getByRole('button', { name: '创建 Skill' })).toHaveClass('ui-button', 'primary');
 });
@@ -69,6 +70,7 @@ test('uses the resource-panel modal boundary for Skill upload', async () => {
   expect(dialog).toHaveClass('command-modal');
   expect(dialog.parentElement).toHaveClass('resource-modal-backdrop');
   expect(screen.getByLabelText('选择 SKILL.md').closest('.command-fields')).toBe(screen.getByLabelText('目标 Agent').closest('.command-fields'));
+  expect(within(dialog).getByText('SKILL / UPLOAD')).toHaveClass('command-context');
 });
 
 test('confirms before navigating away from a Skill with unsaved changes', async () => {
