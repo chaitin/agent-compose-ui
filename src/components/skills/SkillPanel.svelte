@@ -3,6 +3,9 @@
   import { SkillApiError, skillApi, type Entry } from '../../lib/skills/api';
   import { listAgentNames, removeSkillReferences, type SkillReference } from '../../lib/skills/references';
   import { upsertAgentSkill } from '../../lib/project-resources/yaml-mutations';
+  import SkillEditor from './SkillEditor.svelte';
+  import SkillList from './SkillList.svelte';
+  import SkillToolbar from './SkillToolbar.svelte';
 
   interface Props {
     projectKey: string;
@@ -37,6 +40,8 @@
   let deleteTrigger = $state<HTMLButtonElement>();
   let cancelDeleteButton = $state<HTMLButtonElement>();
   let deleteDialog = $state<HTMLDivElement>();
+  let createNameInput = $state<HTMLInputElement>();
+  let pendingSelection = $state('');
   const instanceId = $props.id();
   type DeleteState = {
     projectKey: string;
@@ -70,6 +75,7 @@
     status = '';
     error = '';
     deletion = null;
+    pendingSelection = '';
     entries = [];
     if (/^ws_[0-9a-f]{32}$/.test(key)) void loadList(key);
     else {
@@ -129,6 +135,21 @@
     } finally {
       if (version === readGeneration) reading = false;
     }
+  }
+
+  function selectSkill(name: string): void {
+    if (name === selected) return;
+    if (selected && dirty) {
+      pendingSelection = name;
+      return;
+    }
+    void openSkill(name);
+  }
+
+  function confirmSelection(): void {
+    const name = pendingSelection;
+    pendingSelection = '';
+    if (name) void openSkill(name);
   }
 
   async function save(): Promise<void> {
@@ -199,6 +220,7 @@
 
   function requestDelete(): void {
     if (!selected) return;
+    if (document.activeElement instanceof HTMLButtonElement) deleteTrigger = document.activeElement;
     try {
       const removal = removeSkillReferences(yaml, selected);
       deletion = {
@@ -305,10 +327,17 @@
   }
 </script>
 
-<div class="skill-panel" inert={deletion ? true : undefined} aria-hidden={deletion ? 'true' : undefined}>
-  <aside aria-label="Skills 列表">
+<div class="skill-shell" inert={deletion || pendingSelection ? true : undefined} aria-hidden={deletion || pendingSelection ? 'true' : undefined}>
+  <SkillToolbar
+    busy={createBusy || saveBusy || deleteBusy || !validProjectKey}
+    onCreate={() => createNameInput?.focus()}
+    onUpload={() => { status = '单文件上传将在上传面板中完成'; }}
+    onRefresh={() => { void loadList(); }}
+  />
+  <div class="skill-panel" inert={deletion || pendingSelection ? true : undefined} aria-hidden={deletion || pendingSelection ? 'true' : undefined}>
+  <aside>
     <form onsubmit={(event) => { event.preventDefault(); void createSkill(); }}>
-      <label>Skill 名称 <input aria-label="Skill 名称" bind:value={newName} pattern="[a-z][a-z0-9_-]*" required disabled={createBusy} /></label>
+      <label>Skill 名称 <input bind:this={createNameInput} aria-label="Skill 名称" bind:value={newName} pattern="[a-z][a-z0-9_-]*" required disabled={createBusy} /></label>
       <label>目标 Agent
         <select aria-label="目标 Agent" bind:value={targetAgent} disabled={!agents.length || createBusy}>
           {#each agents as agent}<option value={agent}>{agent}</option>{/each}
@@ -316,28 +345,38 @@
       </label>
       <button type="submit" disabled={createBusy || !validProjectKey || !targetAgent}>创建 Skill</button>
     </form>
-    {#if loading}<p role="status">正在加载 Skills…</p>
-    {:else if listError}<p role="alert">加载失败：{listError}</p><button type="button" onclick={() => loadList()}>重试加载</button>
-    {:else if !entries.length}<p role="status">暂无 Skills</p>
-    {:else}<ul>{#each entries as entry}<li><button type="button" class:active={selected === entry.name} aria-current={selected === entry.name ? 'true' : undefined} onclick={() => openSkill(entry.name)} disabled={createBusy || deleteBusy}>{entry.name}</button></li>{/each}</ul>{/if}
+    <SkillList {entries} {selected} {loading} error={listError} busy={createBusy || deleteBusy} onSelect={selectSkill} onRetry={() => { void loadList(); }} />
   </aside>
 
   <main>
     {#if error}<p role="alert">{error}</p>{/if}
     {#if status}<p role="status">{status}</p>{/if}
-    {#if selected}
-      <header><h2 id={`${instanceId}-editor-title`}>{selected}/SKILL.md</h2><span>{dirty ? '有未保存更改' : '无未保存更改'}</span></header>
-      {#if reading}<p role="status">正在读取 SKILL.md…</p>{:else}
-        <label class="editor-label">SKILL.md 内容<textarea aria-labelledby={`${instanceId}-editor-title`} bind:value={content}></textarea></label>
-        <div class="actions">
-          <button type="button" onclick={save} disabled={saveBusy || createBusy || deleteBusy || !dirty}>保存 Skill</button>
-          <button type="button" bind:this={deleteTrigger} onclick={requestDelete} disabled={saveBusy || createBusy || deleteBusy}>删除 Skill</button>
-          {#if conflict}<button type="button" onclick={() => openSkill(selected)}>重新加载磁盘内容</button>{/if}
-        </div>
-      {/if}
-    {:else}<p>请选择一个 Skill 编辑。</p>{/if}
+    <SkillEditor
+      name={selected}
+      {content}
+      {dirty}
+      reading={reading}
+      busy={saveBusy || createBusy || deleteBusy}
+      {conflict}
+      onContent={(value) => { content = value; }}
+      onSave={() => { void save(); }}
+      onDelete={requestDelete}
+      onReload={() => { void openSkill(selected); }}
+    />
   </main>
+  </div>
 </div>
+
+{#if pendingSelection}
+  <div class="dialog-backdrop">
+    <div role="dialog" aria-modal="true" aria-labelledby={`${instanceId}-navigate-title`}>
+      <h2 id={`${instanceId}-navigate-title`}>放弃未保存更改？</h2>
+      <p>切换到 {pendingSelection} 将丢弃当前 Skill 的本地更改。</p>
+      <button type="button" onclick={() => { pendingSelection = ''; }}>继续编辑</button>
+      <button type="button" onclick={confirmSelection}>放弃并切换</button>
+    </div>
+  </div>
+{/if}
 
 {#if deletion}
   <div class="dialog-backdrop">
@@ -356,18 +395,13 @@
 {/if}
 
 <style>
-  .skill-panel { display: grid; grid-template-columns: minmax(220px, 30%) 1fr; height: 100%; min-height: 0; }
+  .skill-shell { display: grid; grid-template-rows: auto 1fr; height: 100%; min-height: 0; }
+  .skill-panel { display: grid; grid-template-columns: minmax(220px, 30%) 1fr; min-height: 0; }
   aside { border-right: 1px solid var(--border-color); padding: 10px; overflow: auto; }
   main { padding: 10px; min-width: 0; overflow: auto; }
   form { display: grid; gap: 6px; margin-bottom: 10px; }
   label { display: grid; gap: 3px; color: var(--text-secondary); }
-  input, select, textarea { color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border-color); }
-  ul { margin: 6px 0; padding-left: 20px; }
-  aside li button { width: 100%; text-align: left; }
-  button.active { color: var(--accent-blue); }
-  header, .actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .editor-label { height: calc(100% - 55px); margin: 8px 0; }
-  textarea { width: 100%; min-height: 140px; resize: vertical; font-family: var(--font-mono); }
+  input, select { color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border-color); }
   .dialog-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: #0008; }
   [role='dialog'] { width: min(440px, 90vw); padding: 18px; background: var(--bg-secondary); border: 1px solid var(--border-color); }
 </style>

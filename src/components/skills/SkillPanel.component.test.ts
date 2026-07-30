@@ -30,6 +30,41 @@ beforeEach(() => {
   vi.mocked(skillApi.remove).mockReset().mockResolvedValue();
 });
 
+test('presents Skills as a toolbar, navigation list and editor', async () => {
+  render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'alpha', onYamlChange: vi.fn() });
+
+  expect(screen.getByRole('toolbar', { name: 'Skill 操作' })).toBeInTheDocument();
+  expect(screen.getByRole('navigation', { name: 'Skills 列表' })).toBeInTheDocument();
+  expect(screen.getByRole('region', { name: 'Skill 编辑器' })).toBeInTheDocument();
+
+  await fireEvent.click(await screen.findByRole('button', { name: 'demo' }));
+  expect(await screen.findByRole('textbox', { name: 'demo/SKILL.md' })).toHaveValue('body');
+});
+
+test('confirms before navigating away from a Skill with unsaved changes', async () => {
+  const review = { ...entry, path: 'review', name: 'review' };
+  vi.mocked(skillApi.list).mockResolvedValue([entry, review]);
+  vi.mocked(skillApi.read).mockImplementation(async (_key, path) => ({
+    ...file,
+    path,
+    content: path.startsWith('review/') ? '---\nname: review\n---\n' : 'body',
+  }));
+  render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'alpha', onYamlChange: vi.fn() });
+
+  await fireEvent.click(await screen.findByRole('button', { name: 'demo' }));
+  const demoEditor = await screen.findByRole('textbox', { name: 'demo/SKILL.md' });
+  await fireEvent.input(demoEditor, { target: { value: 'local edit' } });
+  await fireEvent.click(screen.getByRole('button', { name: 'review' }));
+
+  expect(screen.getByRole('dialog', { name: '放弃未保存更改？' })).toBeInTheDocument();
+  expect(skillApi.read).toHaveBeenCalledTimes(1);
+  expect(demoEditor).toHaveValue('local edit');
+
+  await fireEvent.click(screen.getByRole('button', { name: '放弃并切换' }));
+  expect(await screen.findByRole('textbox', { name: 'review/SKILL.md' })).toHaveValue('---\nname: review\n---\n');
+  expect(skillApi.read).toHaveBeenCalledTimes(2);
+});
+
 test('does not request project files before receiving a canonical storage key', async () => {
   render(SkillPanel, { projectKey: 'daemon-project-id', yaml, selectedAgent: 'alpha', onYamlChange: vi.fn() });
   await Promise.resolve();
