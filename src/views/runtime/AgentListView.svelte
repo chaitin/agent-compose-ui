@@ -312,7 +312,7 @@
     border-radius: 50%;
     background: currentColor;
   }
-  .current-status.status-idle { color: #8badd9; }
+  .current-status.status-idle { color: var(--text-muted); }
   .current-status.status-running { color: var(--accent-green); }
   .current-status.status-running i { animation: pulse 1.2s ease-in-out infinite; }
 

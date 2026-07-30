@@ -181,6 +181,6 @@
   h2 { margin: 2px 0 0; color: var(--text-primary); font-size: var(--font-size-xl); }
   .run-status { margin-left: auto; color: var(--text-secondary); font-size: var(--font-size-sm); }
   .state, .empty, .project-error { padding: 48px; text-align: center; color: var(--text-muted); }
-  .agent-error { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 36px; color: var(--danger, #ef4444); }
+  .agent-error { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 36px; color: var(--accent-red); }
   button { border: 1px solid var(--border-color); border-radius: 5px; padding: 5px 10px; color: var(--text-primary); background: var(--bg-primary); cursor: pointer; }
 </style>

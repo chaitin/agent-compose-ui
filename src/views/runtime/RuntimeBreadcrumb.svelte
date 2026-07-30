@@ -66,13 +66,13 @@
   button:hover { border-color: var(--accent-blue); background: var(--bg-tertiary); }
   button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
   button:disabled { cursor: not-allowed; opacity: .55; }
-  button.primary { border-color: var(--accent-blue); background: var(--accent-blue); color: #fff; }
+  button.primary { border-color: var(--accent-blue-emphasis); background: var(--accent-blue-emphasis); color: var(--text-on-accent); }
   button.danger { border-color: var(--accent-red); color: var(--accent-red); }
   .back { color: var(--text-secondary); }
   .back, button.compact { height: 22px; padding-top: 0; padding-bottom: 0; }
   .actions { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
   .status { flex: 0 0 auto; padding: 2px 7px; border: 1px solid var(--border-color); border-radius: 999px; color: var(--text-muted); font-size: var(--font-size-xs); font-weight: 700; }
-  .status.running { border-color: color-mix(in srgb, var(--accent-blue) 45%, var(--border-color)); color: var(--accent-blue); }
+  .status.running { border-color: color-mix(in srgb, var(--accent-green) 45%, var(--border-color)); color: var(--accent-green); }
   .status.success { border-color: color-mix(in srgb, var(--accent-green) 45%, var(--border-color)); color: var(--accent-green); }
   .status.warning { border-color: color-mix(in srgb, var(--accent-yellow) 45%, var(--border-color)); color: var(--accent-yellow); }
   .status.danger { border-color: color-mix(in srgb, var(--accent-red) 45%, var(--border-color)); color: var(--accent-red); }
