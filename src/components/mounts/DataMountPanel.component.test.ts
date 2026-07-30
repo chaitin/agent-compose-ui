@@ -5,6 +5,7 @@ import DataMountPanel from './DataMountPanel.svelte';
 import { managedVolumeName } from '../../lib/project-resources/volume-names';
 import { volumeService } from '../../lib/rpc';
 import { managedVolumeDeletionGuard } from '../../lib/project-resources/physical-deletion-guard';
+import { readFileSync } from 'node:fs';
 
 vi.mock('../../lib/rpc', () => ({ volumeService: { removeVolume: vi.fn() } }));
 
@@ -37,6 +38,13 @@ agents:
   expect(screen.getByRole('group', { name: '共享目录' })).toBeInTheDocument();
   await fireEvent.click(screen.getByRole('button', { name: /project-memory/ }));
   expect(screen.getByRole('region', { name: 'project-memory 详情' })).toHaveTextContent('/data/project-memory');
+});
+
+test('fills the resource panel and assigns remaining height to the browser', () => {
+  setup();
+  const source = readFileSync(`${process.cwd()}/src/components/mounts/DataMountPanel.svelte`, 'utf8');
+  expect(source).toMatch(/\.mount-panel\{[^}]*flex:1[^}]*grid-template-rows:auto minmax\(0,1fr\)[^}]*min-height:0[^}]*overflow:hidden/);
+  expect(source).toMatch(/\.resource-browser\{[^}]*height:100%[^}]*min-height:0[^}]*overflow:hidden/);
 });
 
 test('creates an isolated managed local volume and one mount in a single callback', async () => {
