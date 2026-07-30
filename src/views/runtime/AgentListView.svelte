@@ -348,7 +348,8 @@
     white-space: nowrap;
   }
   .metric b.status-ok, .metric b.status-running { color: var(--accent-green); }
-  .metric b.status-err, .metric b.status-canceled { color: var(--accent-red); }
+  .metric b.status-err { color: var(--accent-red); }
+  .metric b.status-canceled { color: var(--accent-orange); }
   .metric b.status-pending, .metric b.status-unknown { color: var(--accent-yellow); }
   .metric b.status-skipped { color: var(--text-muted); }
   .arrow {

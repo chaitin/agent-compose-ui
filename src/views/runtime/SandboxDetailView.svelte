@@ -103,6 +103,10 @@
   function runStatusLabel(status?: RunStatus) {
     return ({ [RunStatus.PENDING]: '等待中', [RunStatus.RUNNING]: '运行中', [RunStatus.SUCCEEDED]: '成功', [RunStatus.FAILED]: '失败', [RunStatus.CANCELED]: '已取消' } as Record<number, string>)[status ?? 0] || '未知';
   }
+  function runStatusClass(status?: RunStatus) {
+    if (status === RunStatus.CANCELED) return 'status-canceled';
+    return '';
+  }
   function lifecycle(status = snapshot?.sandbox.status || '') {
     const normalized = status.toUpperCase();
     if (normalized === 'RUNNING') return 'running';
@@ -481,7 +485,7 @@
                 <article id="runs" class="related-runs-row">
                   <time>关联 Run 历史</time>
                   <div><header><strong>RUN</strong><code>{runs.length} 条</code></header>
-                    {#if runsError}<div class="notice error">关联 Run 加载失败：{runsError}</div>{:else if !runs.length}<p>暂无关联 Run</p>{:else}<div class="related-run-list">{#each runs as run (run.runId)}<button aria-label={`${run.runId} ${run.agentName}`} onclick={() => store.navigateTo('run-detail', { agentName: run.agentName, runId: run.runId })}><code>{run.runId}</code><span>{run.agentName || '-'}</span><span>{runStatusLabel(run.status)}</span><time>{run.updatedAt || run.createdAt || '-'}</time></button>{/each}</div>{/if}
+                    {#if runsError}<div class="notice error">关联 Run 加载失败：{runsError}</div>{:else if !runs.length}<p>暂无关联 Run</p>{:else}<div class="related-run-list">{#each runs as run (run.runId)}<button aria-label={`${run.runId} ${run.agentName}`} onclick={() => store.navigateTo('run-detail', { agentName: run.agentName, runId: run.runId })}><code>{run.runId}</code><span>{run.agentName || '-'}</span><span class={runStatusClass(run.status)}>{runStatusLabel(run.status)}</span><time>{run.updatedAt || run.createdAt || '-'}</time></button>{/each}</div>{/if}
                   </div>
                 </article>
               {/if}
@@ -528,6 +532,7 @@
   .timeline-loading{padding:12px;text-align:center;color:var(--text-muted);font-size:var(--font-size-xs)}
   .related-run-list{display:grid;margin-top:8px;border-top:1px solid var(--border-color)}
   .related-run-list>button{display:grid;grid-template-columns:minmax(150px,1fr) 110px 70px minmax(120px,160px);gap:10px;width:100%;padding:8px 0;border:0;border-bottom:1px solid var(--border-color);border-radius:0;background:transparent;text-align:left}.related-run-list>button:last-child{border-bottom:0}.related-run-list code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.related-runs-row p{margin:8px 0;color:var(--text-muted);font-size:var(--font-size-xs)}
+  .related-run-list .status-canceled{color:var(--accent-orange)}
   @keyframes timeline-row-in{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
   @media(max-width:760px){.status-actions{grid-template-columns:minmax(0,1fr) auto}.sandbox-actions{grid-row:3;grid-column:1/-1;border-top:1px solid var(--border-color)}.supplemental-metrics{grid-row:2;grid-column:1/-1}.sandbox-timeline>header,.sandbox-timeline>article{grid-template-columns:100px minmax(0,1fr)}.related-run-list>button{grid-template-columns:1fr 70px}.related-run-list>button time{grid-column:1/-1}}
   @media(prefers-reduced-motion:reduce){.sandbox-timeline>article,.agent-replying span{animation:none}}

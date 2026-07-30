@@ -129,7 +129,8 @@
     if (status === RunStatus.PENDING) return 'status-pending';
     if (status === RunStatus.RUNNING) return 'status-running';
     if (status === RunStatus.SUCCEEDED) return 'status-succeeded';
-    if (status === RunStatus.FAILED || status === RunStatus.CANCELED) return 'status-failed';
+    if (status === RunStatus.FAILED) return 'status-failed';
+    if (status === RunStatus.CANCELED) return 'status-canceled';
     return 'status-unknown';
   }
 </script>
@@ -191,6 +192,7 @@
   .run-status.status-pending, .run-status.status-unknown { color: var(--accent-yellow); }
   .run-status.status-running, .run-status.status-succeeded { color: var(--accent-green); }
   .run-status.status-failed { color: var(--accent-red); }
+  .run-status.status-canceled { color: var(--accent-orange); }
   .state, .empty, .project-error { padding: 48px; text-align: center; color: var(--text-muted); }
   .agent-error { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 36px; color: var(--accent-red); }
   button { border: 1px solid var(--border-color); border-radius: 5px; padding: 5px 10px; color: var(--text-primary); background: var(--bg-primary); cursor: pointer; }
