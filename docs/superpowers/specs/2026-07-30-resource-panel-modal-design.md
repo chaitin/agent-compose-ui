@@ -29,6 +29,27 @@ Use the approved blue-gray layered treatment:
 - Dialog width may vary with content, but placement and surface styling do not.
 - Existing semantic action button colors remain unchanged.
 
+## Compact Command Layout
+
+The dialogs use an IDE command-palette density rather than a vertically stacked web form:
+
+- Related labels and controls share a row in a responsive two-to-four-column grid.
+- A label and its control remain together when the grid wraps.
+- Titles and short context selectors may share the header row.
+- Path previews, detected Skill names, and errors use one compact status row only when present.
+- Actions align to the right on the final row and may share it with status text.
+- A thin blue context strip at the top identifies these dialogs as resource-management commands.
+- The card has no internal maximum-height scrolling. Its complete content is visible at once at the normal resource-panel size.
+
+Dialog-specific grouping:
+
+- JavaScript creation: file name and parent directory share a row; path preview and actions share the footer.
+- Skill creation: Skill name and target Agent share a row.
+- Skill upload: file picker and target Agent share a row; detected name and actions share the footer.
+- Volume creation: logical name, target Agent, and mount target share a row where width permits.
+- Resource mounting: resource type sits in the command header; resource, Agent, target path, and access mode form one compact grid.
+- Cache presets use compact horizontal groups instead of a tall vertical stack.
+
 ## Component Boundary
 
 Provide one shared frontend modal shell or equivalent shared resource-panel modal classes. Script, Skill, and mount components opt into this contract. The overlay must be rendered within the active panel content and must not escape to the browser viewport.
