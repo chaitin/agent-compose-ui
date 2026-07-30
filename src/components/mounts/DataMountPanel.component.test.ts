@@ -41,6 +41,7 @@ agents:
 
 test('creates an isolated managed local volume and one mount in a single callback', async () => {
   const onYamlChange = setup();
+  await fireEvent.click(screen.getByRole('button', { name: '创建数据卷' }));
   await fireEvent.input(screen.getByLabelText('逻辑名称'), { target: { value: 'memory' } });
   await fireEvent.click(screen.getByRole('button', { name: '创建并挂载' }));
   await waitFor(() => expect(onYamlChange).toHaveBeenCalledTimes(1));
@@ -55,6 +56,7 @@ test('creates an isolated managed local volume and one mount in a single callbac
 test('rejects a duplicate target across bind and volume mounts without a callback', async () => {
   const source = 'volumes:\n  cache: {}\nagents:\n  alpha:\n    volumes:\n      - { type: bind, source: /srv/docs, target: /data//memory, read_only: true }\n';
   const onYamlChange = setup({ yaml: source });
+  await fireEvent.click(screen.getByRole('button', { name: '创建数据卷' }));
   await fireEvent.input(screen.getByLabelText('逻辑名称'), { target: { value: 'memory' } });
   await fireEvent.click(screen.getByRole('button', { name: '创建并挂载' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('挂载目标已被使用');
@@ -64,6 +66,7 @@ test('rejects a duplicate target across bind and volume mounts without a callbac
 test('mounts the same declaration to a second Agent and unmounts only that reference', async () => {
   const source = 'volumes:\n  cache: {}\nagents:\n  alpha: {}\n  beta:\n    volumes:\n      - { type: volume, source: cache, target: /cache, read_only: false }\n';
   const onYamlChange = setup({ yaml: source });
+  await fireEvent.click(screen.getByRole('button', { name: '挂载资源' }));
   await fireEvent.change(screen.getByLabelText('现有卷'), { target: { value: 'cache' } });
   await fireEvent.input(screen.getByLabelText('现有卷挂载目标'), { target: { value: '/cache' } });
   await fireEvent.click(screen.getByRole('button', { name: /^挂载$/ }));
@@ -99,7 +102,7 @@ test('keeps all mutations disabled until the exact async apply callback settles'
   await fireEvent.click(apply);
   expect(onApply).toHaveBeenCalledOnce();
   expect(screen.getByRole('button', { name: '正在应用…' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: '创建并挂载' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '创建数据卷' })).toBeDisabled();
   resolve();
   await waitFor(() => expect(screen.getByRole('button', { name: '应用 YAML' })).toBeEnabled());
 });
@@ -110,6 +113,7 @@ test.each([
   ['different system', `volumes:\n  memory: { name: wrong, driver: local, labels: { agent-compose-ui.managed: 'true', agent-compose-ui.project-key: ${KEY} } }\n`],
 ])('does not overwrite a colliding %s declaration', async (_kind, declaration) => {
   const onYamlChange = setup({ yaml: `${declaration}agents:\n  alpha: {}\n` });
+  await fireEvent.click(screen.getByRole('button', { name: '创建数据卷' }));
   await fireEvent.input(screen.getByLabelText('逻辑名称'), { target: { value: 'memory' } });
   await fireEvent.click(screen.getByRole('button', { name: '创建并挂载' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('卷声明 memory 冲突');
@@ -141,6 +145,8 @@ test('resets shared mounts to read-only whenever the selected catalog ID changes
     { id: 'two', name: 'Two', path: '/srv/two', writable: true },
   ] }))));
   render(DataMountPanel, { yaml: SOURCE, projectKey: KEY, onYamlChange: vi.fn(), onApply: vi.fn() });
+  await fireEvent.click(screen.getByRole('button', { name: '挂载资源' }));
+  await fireEvent.change(screen.getByLabelText('资源类型'), { target: { value: 'share' } });
   await screen.findByRole('option', { name: 'One (可写)' });
   const readOnly = screen.getByRole('checkbox', { name: '只读' });
   expect(readOnly).toBeChecked();
@@ -148,6 +154,16 @@ test('resets shared mounts to read-only whenever the selected catalog ID changes
   expect(readOnly).not.toBeChecked();
   await fireEvent.change(screen.getByLabelText('共享目录'), { target: { value: 'two' } });
   await waitFor(() => expect(readOnly).toBeChecked());
+});
+
+test('moves resource creation and mounting into typed modals', async () => {
+  setup();
+  expect(screen.getByRole('toolbar', { name: '数据与挂载操作' })).toBeInTheDocument();
+  expect(screen.queryByLabelText('逻辑名称')).not.toBeInTheDocument();
+  await fireEvent.click(screen.getByRole('button', { name: '挂载资源' }));
+  await fireEvent.change(screen.getByLabelText('资源类型'), { target: { value: 'cache' } });
+  expect(screen.getByLabelText('缓存预设')).toBeInTheDocument();
+  expect(screen.queryByLabelText('共享目录')).not.toBeInTheDocument();
 });
 
 test('shows file browsing only for managed volumes, never external volumes or bind mounts', async () => {
