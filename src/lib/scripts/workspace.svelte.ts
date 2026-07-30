@@ -16,6 +16,8 @@ export interface ScriptWorkspaceApi {
   deleteFolder(path: string, recursive: boolean): Promise<void>;
 }
 
+export type ResourceTab = 'scripts' | 'workspace' | 'skills' | 'mounts';
+
 const DEFAULT_NEW_SCRIPT = '// 新脚本\n';
 
 export function createScriptWorkspace(api: ScriptWorkspaceApi = scriptApi): ScriptWorkspace {
@@ -29,7 +31,7 @@ export class ScriptWorkspace {
   projectId = $state('');
   projectName = $state('');
   panelOpen = $state(false);
-  activeTab = $state<'scripts' | 'workspace'>('scripts');
+  activeTab = $state<ResourceTab>('scripts');
   loading = $state(false);
   serviceAvailable = $state(true);
   contextRevision = $state(0);

@@ -8,11 +8,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"agent-compose-ui/internal/config"
+	"agent-compose-ui/internal/sharedirs"
 )
 
 func TestServeDrainsInFlightRequestBeforeReturning(t *testing.T) {
@@ -258,6 +261,112 @@ func TestProjectStorageRoutesRequirePasswordSession(t *testing.T) {
 	}
 }
 
+func TestProjectFilesRoutePrecedesDaemonAndRequiresPasswordSession(t *testing.T) {
+	proxied := make(chan string, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxied <- r.URL.Path
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	defer upstream.Close()
+	target, _ := url.Parse(upstream.URL)
+	cfg := testConfig(target)
+	cfg.AuthMode = config.AuthPassword
+	cfg.AuthPassword = "password"
+	cfg.AuthSecret = "secret"
+	cfg.ProjectStorageRoot = t.TempDir()
+	projectKey := "ws_0123456789abcdef0123456789abcdef"
+	if err := os.Mkdir(filepath.Join(cfg.ProjectStorageRoot, projectKey), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	handler := New(cfg)
+	endpoint := "/api/project-files/skills?projectKey=" + projectKey
+
+	unauthenticated := httptest.NewRecorder()
+	handler.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, endpoint, nil))
+	if unauthenticated.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated = %d %s", unauthenticated.Code, unauthenticated.Body.String())
+	}
+	if unauthenticated.Header().Get("Cache-Control") != "no-store" || unauthenticated.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("unauthenticated security headers = %#v", unauthenticated.Header())
+	}
+
+	login := httptest.NewRecorder()
+	handler.ServeHTTP(login, httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"admin","password":"password"}`)))
+	cookie := login.Result().Cookies()[0]
+	createReq := httptest.NewRequest(http.MethodPost, "/api/project-files/skills/create", strings.NewReader(`{"projectKey":"`+projectKey+`","name":"wired"}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.AddCookie(cookie)
+	created := httptest.NewRecorder()
+	handler.ServeHTTP(created, createReq)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s", created.Code, created.Body.String())
+	}
+	req := httptest.NewRequest(http.MethodGet, endpoint, nil)
+	req.AddCookie(cookie)
+	authenticated := httptest.NewRecorder()
+	handler.ServeHTTP(authenticated, req)
+	if authenticated.Code != http.StatusOK || !strings.Contains(authenticated.Body.String(), "wired") {
+		t.Fatalf("authenticated = %d %s", authenticated.Code, authenticated.Body.String())
+	}
+	select {
+	case got := <-proxied:
+		t.Fatalf("project-files request was proxied to daemon: %s", got)
+	default:
+	}
+}
+
+func TestSharedDirectoriesRoutePrecedesDaemonAndRequiresPasswordSession(t *testing.T) {
+	proxied := make(chan string, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxied <- r.URL.Path
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	defer upstream.Close()
+	target, _ := url.Parse(upstream.URL)
+	cfg := testConfig(target)
+	cfg.AuthMode, cfg.AuthPassword, cfg.AuthSecret = config.AuthPassword, "password", "secret"
+	cfg.SharedDirectoryCatalog = []sharedirs.Entry{{ID: "reference", Name: "Reference", Path: "/shares/reference"}}
+	handler := New(cfg)
+
+	unauthenticated := httptest.NewRecorder()
+	handler.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/api/shared-directories", nil))
+	if unauthenticated.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated = %d %s", unauthenticated.Code, unauthenticated.Body.String())
+	}
+	if unauthenticated.Header().Get("Cache-Control") != "no-store" || unauthenticated.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("headers = %#v", unauthenticated.Header())
+	}
+
+	login := httptest.NewRecorder()
+	handler.ServeHTTP(login, httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"admin","password":"password"}`)))
+	req := httptest.NewRequest(http.MethodGet, "/api/shared-directories", nil)
+	req.AddCookie(login.Result().Cookies()[0])
+	authenticated := httptest.NewRecorder()
+	handler.ServeHTTP(authenticated, req)
+	if authenticated.Code != http.StatusOK || !strings.Contains(authenticated.Body.String(), `"id":"reference"`) {
+		t.Fatalf("authenticated = %d %s", authenticated.Code, authenticated.Body.String())
+	}
+	select {
+	case got := <-proxied:
+		t.Fatalf("request was proxied: %s", got)
+	default:
+	}
+}
+
+func TestProgrammaticInvalidSharedDirectoryCatalogFailsHandlerConstruction(t *testing.T) {
+	cfg := testConfig(mustURL(t, "http://127.0.0.1:1"))
+	cfg.SharedDirectoryCatalog = []sharedirs.Entry{{ID: "unsafe", Name: "Unsafe", Path: "/data/private"}}
+	if _, _, err := newHandlers(cfg, nil); err == nil {
+		t.Fatal("newHandlers succeeded")
+	}
+
+	response := httptest.NewRecorder()
+	New(cfg).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/shared-directories", nil))
+	if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "/data/private") {
+		t.Fatalf("response = %d %q", response.Code, response.Body.String())
+	}
+}
+
 func TestAuthenticationRoutesArePublicAndDaemonIsProtected(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -338,4 +447,82 @@ func mustURL(t *testing.T, raw string) *url.URL {
 		t.Fatal(err)
 	}
 	return value
+}
+
+func TestVolumeFilesRoutePrecedesDaemonProxyAndFailsClosedWhenDisabled(t *testing.T) {
+	called := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	defer upstream.Close()
+	h := New(testConfig(mustURL(t, upstream.URL)))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/volume-files?projectKey=ws_0123456789abcdef0123456789abcdef&volume=cache", nil))
+	if rec.Code != http.StatusServiceUnavailable || called {
+		t.Fatalf("response = %d, daemon called=%v, body=%q", rec.Code, called, rec.Body.String())
+	}
+}
+
+func TestVolumeFilesServerUsesDaemonInspectorWithoutLeakingPath(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "cache")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "hello.txt"), []byte("hello"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const project = "ws_0123456789abcdef0123456789abcdef"
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/agentcompose.v2.VolumeService/InspectVolume" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"volume":{"name":"cache","driver":"local","path":"`+root+`","labels":{"agent-compose-ui.managed":"true","agent-compose-ui.project-key":"`+project+`"}}}`)
+	}))
+	defer daemon.Close()
+	cfg := testConfig(mustURL(t, daemon.URL))
+	cfg.LocalVolumeRoot = parent
+	h := New(cfg)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/volume-files?projectKey="+project+"&volume=cache", nil))
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), root) || !strings.Contains(rec.Body.String(), "hello.txt") {
+		t.Fatalf("response = %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestNewWithCleanupReleasesConfiguredStores(t *testing.T) {
+	cfg := testConfig(mustURL(t, "http://127.0.0.1:1"))
+	cfg.TokenDBPath = filepath.Join(t.TempDir(), "tokens.db")
+	h, cleanup, err := NewWithCleanup(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h == nil {
+		t.Fatal("nil handler")
+	}
+	if err := cleanup(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cleanup(); err != nil {
+		t.Fatal(err)
+	}
+	_, cleanup2, err := NewWithCleanup(cfg)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	if err := cleanup2(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNewReturnsExplicitlyCloseableHandler(t *testing.T) {
+	h := New(testConfig(mustURL(t, "http://127.0.0.1:1")))
+	if err := h.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Close(); err != nil {
+		t.Fatal(err)
+	}
 }

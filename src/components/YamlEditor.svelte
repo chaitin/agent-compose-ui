@@ -70,6 +70,14 @@
   let envModal = $state<{ agentName: string; names: string[] } | null>(null);
   let updateScriptActionContext = () => {};
 
+  function commitSkillYaml(yaml: string): void {
+    store.commitEditorContent(yaml);
+  }
+
+  function persistSkillBinding(binding: { projectKey: string; sourcePath: string }, identity: string): void {
+    if (identity.startsWith('draft:')) store.persistActiveDraftBinding(binding, identity.slice('draft:'.length));
+  }
+
   let agentCount = $derived(countAgents(store.editorContent));
   let schedulerCount = $derived(countSchedulers(store.editorContent));
 
@@ -661,7 +669,19 @@
   </div>
   <div class="editor-stack">
     <div class="yaml-editor-body" bind:this={container}></div>
-    <ResourcePanel workspace={scriptWorkspace} />
+    <ResourcePanel
+      workspace={scriptWorkspace}
+      projectIdentity={store.activeProjectId ? `project:${store.activeProjectId}` : (store.activeDraftId ? `draft:${store.activeDraftId}` : '')}
+      bindingProjectKey={store.activeProjectId ? '' : (store.activeDraftBinding().projectKey || '')}
+      bindingSourcePath={store.activeProjectId
+        ? (store.projects.find((project) => project.summary.projectId === store.activeProjectId)?.summary.sourcePath || '')
+        : (store.activeDraftBinding().sourcePath || '')}
+      bindingLegacyKey={store.activeProjectId ? '' : (store.browserDrafts.find((draft) => draft.id === store.activeDraftId)?.legacyStorageKey || '')}
+      onBindingResolved={persistSkillBinding}
+      yaml={store.editorContent}
+      selectedAgent={store.runtimeView.agentName}
+      onYamlChange={commitSkillYaml}
+    />
     {#if modalRequest}
       <ScriptReferenceModal
         mode={modalRequest.mode}

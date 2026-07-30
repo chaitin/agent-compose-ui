@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { assertLedgerOwns, buildFixture, createLedger } from './fixtures';
 import { findTrackedSandbox, imageHasReference, imagePlatform, schedulerEventsRequest } from './api';
-import { Sandbox } from '../../src/gen/agentcompose/v2/agentcompose_pb';
+import { AgentSpec, NamedWorkspaceSpec, ProjectSpec, Sandbox, WorkspaceSpec } from '../../src/gen/agentcompose/v2/agentcompose_pb';
+import { cleanupProjectResources, resourceMountProbeCommand, resourceWorkspaceSnapshot } from './project-resources.test';
 
 describe('real-data fixture safety', () => {
   test('builds deterministic exact markers and commands from a batch ID', () => {
@@ -69,5 +70,56 @@ describe('real-data fixture safety', () => {
     expect(schedulerRequest.project?.projectId).toBe('project-1');
     expect(schedulerRequest.agentName).toBe('agent-1');
     expect(schedulerRequest.limit).toBe(100);
+  });
+
+  test('resource probe requires readable but non-writable share and persists data plus npm markers', () => {
+    const command = resourceMountProbeCommand('marker');
+    expect(command).toContain('test -r /shared/read-only');
+    expect(command).toContain("probe='/shared/read-only/.agent-compose-e2e-marker'");
+    expect(command).toContain("trap 'rm -f \"$probe\" 2>/dev/null || true' EXIT");
+    expect(command).toContain('test ! -e "$probe"');
+    expect(command).toContain('if touch "$probe"; then rm -f "$probe"; exit 42; fi');
+    expect(command).toContain("printf 'marker' > /data/e2e/agent.txt");
+    expect(command).toContain("printf 'marker-npm' > /root/.npm/e2e-marker");
+    expect(resourceMountProbeCommand('other-batch')).toContain('.agent-compose-e2e-other-batch');
+    expect(() => resourceMountProbeCommand('bad marker')).toThrow('unsafe');
+  });
+
+  test('resource workspace snapshot covers named and every agent workspace field', () => {
+    const spec = new ProjectSpec({
+      workspaces: [new NamedWorkspaceSpec({ name: 'named', workspace: new WorkspaceSpec({ provider: 'git', url: 'https://example.test/repo', branch: 'main', path: 'root', name: 'checkout' }) })],
+      agents: [
+        new AgentSpec({ name: 'with-workspace', workspace: new WorkspaceSpec({ provider: 'local', path: 'workspace', name: 'named' }) }),
+        new AgentSpec({ name: 'without-workspace' }),
+      ],
+    });
+    const snapshot = JSON.parse(resourceWorkspaceSnapshot(spec));
+    expect(snapshot.project[0]).toMatchObject({ name: 'named', workspace: { provider: 'git', branch: 'main', path: 'root' } });
+    expect(snapshot.agents).toEqual([
+      { name: 'with-workspace', workspace: { provider: 'local', url: '', branch: '', path: 'workspace', name: 'named' } },
+      { name: 'without-workspace', workspace: null },
+    ]);
+    const underSharedRoot = JSON.parse(resourceWorkspaceSnapshot(spec, '/data/work/projects/ws_0123456789abcdef0123456789abcdef'));
+    expect(underSharedRoot.project[0].resolvedPath).toBe('/data/work/projects/ws_0123456789abcdef0123456789abcdef/root');
+    expect(resourceWorkspaceSnapshot(spec, '/other/source')).not.toBe(resourceWorkspaceSnapshot(spec, '/data/work/projects/ws_0123456789abcdef0123456789abcdef'));
+  });
+
+  test('resource cleanup tolerates missing resources while retaining and reporting real failures', async () => {
+    const skills = new Set(['skills/missing', 'skills/blocked']);
+    const volumes = new Set(['missing-volume', 'blocked-volume']);
+    const errors = await cleanupProjectResources({
+      gateway: 'http://gateway.test', projectKey: 'ws_0123456789abcdef0123456789abcdef', skills, volumes,
+      fetcher: (async (url: string | URL | Request) => new Response('', { status: String(url).includes('missing') ? 404 : 500 })) as typeof fetch,
+      volumeClient: {
+        async removeVolume(request) {
+          if (request.name === 'missing-volume') throw new Error('not found');
+          return { removed: false };
+        },
+        async inspectVolume() { return {}; },
+      },
+    });
+    expect(skills).toEqual(new Set(['skills/blocked']));
+    expect(volumes).toEqual(new Set(['blocked-volume']));
+    expect(errors).toEqual(['skill skills/blocked: HTTP 500', 'volume blocked-volume: still exists after cleanup']);
   });
 });

@@ -225,6 +225,38 @@ describe('CacheListView', () => {
 });
 
 describe('VolumeListView', () => {
+  test('links managed volume details back to its project resources without exposing the physical path', async () => {
+    const managed = new Volume({
+      name: 'managed-data',
+      driver: 'local',
+      projectId: 'project-managed',
+      path: '/data/volumes/local/managed-data',
+      labels: {
+        'agent-compose-ui.managed': 'true',
+        'agent-compose-ui.project-key': 'ws_0123456789abcdef0123456789abcdef',
+      },
+    });
+    rpc.volumeService.listVolumes.mockResolvedValue({ volumes: [managed] });
+    rpc.volumeService.inspectVolume.mockResolvedValue({ volume: managed });
+
+    render(VolumeListView);
+    await fireEvent.click(await screen.findByRole('button', { name: '检查 managed-data' }));
+
+    await screen.findByRole('complementary');
+    expect(document.body).not.toHaveTextContent(managed.path);
+    expect(screen.getByRole('link', { name: '返回项目资源' })).toHaveAttribute('href', '#/project/project-managed/agents');
+  });
+
+  test('does not treat a non-local volume with forged managed labels as managed', async () => {
+    const forged = new Volume({ name: 'forged', driver: 'nfs', projectId: 'project-forged', path: '/remote/forged', labels: { 'agent-compose-ui.managed': 'true', 'agent-compose-ui.project-key': 'ws_0123456789abcdef0123456789abcdef' } });
+    rpc.volumeService.listVolumes.mockResolvedValue({ volumes: [forged] });
+    rpc.volumeService.inspectVolume.mockResolvedValue({ volume: forged });
+    render(VolumeListView);
+    await fireEvent.click(await screen.findByRole('button', { name: '检查 forged' }));
+    await waitFor(() => expect(document.body.textContent?.split('/remote/forged').length - 1).toBe(2));
+    expect(screen.queryByRole('link', { name: '返回项目资源' })).not.toBeInTheDocument();
+  });
+
   test('keeps the newest volume list and inspect responses when older requests resolve last', async () => {
     const oldList = deferred<any>();
     const oldInspect = deferred<any>();
