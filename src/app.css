@@ -6,7 +6,8 @@
   --text-primary: #f0f6fc;
   --text-secondary: #8b949e;
   --text-muted: #6e7681;
-  --accent-blue: #1f6feb;
+  --accent-blue: #58a6ff;
+  --accent-blue-emphasis: #1f6feb;
   --accent-blue-bright: #58a6ff;
   --accent-green: #3fb950;
   --accent-red: #f85149;
@@ -64,10 +65,10 @@ button.ui-button:disabled { cursor: not-allowed; opacity: .5; }
 button.ui-button.primary {
   border-color: color-mix(in srgb, var(--accent-blue) 55%, var(--border-color));
   color: var(--accent-blue-bright);
-  background: color-mix(in srgb, var(--accent-blue) 10%, var(--bg-secondary));
+  background: color-mix(in srgb, var(--accent-blue-emphasis) 10%, var(--bg-secondary));
   font-weight: 600;
 }
-button.ui-button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-blue) 16%, var(--bg-secondary)); }
+button.ui-button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-blue-emphasis) 16%, var(--bg-secondary)); }
 button.ui-button.secondary { background: var(--bg-tertiary); }
 button.ui-button.ghost { border-color: transparent; color: var(--text-secondary); background: transparent; }
 button.ui-button.ghost:hover:not(:disabled) { border-color: var(--border-color); color: var(--text-primary); background: var(--bg-tertiary); }
@@ -138,8 +139,8 @@ dialog.resource-modal-card.command-modal {
 .command-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
 .command-footer .command-status { margin-right: auto; }
 .command-modal button.ui-button { border-radius: 3px; }
-.command-modal button.ui-button.primary { border-color: color-mix(in srgb, var(--accent-blue-bright) 55%, var(--border-color)); background: color-mix(in srgb, var(--accent-blue) 24%, var(--bg-secondary)); color: var(--accent-blue-bright); }
-.command-modal button.ui-button.primary:hover:not(:disabled) { border-color: var(--accent-blue); background: color-mix(in srgb, var(--accent-blue) 32%, var(--bg-secondary)); color: var(--accent-blue-bright); }
+.command-modal button.ui-button.primary { border-color: color-mix(in srgb, var(--accent-blue-bright) 55%, var(--border-color)); background: color-mix(in srgb, var(--accent-blue-emphasis) 24%, var(--bg-secondary)); color: var(--accent-blue-bright); }
+.command-modal button.ui-button.primary:hover:not(:disabled) { border-color: var(--accent-blue); background: color-mix(in srgb, var(--accent-blue-emphasis) 32%, var(--bg-secondary)); color: var(--accent-blue-bright); }
 .command-presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
 .command-presets fieldset { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; margin: 0; padding: 7px; border: 1px solid var(--border-color); }
 .command-presets legend { padding: 0 4px; color: var(--text-secondary); font-size: var(--font-size-xs); }
