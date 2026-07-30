@@ -117,7 +117,7 @@ test('uses the approved compact high-density dimensions', () => {
   assert.match(source, /\.filter-box\s*\{[\s\S]*?padding:\s*0 0 6px/);
   assert.match(source, /\.project-row\s*\{[\s\S]*?min-height:\s*30px/);
   assert.match(source, /\.project-name\s*\{[\s\S]*?font-family:\s*var\(--font-mono\)/);
-  assert.match(source, /border:\s*1px solid color-mix\(in srgb, var\(--accent-green\) 10%, var\(--border-color\)\)/);
+  assert.match(source, /border:\s*1px solid color-mix\(in srgb, var\(--accent-blue\) 10%, var\(--border-color\)\)/);
   assert.match(source, /\.new-project-btn\s*\{[\s\S]*?text-align:\s*center/);
 });
 
@@ -137,6 +137,6 @@ test('renders equally sized load-more and create buttons', () => {
   assert.match(source, /class="project-actions"[\s\S]*class="load-more-btn"[\s\S]*class="new-project-btn"/);
   assert.match(source, /\.load-more-btn,[\s\S]*?\.new-project-btn\s*\{[\s\S]*?width:\s*100%[\s\S]*?min-height:\s*30px/);
   assert.match(source, /\.load-more-btn\s*\{[\s\S]*?border:\s*1px solid var\(--border-color\)/);
-  assert.match(source, /\.new-project-btn:hover[\s\S]*?border-color:\s*color-mix\(in srgb, var\(--accent-green\) 30%, var\(--border-color\)\)/);
+  assert.match(source, /\.new-project-btn:hover[\s\S]*?border-color:\s*color-mix\(in srgb, var\(--accent-blue\) 30%, var\(--border-color\)\)/);
   assert.match(source, /\.project-actions\s*\{[\s\S]*?border-top:\s*1px solid var\(--border-color\)/);
 });
