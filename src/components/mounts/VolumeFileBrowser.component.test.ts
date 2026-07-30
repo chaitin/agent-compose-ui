@@ -13,6 +13,15 @@ function deferred<T>() { let resolve!: (v: T) => void; let reject!: (e: unknown)
 beforeEach(() => { vi.mocked(volumeFileApi.list).mockReset().mockResolvedValue([file]); vi.mocked(volumeFileApi.preview).mockReset().mockResolvedValue({ path: 'a.txt', content: 'hello', sha256: 'a'.repeat(64), truncated: false }); vi.mocked(volumeFileApi.write).mockReset(); vi.mocked(volumeFileApi.upload).mockReset(); vi.mocked(volumeFileApi.mkdir).mockReset(); vi.mocked(volumeFileApi.removeFile).mockReset(); vi.mocked(volumeFileApi.removeFolder).mockReset(); vi.mocked(volumeFileApi.downloadURL).mockReset().mockReturnValue('/download'); });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
+test('uses a Workspace-style toolbar, file navigation and preview pane', async () => {
+  render(VolumeFileBrowser, { projectKey: KEY_A, volume: 'managed' });
+  expect(screen.getByRole('toolbar', { name: '卷文件操作' })).toBeInTheDocument();
+  expect(screen.getByRole('navigation', { name: '卷文件列表' })).toBeInTheDocument();
+  expect(screen.getByRole('region', { name: '卷文件预览' })).toBeInTheDocument();
+  await fireEvent.click(await screen.findByRole('button', { name: 'a.txt' }));
+  expect(await screen.findByRole('textbox', { name: '文件内容' })).toHaveValue('hello');
+});
+
 test('lists, previews and provides a download link without physical paths', async () => {
   render(VolumeFileBrowser, { projectKey: KEY_A, volume: 'managed' });
   await fireEvent.click(await screen.findByRole('button', { name: 'a.txt' }));
