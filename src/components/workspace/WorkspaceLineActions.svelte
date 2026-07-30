@@ -61,14 +61,14 @@
   .pill .ico { font-size: 11px; line-height: 1; }
 
   .pill.warn {
-    background: color-mix(in srgb, var(--accent-yellow) 12%, transparent);
+    background: color-mix(in srgb, var(--accent-yellow) 7%, transparent);
     border-color: var(--accent-yellow);
     color: var(--accent-yellow);
   }
   .pill.warn:hover { background: color-mix(in srgb, var(--accent-yellow) 12%, transparent); }
 
   .pill.action {
-    background: color-mix(in srgb, var(--accent-blue) 12%, transparent);
+    background: color-mix(in srgb, var(--accent-blue) 7%, transparent);
     border-color: var(--accent-blue);
     color: var(--accent-blue);
   }

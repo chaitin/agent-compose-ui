@@ -40,7 +40,7 @@
     padding: 2px 8px;
     border: 1px solid var(--accent-blue);
     border-radius: 3px;
-    background: color-mix(in srgb, var(--accent-blue) 12%, transparent);
+    background: color-mix(in srgb, var(--accent-blue) 7%, transparent);
     color: var(--accent-blue);
     cursor: pointer;
     font-size: var(--font-size-xs);
