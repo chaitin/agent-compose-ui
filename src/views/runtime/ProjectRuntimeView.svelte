@@ -83,6 +83,13 @@
   function statusLabel(status: RunStatus) {
     return ({ [RunStatus.PENDING]: '等待中', [RunStatus.RUNNING]: '运行中', [RunStatus.SUCCEEDED]: '成功', [RunStatus.FAILED]: '失败', [RunStatus.CANCELED]: '已取消' } as Record<number, string>)[status] || '未知';
   }
+  function statusClass(status: RunStatus) {
+    if (status === RunStatus.PENDING) return 'status-pending';
+    if (status === RunStatus.RUNNING) return 'status-running';
+    if (status === RunStatus.SUCCEEDED) return 'status-succeeded';
+    if (status === RunStatus.FAILED || status === RunStatus.CANCELED) return 'status-failed';
+    return 'status-unknown';
+  }
 </script>
 
 <div class="root">
@@ -96,7 +103,7 @@
   </form>
   {#if loading}<div class="state">加载中...</div>
   {:else if runs.length === 0}<div class="state">暂无 v2 Run 记录</div>
-  {:else}<div class="runs">{#each runs as run (run.runId)}<button class="run" onclick={() => store.navigateTo('run-detail', { agentName: run.agentName, runId: run.runId })}><span>{statusLabel(run.status)}</span><strong>{run.agentName || '-'}</strong><code>{run.runId}</code><time>{run.updatedAt || run.createdAt || '-'}</time><i>→</i></button>{/each}</div>{#if hasMore}<button class="load-more" disabled={loadingMore} onclick={loadMore}>{loadingMore ? '加载中…' : '加载更多'}</button>{/if}{/if}
+  {:else}<div class="runs">{#each runs as run (run.runId)}<button class="run" onclick={() => store.navigateTo('run-detail', { agentName: run.agentName, runId: run.runId })}><span class={statusClass(run.status)}>{statusLabel(run.status)}</span><strong>{run.agentName || '-'}</strong><code>{run.runId}</code><time>{run.updatedAt || run.createdAt || '-'}</time><i>→</i></button>{/each}</div>{#if hasMore}<button class="load-more" disabled={loadingMore} onclick={loadMore}>{loadingMore ? '加载中…' : '加载更多'}</button>{/if}{/if}
 </div>
 
-<style>.root{height:100%;overflow:auto;padding:0 14px 14px}.breadcrumb-wrap{margin:0 -14px 12px}button,select,input{border:1px solid var(--border-color);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary);padding:6px 9px}.filters input[type="date"]{cursor:pointer}.filters{display:flex;flex-wrap:nowrap;align-items:center;gap:12px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px}.filters label{display:flex;flex:0 0 auto;align-items:center;gap:6px;color:var(--text-muted);font-size:var(--font-size-xs);white-space:nowrap}.filters button{flex:0 0 auto}.state{padding:30px;text-align:center;color:var(--text-muted)}.runs{display:grid;gap:6px}.run{display:grid;grid-template-columns:70px 120px minmax(0,1fr) 180px 18px;gap:8px;text-align:left;align-items:center}.run:hover{border-color:var(--accent-blue)}code,time{overflow:hidden;text-overflow:ellipsis;color:var(--text-muted);font-size:var(--font-size-xs)}i{font-style:normal}.load-more{width:100%;margin-top:8px}</style>
+<style>.root{height:100%;overflow:auto;padding:0 14px 14px}.breadcrumb-wrap{margin:0 -14px 12px}button,select,input{border:1px solid var(--border-color);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary);padding:6px 9px}.filters input[type="date"]{cursor:pointer}.filters{display:flex;flex-wrap:nowrap;align-items:center;gap:12px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px}.filters label{display:flex;flex:0 0 auto;align-items:center;gap:6px;color:var(--text-muted);font-size:var(--font-size-xs);white-space:nowrap}.filters button{flex:0 0 auto}.state{padding:30px;text-align:center;color:var(--text-muted)}.runs{display:grid;gap:6px}.run{display:grid;grid-template-columns:70px 120px minmax(0,1fr) 180px 18px;gap:8px;text-align:left;align-items:center}.run:hover{border-color:var(--accent-blue)}.status-pending,.status-unknown{color:var(--accent-yellow)}.status-running,.status-succeeded{color:var(--accent-green)}.status-failed{color:var(--accent-red)}code,time{overflow:hidden;text-overflow:ellipsis;color:var(--text-muted);font-size:var(--font-size-xs)}i{font-style:normal}.load-more{width:100%;margin-top:8px}</style>

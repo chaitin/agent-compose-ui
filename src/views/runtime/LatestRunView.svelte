@@ -124,6 +124,14 @@
     if (status === RunStatus.CANCELED) return '已取消';
     return '未知';
   }
+
+  function statusClass(status: RunStatus) {
+    if (status === RunStatus.PENDING) return 'status-pending';
+    if (status === RunStatus.RUNNING) return 'status-running';
+    if (status === RunStatus.SUCCEEDED) return 'status-succeeded';
+    if (status === RunStatus.FAILED || status === RunStatus.CANCELED) return 'status-failed';
+    return 'status-unknown';
+  }
 </script>
 
 <div class="root">
@@ -146,7 +154,7 @@
     <div class="agent-sections">
       {#each entries as entry (entry.agentName)}
         <section class="agent-section" data-agent={entry.agentName}>
-          <header><span>Agent</span><h2>{entry.agentName}</h2>{#if entry.latestRun}<strong class="run-status">{statusLabel(entry.status)}</strong>{/if}</header>
+          <header><span>Agent</span><h2>{entry.agentName}</h2>{#if entry.latestRun}<strong class="run-status {statusClass(entry.status)}">{statusLabel(entry.status)}</strong>{/if}</header>
           {#if entry.loading}
             <div class="state">正在加载最近运行记录...</div>
           {:else if entry.error}
@@ -180,6 +188,9 @@
   header span { color: var(--text-muted); font: var(--font-size-xs) var(--font-mono); text-transform: uppercase; }
   h2 { margin: 2px 0 0; color: var(--text-primary); font-size: var(--font-size-xl); }
   .run-status { margin-left: auto; color: var(--text-secondary); font-size: var(--font-size-sm); }
+  .run-status.status-pending, .run-status.status-unknown { color: var(--accent-yellow); }
+  .run-status.status-running, .run-status.status-succeeded { color: var(--accent-green); }
+  .run-status.status-failed { color: var(--accent-red); }
   .state, .empty, .project-error { padding: 48px; text-align: center; color: var(--text-muted); }
   .agent-error { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 36px; color: var(--accent-red); }
   button { border: 1px solid var(--border-color); border-radius: 5px; padding: 5px 10px; color: var(--text-primary); background: var(--bg-primary); cursor: pointer; }

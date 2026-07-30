@@ -173,7 +173,10 @@
     if (s === 'running') return 'status-running';
     if (s === 'succeeded') return 'status-ok';
     if (s === 'failed') return 'status-err';
-    return '';
+    if (s === 'pending') return 'status-pending';
+    if (s === 'canceled') return 'status-canceled';
+    if (s === 'skipped') return 'status-skipped';
+    return 'status-unknown';
   }
 
   function formatDateTime(value: string | Date | null): string {
@@ -345,7 +348,9 @@
     white-space: nowrap;
   }
   .metric b.status-ok, .metric b.status-running { color: var(--accent-green); }
-  .metric b.status-err { color: var(--accent-red); }
+  .metric b.status-err, .metric b.status-canceled { color: var(--accent-red); }
+  .metric b.status-pending, .metric b.status-unknown { color: var(--accent-yellow); }
+  .metric b.status-skipped { color: var(--text-muted); }
   .arrow {
     align-self: center;
     font-size: 14px;

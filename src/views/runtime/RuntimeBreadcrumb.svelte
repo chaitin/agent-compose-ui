@@ -25,7 +25,7 @@
     backLabel?: string;
     actions?: RuntimeBreadcrumbAction[];
     status?: string;
-    statusTone?: 'default' | 'running' | 'success' | 'warning' | 'danger';
+    statusTone?: 'default' | 'running' | 'success' | 'warning' | 'danger' | 'stopped' | 'completed' | 'destroyed';
   } = $props();
 </script>
 
@@ -76,5 +76,8 @@
   .status.success { border-color: color-mix(in srgb, var(--accent-green) 45%, var(--border-color)); color: var(--accent-green); }
   .status.warning { border-color: color-mix(in srgb, var(--accent-yellow) 45%, var(--border-color)); color: var(--accent-yellow); }
   .status.danger { border-color: color-mix(in srgb, var(--accent-red) 45%, var(--border-color)); color: var(--accent-red); }
+  .status.stopped { border-color: color-mix(in srgb, var(--accent-orange) 45%, var(--border-color)); color: var(--accent-orange); }
+  .status.completed { border-color: color-mix(in srgb, var(--accent-purple) 45%, var(--border-color)); color: var(--accent-purple); }
+  .status.destroyed { border-color: color-mix(in srgb, var(--text-muted) 45%, var(--border-color)); color: var(--text-muted); }
   @media (max-width: 700px) { .runtime-breadcrumb { height: auto; flex-wrap: wrap; gap: 8px; }.identity { order: -1; flex-basis: 100%; }.actions { margin-left: auto; } }
 </style>
