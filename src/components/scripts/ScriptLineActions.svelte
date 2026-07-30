@@ -40,8 +40,8 @@
     padding: 2px 8px;
     border: 1px solid var(--accent-blue);
     border-radius: 3px;
-    background: color-mix(in srgb, var(--accent-blue) 7%, transparent);
-    color: var(--accent-blue);
+    background: color-mix(in srgb, var(--accent-blue) 12%, transparent);
+    color: var(--accent-blue-pale);
     cursor: pointer;
     font-size: var(--font-size-xs);
     overflow: hidden;
@@ -49,6 +49,6 @@
     white-space: nowrap;
     transition: background 0.15s;
   }
-  button:hover { background: color-mix(in srgb, var(--accent-blue) 12%, transparent); }
+  button:hover { background: color-mix(in srgb, var(--accent-blue) 25%, transparent); }
   .mode-button { font-weight: 600; }
 </style>

@@ -61,18 +61,18 @@
   .pill .ico { font-size: 11px; line-height: 1; }
 
   .pill.warn {
-    background: color-mix(in srgb, var(--accent-yellow) 7%, transparent);
+    background: color-mix(in srgb, var(--accent-yellow) 12%, transparent);
     border-color: var(--accent-yellow);
-    color: var(--accent-yellow);
+    color: var(--accent-yellow-bright);
   }
-  .pill.warn:hover { background: color-mix(in srgb, var(--accent-yellow) 12%, transparent); }
+  .pill.warn:hover { background: color-mix(in srgb, var(--accent-yellow) 24%, transparent); }
 
   .pill.action {
-    background: color-mix(in srgb, var(--accent-blue) 7%, transparent);
+    background: color-mix(in srgb, var(--accent-blue) 12%, transparent);
     border-color: var(--accent-blue);
-    color: var(--accent-blue);
+    color: var(--accent-blue-pale);
   }
-  .pill.action:hover { background: color-mix(in srgb, var(--accent-blue) 12%, transparent); }
+  .pill.action:hover { background: color-mix(in srgb, var(--accent-blue) 24%, transparent); }
 
   .pill.neutral {
     background: transparent;
