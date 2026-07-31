@@ -48,7 +48,7 @@ beforeEach(() => {
     events: [new SandboxHistoryEvent({ id: 'history-1', type: 'ready', level: 'info', message: 'sandbox ready' })],
     legacyHistory: false,
   });
-  mocks.runService.listSandboxRunEvents.mockResolvedValue({ events: [new RunEvent({ id: 'event-1', runId: 'run-1', kind: RunEventKind.AGENT_MESSAGE, text: 'structured response' })] });
+  mocks.runService.listSandboxRunEvents.mockResolvedValue({ events: [new RunEvent({ id: 'event-1', runId: 'run-1', kind: RunEventKind.AGENT_MESSAGE, text: 'structured response' })], total: 1 });
   mocks.runService.listRuns.mockResolvedValue({ runs: [new RunSummary({ runId: 'run-1', sandboxId: 'sandbox-1', agentName: 'reviewer', status: RunStatus.SUCCEEDED })] });
   mocks.runService.runAgent.mockResolvedValue({ run: new RunDetail({
     summary: new RunSummary({ runId: 'run-agent-2', status: RunStatus.SUCCEEDED }), output: 'Agent final answer',
@@ -311,7 +311,7 @@ test('collapses sandbox timeline details only when content exceeds twenty lines'
   mocks.runService.listSandboxRunEvents.mockResolvedValue({ events: [
     new RunEvent({ id: 'twenty', runId: 'run-1', text: twentyLines, success: true }),
     new RunEvent({ id: 'twenty-one', runId: 'run-1', text: twentyOneLines, success: true }),
-  ] });
+  ], total: 2 });
   render(SandboxDetailView);
 
   const timeline = await screen.findByRole('region', { name: 'Sandbox 执行时间线' });
@@ -367,6 +367,7 @@ test('filters sandbox timeline rows through the compact tag bar', async () => {
 test('reveals sandbox timeline rows in pages while scrolling', async () => {
   mocks.runService.listSandboxRunEvents.mockResolvedValue({
     events: Array.from({ length: 35 }, (_, index) => new RunEvent({ id: `event-${index}`, runId: 'run-1', text: `event text ${index}` })),
+    total: 35,
   });
   render(SandboxDetailView);
 

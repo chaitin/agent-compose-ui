@@ -99,7 +99,7 @@ test('populates driver and sandbox options from the agent existing sandboxes', a
     new Sandbox({ sandboxId: 'sb-1', projectId: 'project-1', agentName: 'worker', driver: 'docker' }),
     new Sandbox({ sandboxId: 'sb-2', projectId: 'project-1', agentName: 'worker', driver: 'microsandbox' }),
     new Sandbox({ sandboxId: 'sb-3', projectId: 'project-1', agentName: 'other', driver: 'docker' }),
-  ], nextCursor: '' });
+  ], total: 3 });
   render(RunAgentModal, { prefilledAgent: 'worker', prefilledPrompt: 'hello' });
 
   await waitFor(() => expect(mocks.sandboxService.listSandboxes).toHaveBeenCalled());

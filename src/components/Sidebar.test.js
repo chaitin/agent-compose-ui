@@ -51,8 +51,7 @@ test('paginates the list through ListProjects offset and limit', () => {
   assert.match(source, /const PAGE_SIZE = 10/);
   assert.match(source, /offset: reset \? 0 : projectOffset/);
   assert.match(source, /limit: PAGE_SIZE/);
-  assert.match(source, /resp\.hasMore/);
-  assert.match(source, /resp\.nextOffset/);
+  assert.match(source, /resp\.total/);
   assert.match(source, /加载更多/);
 });
 
@@ -77,13 +76,6 @@ test('opens unified system management at daemon images', () => {
   assert.match(source, />\s*系统管理\s*</);
   assert.doesNotMatch(source, /section-header">资源管理/);
   assert.match(source, /store\.goTo\('images'\)/);
-});
-
-test('shows an external feedback entry below system management', () => {
-  assert.match(source, /系统管理[\s\S]*反馈/);
-  assert.match(source, /href="https:\/\/devboard\.chaitin\.net\/devboard\/issues\?product_id=6a5f3c14839f64bb543f172d"/);
-  assert.match(source, /target="_blank"/);
-  assert.match(source, /rel="noopener noreferrer"/);
 });
 
 test('uses the approved compact high-density dimensions', () => {

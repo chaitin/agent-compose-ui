@@ -2,28 +2,30 @@ import { describe, expect, test } from 'bun:test';
 import { Code } from '@connectrpc/connect';
 import { classifySandboxProbe, groupSandboxInventory, sortSandboxInventory } from './runtime-inventory';
 
+const ts = (iso) => { const ms = Date.parse(iso); return { seconds: BigInt(Math.floor(ms / 1000)), nanos: (ms % 1000) * 1_000_000 }; };
+
 describe('groupSandboxInventory', () => {
   test('deduplicates v2 run sandboxes and retains newest run context', () => {
     const result = groupSandboxInventory([
-      { runId: 'old', sandboxId: 'sb-1', agentName: 'writer', updatedAt: '2026-07-14T01:00:00Z' },
-      { runId: 'new', sandboxId: 'sb-1', agentName: 'writer', updatedAt: '2026-07-14T02:00:00Z' },
+      { runId: 'old', sandboxId: 'sb-1', agentName: 'writer', updatedAt: ts('2026-07-14T01:00:00Z') },
+      { runId: 'new', sandboxId: 'sb-1', agentName: 'writer', updatedAt: ts('2026-07-14T02:00:00Z') },
     ]);
 
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       sandboxId: 'sb-1', latestRunId: 'new', agentName: 'writer', runCount: 2,
-      firstSeenAt: '2026-07-14T01:00:00Z', updatedAt: '2026-07-14T02:00:00Z',
+      firstSeenAt: '2026-07-14T01:00:00.000Z', updatedAt: '2026-07-14T02:00:00.000Z',
     });
     expect(result[0].runs.map(run => run.runId)).toEqual(['new', 'old']);
   });
 
   test('ignores runs without sandbox ids and uses created time as a fallback', () => {
     const result = groupSandboxInventory([
-      { runId: 'ignored', sandboxId: '', agentName: 'writer', createdAt: '2026-07-14T00:00:00Z' },
-      { runId: 'kept', sandboxId: 'sb-1', agentName: 'writer', createdAt: '2026-07-14T01:00:00Z' },
+      { runId: 'ignored', sandboxId: '', agentName: 'writer', createdAt: ts('2026-07-14T00:00:00Z') },
+      { runId: 'kept', sandboxId: 'sb-1', agentName: 'writer', createdAt: ts('2026-07-14T01:00:00Z') },
     ]);
     expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({ firstSeenAt: '2026-07-14T01:00:00Z', updatedAt: '2026-07-14T01:00:00Z' });
+    expect(result[0]).toMatchObject({ firstSeenAt: '2026-07-14T01:00:00.000Z', updatedAt: '2026-07-14T01:00:00.000Z' });
   });
 });
 
@@ -41,11 +43,11 @@ describe('classifySandboxProbe', () => {
 describe('sortSandboxInventory', () => {
   test('orders actionable states first and newest within one state', () => {
     const items = groupSandboxInventory([
-      { runId: 'destroyed', sandboxId: 'destroyed', agentName: 'writer', updatedAt: '2026-07-14T05:00:00Z' },
-      { runId: 'unknown', sandboxId: 'unknown', agentName: 'writer', updatedAt: '2026-07-14T04:00:00Z' },
-      { runId: 'stopped-old', sandboxId: 'stopped-old', agentName: 'writer', updatedAt: '2026-07-14T01:00:00Z' },
-      { runId: 'stopped-new', sandboxId: 'stopped-new', agentName: 'writer', updatedAt: '2026-07-14T03:00:00Z' },
-      { runId: 'running', sandboxId: 'running', agentName: 'writer', updatedAt: '2026-07-14T02:00:00Z' },
+      { runId: 'destroyed', sandboxId: 'destroyed', agentName: 'writer', updatedAt: ts('2026-07-14T05:00:00Z') },
+      { runId: 'unknown', sandboxId: 'unknown', agentName: 'writer', updatedAt: ts('2026-07-14T04:00:00Z') },
+      { runId: 'stopped-old', sandboxId: 'stopped-old', agentName: 'writer', updatedAt: ts('2026-07-14T01:00:00Z') },
+      { runId: 'stopped-new', sandboxId: 'stopped-new', agentName: 'writer', updatedAt: ts('2026-07-14T03:00:00Z') },
+      { runId: 'running', sandboxId: 'running', agentName: 'writer', updatedAt: ts('2026-07-14T02:00:00Z') },
     ]);
     const sorted = sortSandboxInventory(items, {
       running: 'running', 'stopped-old': 'stopped', 'stopped-new': 'stopped',

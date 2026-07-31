@@ -49,8 +49,8 @@ test('preserves run status, timing, exit code, source, and linked sandbox naviga
   assert.match(source, /formatDuration\(runDetail\.summary\.durationMs\)/);
   assert.match(source, /runDetail\.summary\?\.exitCode/);
   assert.match(source, /sourceLabel\(runDetail\.summary\?\.source/);
-  assert.match(source, /formatTime\(runDetail\.summary\?\.startedAt/);
-  assert.match(source, /formatTime\(runDetail\.summary\?\.completedAt/);
+  assert.match(source, /formatTime\(timestampToIso\(runDetail\.summary\?\.startedAt\)\)/);
+  assert.match(source, /formatTime\(timestampToIso\(runDetail\.summary\?\.completedAt\)\)/);
   assert.match(source, /store\.navigateTo\('sandbox-detail'/);
   assert.doesNotMatch(source, /Session|sessionId|navigateTo\('session'/);
 });

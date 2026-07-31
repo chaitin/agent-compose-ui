@@ -90,7 +90,7 @@ describe('AgentListView', () => {
     store.activeProjectId = 'p1';
     store.projects = [makeProjectEntry('p1', '项目一'), makeProjectEntry('p2', '项目二')];
     rpcMocks.projectService.getProject.mockImplementation((request: any) => (
-      request.project.projectId === 'p1'
+      request.project?.selector?.value === 'p1'
         ? oldProject.promise
         : Promise.resolve({ project: { agents: [{ agentName: 'current-agent' }], spec: { agents: [] } } })
     ));
@@ -238,9 +238,9 @@ describe('AgentListView', () => {
     setupProjectWithAgent();
     rpcMocks.runService.listRuns.mockResolvedValue({ runs: [] });
     rpcMocks.projectService.listSchedulerEvents.mockResolvedValue({ events: [
-      new SchedulerEvent({ id: 'start', runId: 'scheduler-1', type: 'loader.run.started', createdAt: { seconds: 1_752_729_600n } }),
-      new SchedulerEvent({ id: 'done', runId: 'scheduler-1', type: 'loader.run.completed', createdAt: { seconds: 1_752_729_660n } }),
-    ], nextCursor: '' });
+      new SchedulerEvent({ id: 'start', runId: 'scheduler-1', type: 'scheduler.run.started', createdAt: { seconds: 1_752_729_600n } }),
+      new SchedulerEvent({ id: 'done', runId: 'scheduler-1', type: 'scheduler.run.completed', createdAt: { seconds: 1_752_729_660n } }),
+    ], total: 2 });
 
     render(AgentListView);
 
@@ -258,10 +258,10 @@ describe('AgentListView', () => {
       startedAt: '2026-07-17T06:32:08Z',
     })] });
     rpcMocks.projectService.listSchedulerEvents.mockResolvedValue({ events: [
-      new SchedulerEvent({ id: 'start', runId: 'scheduler-linked', type: 'loader.run.started', createdAt: { seconds: 1_752_731_528n } }),
-      new SchedulerEvent({ id: 'agent', runId: 'scheduler-linked', type: 'loader.agent.completed', createdAt: { seconds: 1_752_731_558n } }),
-      new SchedulerEvent({ id: 'done', runId: 'scheduler-linked', type: 'loader.run.completed', createdAt: { seconds: 1_752_731_588n } }),
-    ], nextCursor: '' });
+      new SchedulerEvent({ id: 'start', runId: 'scheduler-linked', type: 'scheduler.run.started', createdAt: { seconds: 1_752_731_528n } }),
+      new SchedulerEvent({ id: 'agent', runId: 'scheduler-linked', type: 'scheduler.agent.completed', createdAt: { seconds: 1_752_731_558n } }),
+      new SchedulerEvent({ id: 'done', runId: 'scheduler-linked', type: 'scheduler.run.completed', createdAt: { seconds: 1_752_731_588n } }),
+    ], total: 3 });
 
     render(AgentListView);
 
