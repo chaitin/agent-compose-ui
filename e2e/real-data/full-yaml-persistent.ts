@@ -15,6 +15,7 @@ const scriptPath = resolve(fixtureDirectory, 'scheduler.js');
 const reportDirectory = resolve('e2e/reports');
 const frontendUrl = process.env.AGENT_COMPOSE_E2E_FRONTEND_URL ?? 'http://127.0.0.1:5174';
 const daemonUrl = process.env.AGENT_COMPOSE_E2E_DAEMON_URL ?? 'http://127.0.0.1:7410';
+const cliPath = process.env.AGENT_COMPOSE_E2E_CLI ?? resolve('../agent/agent-compose/build/agent-compose');
 const projectName = 'e2e-yaml-full-20260715t232500z';
 const clients = createLiveClients(daemonUrl);
 const cases: Array<{ name: string; expected: unknown; actual: unknown; pass: boolean }> = [];
@@ -107,7 +108,7 @@ record('script trigger materialized', true, scriptScheduler.triggers.map(trigger
 
 async function cliSchedulerTrigger(agent: string, trigger: string, extra: string[]): Promise<string> {
   const process = Bun.spawn([
-    '/root/agent/agent-compose/build/agent-compose', '--host', daemonUrl, '--file',
+    cliPath, '--host', daemonUrl, '--file',
     yamlPath, 'scheduler', 'trigger', agent, trigger,
     '--keep-running', '--json', ...extra,
   ], { stdout: 'pipe', stderr: 'pipe' });

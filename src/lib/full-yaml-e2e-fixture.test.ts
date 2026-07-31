@@ -14,6 +14,7 @@ describe('persistent full YAML fixture', () => {
     expect(source.network.mode).toBe('default');
     expect(source.workspaces['fixture-workspace']).toMatchObject({ provider: 'local' });
     expect(source.agents['build-workspace-agent'].build).toMatchObject({
+      context: 'build-context',
       target: 'runtime',
       args: { BUILD_MARKER: 'yaml-build-config-ok' },
       platforms: ['linux/amd64'],

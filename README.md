@@ -2,6 +2,18 @@
 
 Agent Compose Web 是 Agent Compose 的浏览器管理界面，用于编辑和启用智能体应用、观察运行状态，并管理运行时与系统资源。前端直接使用 Agent Compose V2 Connect RPC，与本地脚本服务配合保存 YAML 中引用的脚本文件。
 
+## 文档导航
+
+- [主要功能](#主要功能)
+- [技术栈](#技术栈)
+- [快速开始](#快速开始)
+- [常用脚本](#常用脚本)
+- [配置说明](#配置说明)
+- [项目结构](#项目结构)
+- [Protobuf 客户端生成](#protobuf-客户端生成)
+- [测试](#测试)
+- [Docker 部署说明](docker/README.md)
+
 ## 主要功能
 
 - 使用 Monaco Editor 编辑、校验和启用 Agent Compose YAML。
@@ -92,7 +104,7 @@ docker compose -f docker-compose.full.yml up --build
 
 镜像自包含 nginx + Go 网关 + Bun script-service，也支持不用 compose 的 `docker run` 一条命令启动，详见 [`docker/README.md`](docker/README.md#不用-compose-docker-run-一条命令)。Docker 构建使用 `node:22-alpine` + `npm ci`（可复现，不用 Bun，原因见 docker/README.md），运行时基于 `nginx:1.27-alpine` + s6-overlay 监督三进程。
 
-### 方式三：生产构建
+### 方式三：构建生产产物
 
 ```bash
 bun install        # 或 npm install
@@ -127,13 +139,15 @@ bun run build      # 或 npm run build，产物输出到 dist/
 | `bun run test:all` | check + 单元测试 + e2e 助手测试 + 组件测试 |
 | `bun run test:e2e:real` | 端到端真实数据测试（需运行中的 daemon + 前端 + Playwright） |
 
-## 环境与代理配置
+## 配置说明
 
-### 项目 Workspace 共享存储
+### Workspace 共享存储
 
 Go 网关通过 `PROJECT_STORAGE_ROOT` 管理项目文件，浏览器不再提交或拼接任意绝对路径。Docker 使用 `/data/work/projects`；每个草稿或项目获得稳定的随机存储键，草稿启用后继续使用同一目录。UI 网关和 Agent Compose daemon 必须把同一共享存储挂载为相同的绝对 `/data/work` 路径，否则 daemon 无法为 Run 准备本地 Workspace。
 
 本地开发未设置变量时使用 `${TMPDIR:-/tmp}/agent-compose-ui/projects`。分服务器部署必须显式设置共享的 NFS/云文件系统挂载。可选 `LEGACY_PROJECT_STORAGE_ROOT` 仅用于迁移网关仍能读取的旧目录；旧目录不可见时 UI 会要求重新上传或由管理员迁移。
+
+### 开发代理
 
 Vite 开发服务器默认使用端口 `5174`，并将浏览器请求代理到后端服务：
 
@@ -149,6 +163,8 @@ Vite 开发服务器默认使用端口 `5174`，并将浏览器请求代理到�
 | `/script-api/*` | UI 网关 `127.0.0.1:8080` |
 
 `SCRIPT_SERVICE_TOKEN` 用于 UI 网关与脚本服务之间的内部认证，不会下发到浏览器。网关与脚本服务必须共享同一个令牌；本地 `bun run dev` 会自动生成并共享，Docker 模式由 `.env` 统一注入。
+
+### 服务端全局变量
 
 服务端全局变量引用需要同时设置 `AGENT_COMPOSE_DB_PATH`（daemon SQLite，只读）和 `UI_STATE_DB_PATH`（UI shadow SQLite，可写）。Docker full 模式使用以下配置，并将两个变量注入前端 Go 网关：
 
@@ -184,6 +200,8 @@ docker compose -f docker-compose.full.yml restart agent-compose
 
 两个变量必须同时配置且指向不同文件。`AGENT_COMPOSE_DB_PATH` 所在目录必须以只读方式挂载给 Go 网关，`UI_STATE_DB_PATH` 所在目录必须可写。配置后，浏览器只保存和发送 `${VAR}` 引用，网关在 Validate/Apply 时读取 daemon 的 `global_env` 并解析，再将解析后的配置转发给 agent-compose 后端；这两个数据库路径本身不会发送给后端。字面量保持不变。修改全局变量只标记相关项目待同步，绝不会自动 Apply、运行或改变调度，直到用户明确保存或启用项目。daemon 仍会保存解析后的明文，因此 daemon 数据目录仍属于敏感数据。Docker full 模式已默认按此边界配置，详情见 [`docker/README.md`](docker/README.md)。
 
+### 身份认证
+
 公司内网测试部署可使用兼容默认值 `AUTH_MODE=disabled`；此模式不显示登录页，也不限制后端操作，只适用于可信公司网络或 VPN。密码部署必须设置 `AUTH_MODE=password`、`AUTH_PASSWORD` 和持久且随机的 `AUTH_SECRET`，可选 `AUTH_USERNAME`（默认 `admin`）和 `AUTH_SESSION_TTL`（默认 `24h`），例如：
 
 ```bash
@@ -193,10 +211,10 @@ AUTH_MODE=password AUTH_USERNAME=admin AUTH_PASSWORD='strong-password' \
 
 登录成功后浏览器获得 HttpOnly 签名会话 Cookie；注销会清除 Cookie，会话超过 `AUTH_SESSION_TTL` 后须重新登录。该功能只提供认证，不提供细粒度授权：所有已认证用户都拥有 UI 暴露的全部能力。认证网关完全实现在 `agent-compose-ui` 中，不修改 Agent Compose daemon 的行为。公司网络之外仍必须在入口使用 HTTPS；互联网部署还应按组织要求增加限流或 SSO。
 
-## 目录结构
+## 项目结构
 
 ```text
-agent-compose-web/
+agent-compose-ui/
 ├── README.md                 # 项目主文档
 ├── docker/                   # Docker 构建与编排（纯前端 / 前后端一体），见 docker/README.md
 ├── script-service/           # 本地脚本文件与 manifest 服务
@@ -231,3 +249,5 @@ bun run gen
 
 - **单元 / 组件测试**：`bun run test`（`.test.js`/`.test.mjs`）与 `bun run test:component`（Vitest + Testing Library），无需外部服务，可接入 CI。
 - **端到端测试**（`e2e/`）：针对**真实** agent-compose daemon 与前端运行，需先启动 daemon（`7410`）与前端（`5174`），并安装 Playwright 浏览器（`npx playwright install`）。通过 `bun run test:e2e:real` 触发，报告写入 `e2e/reports/`。属于可选的开发者测试，不在默认 `bun run test` 流程中。
+
+真实 E2E 默认从仓库相对位置查找 Agent Compose CLI；目录布局不同时，通过 `AGENT_COMPOSE_E2E_CLI` 指定可执行文件路径。
