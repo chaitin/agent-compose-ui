@@ -23,7 +23,7 @@ COPY . ./
 RUN npm run build
 
 # ---- Stage 2: test and build the loopback authentication gateway ----
-FROM golang:1.24-alpine AS gateway-build
+FROM golang:1.25-alpine AS gateway-build
 ENV GOPROXY=https://goproxy.cn,direct
 WORKDIR /src
 
