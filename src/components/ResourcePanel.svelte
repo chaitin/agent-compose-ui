@@ -161,7 +161,6 @@
       onclick={() => (workspace.panelOpen = !workspace.panelOpen)}
     >
       <span class="chevron">{workspace.panelOpen ? '⌄' : '›'}</span>
-      <span class="title">项目资源</span>
     </button>
     <div class="resource-tablist" role="tablist" aria-label="项目资源标签页">
     <button
@@ -215,7 +214,7 @@
         {#if bindingLoading}<div class="resource-placeholder" role="status">正在解析项目存储…</div>
         {:else if bindingError}<div class="resource-placeholder" role="alert">项目存储不可用：{bindingError}<button type="button" onclick={resolveSkillBinding}>重试</button></div>
         {:else if !skillProjectKey}<div class="resource-placeholder" role="status">请先建立项目存储绑定</div>
-        {:else}<SkillPanel projectKey={skillProjectKey} {yaml} {selectedAgent} {onYamlChange} />{/if}
+        {:else}<SkillPanel projectKey={skillProjectKey} {yaml} selectedAgent={workspace.skillTargetAgent || selectedAgent} {onYamlChange} />{/if}
       {:else}
         {#if bindingLoading}<div class="resource-placeholder" role="status">正在解析项目存储…</div>
         {:else if bindingError}<div class="resource-placeholder" role="alert">项目存储不可用：{bindingError}<button type="button" onclick={resolveSkillBinding}>重试</button></div>
@@ -284,8 +283,7 @@
     align-self: stretch;
   }
   .resource-toggle:hover { color: var(--text-primary); }
-  .resource-toggle .chevron { font-size: 10px; }
-  .resource-toggle .title { font-weight: 600; }
+  .resource-toggle .chevron { font-size: 14px; }
   .resource-tablist {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));

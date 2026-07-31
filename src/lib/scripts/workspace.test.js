@@ -39,6 +39,19 @@ test('openImagesTab selects images and expands the resource panel', () => {
   expect(workspace.panelOpen).toBe(true);
 });
 
+test('openSkillsTab selects skills, expands the panel, and targets an agent', () => {
+  const { api } = makeApi();
+  const workspace = createScriptWorkspace(api);
+  workspace.activeTab = 'scripts';
+  workspace.panelOpen = false;
+
+  workspace.openSkillsTab('investigator');
+
+  expect(workspace.activeTab).toBe('skills');
+  expect(workspace.panelOpen).toBe(true);
+  expect(workspace.skillTargetAgent).toBe('investigator');
+});
+
 test('edits stay in memory until explicitly saved', async () => {
   const { api, writes } = makeApi();
   const workspace = createScriptWorkspace(api);

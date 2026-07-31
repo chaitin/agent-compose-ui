@@ -3,6 +3,7 @@
   import { SkillApiError, skillApi, type Entry } from '../../lib/skills/api';
   import { listAgentNames, removeSkillReferences, type SkillReference } from '../../lib/skills/references';
   import { upsertAgentSkill } from '../../lib/project-resources/yaml-mutations';
+  import { listSkillLocations } from '../../lib/skills/locations';
   import SkillEditor from './SkillEditor.svelte';
   import SkillCreateModal from './SkillCreateModal.svelte';
   import SkillList from './SkillList.svelte';
@@ -44,6 +45,7 @@
   let deleteDialog = $state<HTMLDivElement>();
   let modal = $state<'create' | 'upload' | ''>('');
   let pendingSelection = $state('');
+  let syncPreview = $state<{ yamlRevision: string; nextYaml: string; skillName: string; agentName: string; oldPath: string; expectedPath: string } | null>(null);
   const instanceId = $props.id();
   type DeleteState = {
     projectKey: string;
@@ -240,6 +242,40 @@
     } finally { if (operation === createGeneration) createBusy = false; }
   }
 
+  function requestSync(): void {
+    if (!selected || !targetAgent) return;
+    const expectedPath = `./skills/${selected}`;
+    const oldPath = listSkillLocations(yaml)
+      .find((location) => location.agentName === targetAgent)?.localSkills
+      .find((skill) => skill.name === selected)?.path ?? '未配置';
+    try {
+      syncPreview = {
+        yamlRevision: yaml,
+        nextYaml: upsertAgentSkill(yaml, targetAgent, { name: selected, source: 'file', path: expectedPath }),
+        skillName: selected,
+        agentName: targetAgent,
+        oldPath,
+        expectedPath,
+      };
+      error = '';
+    } catch (value) { error = `无法生成 Skill 配置：${message(value)}`; }
+  }
+
+  async function confirmSync(): Promise<void> {
+    const preview = syncPreview;
+    if (!preview) return;
+    if (yaml !== preview.yamlRevision) {
+      syncPreview = null;
+      error = 'YAML 已发生变化，请重新检查后再次同步';
+      return;
+    }
+    try {
+      await onYamlChange(preview.nextYaml);
+      syncPreview = null;
+      status = `已同步 ${preview.skillName} 到 ${preview.agentName}`;
+    } catch (value) { error = `同步失败：${message(value)}`; }
+  }
+
   function requestDelete(): void {
     if (!selected) return;
     if (document.activeElement instanceof HTMLButtonElement) deleteTrigger = document.activeElement;
@@ -349,21 +385,23 @@
   }
 </script>
 
-<div class="skill-shell" inert={deletion || pendingSelection || modal ? true : undefined} aria-hidden={deletion || pendingSelection || modal ? 'true' : undefined}>
+<div class="skill-shell" inert={deletion || pendingSelection || modal || syncPreview ? true : undefined} aria-hidden={deletion || pendingSelection || modal || syncPreview ? 'true' : undefined}>
   <SkillToolbar
     busy={createBusy || saveBusy || deleteBusy || !validProjectKey}
     onCreate={() => { modal = 'create'; }}
     onUpload={() => { modal = 'upload'; }}
+    onSync={requestSync}
+    syncDisabled={!selected || !targetAgent}
     onRefresh={() => { void loadList(); }}
   />
   <div class="skill-panel" inert={deletion || pendingSelection || modal ? true : undefined} aria-hidden={deletion || pendingSelection || modal ? 'true' : undefined}>
   <aside>
-    <SkillList {entries} {selected} {loading} error={listError} busy={createBusy || deleteBusy} onSelect={selectSkill} onRetry={() => { void loadList(); }} />
+    <SkillList {entries} {selected} {loading} error={listError} busy={createBusy || deleteBusy} onSelect={selectSkill} onDelete={requestDelete} onRetry={() => { void loadList(); }} />
   </aside>
 
   <main>
     {#if error}<p role="alert">{error}</p>{/if}
-    {#if status}<p role="status">{status}</p>{/if}
+    {#if status && status !== '已保存'}<p role="status">{status}</p>{/if}
     <SkillEditor
       name={selected}
       {content}
@@ -371,9 +409,9 @@
       reading={reading}
       busy={saveBusy || createBusy || deleteBusy}
       {conflict}
+      saveStatus={status === '已保存' ? status : ''}
       onContent={(value) => { content = value; }}
       onSave={() => { void save(); }}
-      onDelete={requestDelete}
       onReload={() => { void openSkill(selected); }}
     />
   </main>
@@ -384,6 +422,18 @@
   <SkillCreateModal {agents} busy={createBusy} name={newName} agent={targetAgent} onName={(value) => { newName = value; }} onAgent={(value) => { targetAgent = value; }} onSubmit={() => { void createSkill(); }} onClose={() => { modal = ''; }} />
 {:else if modal === 'upload'}
   <SkillUploadModal {agents} busy={createBusy} agent={targetAgent} onAgent={(value) => { targetAgent = value; }} onSubmit={(name, file) => { void uploadSkill(name, file); }} onClose={() => { modal = ''; }} />
+{/if}
+
+{#if syncPreview}
+  <div class="dialog-backdrop">
+    <div role="dialog" aria-modal="true" aria-labelledby={`${instanceId}-sync-title`}>
+      <h2 id={`${instanceId}-sync-title`}>同步 Skill 配置</h2>
+      <p>将 <strong>{syncPreview.skillName}</strong> 配置到 Agent <strong>{syncPreview.agentName}</strong>。</p>
+      <dl><dt>当前路径</dt><dd><code>{syncPreview.oldPath}</code></dd><dt>标准路径</dt><dd><code>{syncPreview.expectedPath}</code></dd></dl>
+      <button class="ui-button ghost" type="button" onclick={() => { syncPreview = null; }}>取消</button>
+      <button class="ui-button primary" type="button" onclick={confirmSync}>确认同步</button>
+    </div>
+  </div>
 {/if}
 
 {#if pendingSelection}
@@ -415,9 +465,12 @@
 
 <style>
   .skill-shell { display: grid; grid-template-rows: auto 1fr; width: 100%; height: 100%; min-height: 0; }
-  .skill-panel { display: grid; grid-template-columns: minmax(220px, 30%) 1fr; min-height: 0; }
-  aside { border-right: 1px solid var(--border-color); padding: 10px; overflow: auto; }
-  main { padding: 10px; min-width: 0; overflow: auto; }
+  .skill-panel { display: grid; grid-template-columns: minmax(160px, 24%) minmax(0, 1fr); min-height: 0; }
+  aside { min-width: 0; border-right: 1px solid var(--border-color); overflow: hidden; }
+  main { min-width: 0; min-height: 0; overflow: hidden; }
   .dialog-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: #0008; }
   [role='dialog'] { width: min(440px, 90vw); padding: 18px; background: var(--bg-secondary); border: 1px solid var(--border-color); }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; }
+  dt { color: var(--text-secondary); }
+  dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 </style>

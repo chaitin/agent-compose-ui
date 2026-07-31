@@ -32,6 +32,7 @@ export class ScriptWorkspace {
   projectName = $state('');
   panelOpen = $state(false);
   activeTab = $state<ResourceTab>('scripts');
+  skillTargetAgent = $state('');
   loading = $state(false);
   serviceAvailable = $state(true);
   contextRevision = $state(0);
@@ -60,6 +61,12 @@ export class ScriptWorkspace {
 
   openImagesTab(): void {
     this.activeTab = 'images';
+    this.panelOpen = true;
+  }
+
+  openSkillsTab(agentName = ''): void {
+    this.skillTargetAgent = agentName;
+    this.activeTab = 'skills';
     this.panelOpen = true;
   }
 

@@ -11,6 +11,7 @@
   import ScriptReferenceModal from './scripts/ScriptReferenceModal.svelte';
   import WorkspaceLineActions from './workspace/WorkspaceLineActions.svelte';
   import GlobalEnvLineAction from './env/GlobalEnvLineAction.svelte';
+  import SkillLineAction from './skills/SkillLineAction.svelte';
   import ConfigureGlobalEnvModal from './env/ConfigureGlobalEnvModal.svelte';
   import { GetGlobalEnvRequest } from '../gen/agentcompose/v2/agentcompose_pb';
   import { settingsService } from '../lib/rpc';
@@ -36,6 +37,7 @@
     type WorkspaceBinding,
   } from '../lib/workspace-binding';
   import { createWorkspaceAndBind } from '../lib/workspace-create';
+  import { listSkillLocations, type SkillLocation } from '../lib/skills/locations';
 
   self.MonacoEnvironment = {
     getWorker: () => new EditorWorker(),
@@ -64,6 +66,7 @@
   let workspaceWidget: MountedActionWidget | null = null;
   let workspaceWidgetKey = '';
   let envWidgets: MountedActionWidget[] = [];
+  let skillWidgets: MountedActionWidget[] = [];
   let envDecorationIds: string[] = [];
   let configuredGlobalNames = $state<string[]>([]);
   let globalEnvLoaded = $state(false);
@@ -482,9 +485,57 @@
       options: {
         inlineClassName: 'missing-global-env',
         hoverMessage: { value: `全局环境变量 ${reference.names.join('、')} 尚未配置` },
-        overviewRuler: { color: 'rgba(210, 153, 34, .8)', position: monaco.editor.OverviewRulerLane.Right },
+        overviewRuler: { color: '#d29922', position: monaco.editor.OverviewRulerLane.Right },
       },
     })));
+  }
+
+  function clearSkillWidgets(target: monaco.editor.IStandaloneCodeEditor): void {
+    for (const entry of skillWidgets) {
+      target.removeContentWidget(entry.widget);
+      void unmount(entry.component);
+    }
+    skillWidgets = [];
+  }
+
+  function addSkillWidget(target: monaco.editor.IStandaloneCodeEditor, location: SkillLocation): MountedActionWidget {
+    const node = document.createElement('div');
+    const component = mount(SkillLineAction, {
+      target: node,
+      props: {
+        state: location.state,
+        agentName: location.agentName,
+        onOpen: () => scriptWorkspace.openSkillsTab(location.agentName),
+      },
+    });
+    const widget: monaco.editor.IContentWidget = {
+      allowEditorOverflow: false,
+      suppressMouseDown: true,
+      getId: () => `skill-line-action:${location.agentName}:${location.line}`,
+      getDomNode: () => node,
+      getPosition: () => {
+        const model = target.getModel();
+        if (!model || location.line > model.getLineCount()) return null;
+        return {
+          position: { lineNumber: location.line, column: 1 },
+          preference: [monaco.editor.ContentWidgetPositionPreference.EXACT],
+        };
+      },
+      afterRender: (position) => {
+        if (position === null) return;
+        const layout = target.getLayoutInfo();
+        const availableWidth = Math.max(0, layout.width - layout.verticalScrollbarWidth - ACTION_RIGHT_GAP - layout.contentLeft);
+        node.style.maxWidth = `${availableWidth}px`;
+        node.style.transform = `translateX(${Math.max(0, availableWidth - Math.min(node.offsetWidth, availableWidth))}px)`;
+      },
+    };
+    target.addContentWidget(widget);
+    return { widget, component };
+  }
+
+  function refreshSkillPresentation(target: monaco.editor.IStandaloneCodeEditor): void {
+    clearSkillWidgets(target);
+    skillWidgets = listSkillLocations(store.editorContent).map((location) => addSkillWidget(target, location));
   }
 
   $effect(() => {
@@ -598,6 +649,7 @@
     const relayoutActionWidgets = () => {
       for (const entry of actionWidgets) e.layoutContentWidget(entry.widget);
       for (const entry of envWidgets) e.layoutContentWidget(entry.widget);
+      for (const entry of skillWidgets) e.layoutContentWidget(entry.widget);
       if (workspaceWidget) e.layoutContentWidget(workspaceWidget.widget);
     };
     const scrollDisposable = e.onDidScrollChange(relayoutActionWidgets);
@@ -609,6 +661,7 @@
       refreshScriptPresentation(e);
       refreshWorkspacePresentation(e);
       refreshEnvPresentation(e);
+      refreshSkillPresentation(e);
     });
 
     return () => {
@@ -623,6 +676,7 @@
       clearActionWidgets(e);
       clearWorkspaceWidget(e);
       clearEnvWidgets(e);
+      clearSkillWidgets(e);
       decorationIds = e.deltaDecorations(decorationIds, []);
       envDecorationIds = e.deltaDecorations(envDecorationIds, []);
       e.dispose();
@@ -650,6 +704,7 @@
     refreshScriptPresentation(editor);
     refreshWorkspacePresentation(editor);
     refreshEnvPresentation(editor);
+    refreshSkillPresentation(editor);
   });
 </script>
 
@@ -707,7 +762,7 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
-    background: #1e1e1e;
+    background: var(--bg-primary);
     overflow: hidden;
   }
   .collapse-strip {
@@ -718,14 +773,14 @@
     gap: 8px;
     height: 100%;
     cursor: pointer;
-    background: #1a1a1f;
+    background: var(--bg-secondary);
     border-left: 2px solid var(--accent-blue);
     transition: background 0.2s;
     user-select: none;
     padding: 0 4px;
   }
-  .collapse-strip:hover { background: #22222a; }
-  .collapse-strip:hover .strip-arrow { color: #fff; transform: scale(1.3); }
+  .collapse-strip:hover { background: var(--bg-tertiary); }
+  .collapse-strip:hover .strip-arrow { color: var(--accent-blue-bright); transform: scale(1.3); }
   .strip-filename {
     writing-mode: vertical-rl;
     font-family: var(--font-mono);
@@ -761,16 +816,16 @@
   .editor-stack { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; }
   .yaml-editor-body { flex: 1; min-height: 0; }
   :global(.script-ref-link) {
-    color: #c9a7ff !important;
-    background: rgba(163, 113, 247, 0.09);
+    color: var(--accent-blue) !important;
+    background: color-mix(in srgb, var(--accent-blue) 9%, transparent);
     text-decoration: underline;
-    text-decoration-color: rgba(201, 167, 255, 0.75);
+    text-decoration-color: color-mix(in srgb, var(--accent-blue) 75%, transparent);
     cursor: pointer;
   }
   :global(.missing-global-env) {
     text-decoration-line: underline;
     text-decoration-style: wavy;
-    text-decoration-color: var(--accent-orange);
+    text-decoration-color: var(--accent-yellow);
     text-underline-offset: 3px;
   }
   :global(.monaco-scrollable-element > .scrollbar > .slider) { width: 4px !important; }

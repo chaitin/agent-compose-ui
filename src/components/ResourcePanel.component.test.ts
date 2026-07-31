@@ -142,7 +142,8 @@ test('keeps all five resource tabs and renders the images empty state', async ()
 
   const tabs = screen.getAllByRole('tab');
   expect(tabs).toHaveLength(5);
-  expect(screen.getByText('项目资源')).toBeInTheDocument();
+  expect(screen.queryByText('项目资源')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '折叠资源面板' })).toBeInTheDocument();
   expect(tabs.map((tab) => tab.textContent?.replace(/\d+$/, '').trim())).toEqual([
     '脚本文件', 'Workspace 文件', '镜像', 'Skills', '数据与挂载',
   ]);
@@ -188,6 +189,22 @@ test('opens the existing Skills and data-and-mount panels with a valid direct bi
 
   await fireEvent.click(screen.getByRole('tab', { name: /数据与挂载/ }));
   await waitFor(() => expect(screen.getByRole('toolbar', { name: '数据与挂载操作' })).toBeInTheDocument());
+});
+
+test('uses the agent targeted by the YAML skills action', async () => {
+  vi.mocked(skillApi.list).mockResolvedValue([]);
+  const workspace = createWorkspace(false);
+  workspace.openSkillsTab('beta');
+  const projectKey = 'ws_0123456789abcdef0123456789abcdef';
+  render(ResourcePanel, {
+    workspace, projectKey,
+    yaml: 'agents:\n  alpha: {}\n  beta:\n    skills: []\n',
+    selectedAgent: 'alpha', onYamlChange: vi.fn(),
+  });
+
+  await fireEvent.click(await screen.findByRole('button', { name: '上传 Skill' }));
+
+  expect(screen.getByLabelText('目标 Agent')).toHaveValue('beta');
 });
 
 test('moves focus across all five tabs with arrows, Home, and End', async () => {

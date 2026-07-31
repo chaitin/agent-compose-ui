@@ -3,15 +3,18 @@
     busy: boolean;
     onCreate: () => void;
     onUpload: () => void;
+    onSync: () => void;
     onRefresh: () => void;
+    syncDisabled?: boolean;
   }
 
-  let { busy, onCreate, onUpload, onRefresh }: Props = $props();
+  let { busy, onCreate, onUpload, onSync, onRefresh, syncDisabled = false }: Props = $props();
 </script>
 
 <div class="toolbar" role="toolbar" aria-label="Skill 操作">
   <button class="primary" type="button" onclick={onCreate} disabled={busy}>新建 Skill</button>
   <button class="secondary" type="button" onclick={onUpload} disabled={busy}>上传 Skill</button>
+  <button class="secondary" type="button" onclick={onSync} disabled={busy || syncDisabled}>同步配置</button>
   <span class="spacer"></span>
   <button class="ghost" type="button" onclick={onRefresh} disabled={busy}>刷新</button>
 </div>
@@ -19,17 +22,17 @@
 <style>
   .toolbar {
     display: flex;
-    min-height: 38px;
+    min-height: 30px;
     align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
+    gap: 4px;
+    padding: 2px 4px;
     border-bottom: 1px solid var(--border-color);
     background: var(--bg-secondary);
   }
   .spacer { flex: 1; }
   button {
-    height: 27px;
-    padding: 3px 10px;
+    height: 25px;
+    padding: 2px 8px;
     border: 1px solid var(--border-color);
     border-radius: 4px;
     color: var(--text-primary);

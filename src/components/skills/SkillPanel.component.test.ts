@@ -140,16 +140,50 @@ test('rejects unsupported Skill upload names before API calls', async () => {
   expect(skillApi.upload).not.toHaveBeenCalled();
 });
 
+test('explains the lowercase name requirement for invalid Skill metadata', async () => {
+  render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'alpha', onYamlChange: vi.fn() });
+  await fireEvent.click(screen.getByRole('button', { name: '上传 Skill' }));
+  const dialog = screen.getByRole('dialog', { name: '上传 Skill' });
+  const upload = new File([
+    '---\nname: AIWAF-host-investigation\ndescription: host investigation\n---\n',
+  ], 'SKILL.md', { type: 'text/markdown' });
+
+  await fireEvent.change(within(dialog).getByLabelText('选择 SKILL.md'), { target: { files: [upload] } });
+
+  expect(within(dialog).getByRole('alert')).toHaveTextContent(
+    'SKILL.md 的 name 字段只能包含小写字母、数字和连字符（-）',
+  );
+  expect(skillApi.mkdir).not.toHaveBeenCalled();
+  expect(skillApi.upload).not.toHaveBeenCalled();
+});
+
 test('loads, selects and saves SKILL.md with optimistic concurrency', async () => {
   vi.mocked(skillApi.write).mockResolvedValue({ ...file, sha256: 'new' });
   render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'alpha', onYamlChange: vi.fn() });
   await fireEvent.click(await screen.findByRole('button', { name: 'demo' }));
   const editor = await screen.findByRole('textbox', { name: 'demo/SKILL.md' });
   await fireEvent.input(editor, { target: { value: 'changed' } });
-  expect(screen.getByText('有未保存更改')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '保存 Skill' })).toBeEnabled();
   await fireEvent.click(screen.getByRole('button', { name: '保存 Skill' }));
   expect(skillApi.write).toHaveBeenCalledWith(KEY_A, 'demo/SKILL.md', 'changed', 'old');
   await waitFor(() => expect(screen.getByText('已保存')).toBeInTheDocument());
+});
+
+test('previews and confirms synchronization of an uploaded Skill to the canonical YAML path', async () => {
+  const onYamlChange = vi.fn();
+  const wrongPathYaml = `name: test\nagents:\n  alpha:\n    skills:\n      - name: demo\n        source: file\n        path: /workspace/SKILL.md\n`;
+  render(SkillPanel, { projectKey: KEY_A, yaml: wrongPathYaml, selectedAgent: 'alpha', onYamlChange });
+  await fireEvent.click(await screen.findByRole('button', { name: 'demo' }));
+
+  await fireEvent.click(screen.getByRole('button', { name: '同步配置' }));
+
+  const dialog = screen.getByRole('dialog', { name: '同步 Skill 配置' });
+  expect(within(dialog).getByText('/workspace/SKILL.md')).toBeInTheDocument();
+  expect(within(dialog).getByText('./skills/demo')).toBeInTheDocument();
+  expect(onYamlChange).not.toHaveBeenCalled();
+
+  await fireEvent.click(within(dialog).getByRole('button', { name: '确认同步' }));
+  expect(onYamlChange).toHaveBeenCalledWith(expect.stringContaining('path: ./skills/demo'));
 });
 
 test('preserves local edits on conflict and offers reload', async () => {
@@ -235,7 +269,7 @@ test('keeps edits made during save dirty and ignores a late save after project s
   await fireEvent.click(screen.getByRole('button', { name: '保存 Skill' }));
   await fireEvent.input(editor, { target: { value: 'typed later' } });
   pending.resolve({ ...file, sha256: 'new' });
-  await waitFor(() => expect(screen.getByText('有未保存更改')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole('button', { name: '保存 Skill' })).toBeEnabled());
   expect(editor).toHaveValue('typed later');
 
   const second = deferred<typeof file>();
@@ -413,7 +447,7 @@ test('exposes selected/editor semantics and isolates modal background accessibly
   await fireEvent.click(skillButton);
   expect(skillButton).toHaveAttribute('aria-current', 'true');
   const editor = await screen.findByRole('textbox', { name: 'demo/SKILL.md' });
-  expect(editor).toHaveAttribute('aria-labelledby');
+  expect(editor).toHaveAttribute('aria-label', 'demo/SKILL.md');
   await fireEvent.click(screen.getByRole('button', { name: '删除 Skill' }));
   const panel = document.querySelector('.skill-panel');
   expect(panel).toHaveAttribute('inert');

@@ -8,8 +8,8 @@
     try {
       const text = await chosen.text();
       if (text.includes('\uFFFD')) throw new Error();
-      const match = text.match(/^---\s*\n[\s\S]*?^name:\s*([a-z][a-z0-9_-]*)\s*$/m);
-      if (!match) { error = 'SKILL.md 必须包含有效的 name 字段。'; return; }
+      const match = text.match(/^---\s*\n[\s\S]*?^name:\s*([a-z0-9]+(?:-[a-z0-9]+)*)\s*$/m);
+      if (!match) { error = 'SKILL.md 的 name 字段只能包含小写字母、数字和连字符（-）'; return; }
       file = chosen; name = match[1];
     } catch { error = 'SKILL.md 必须是 UTF-8 文本。'; }
   }
