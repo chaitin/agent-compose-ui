@@ -117,7 +117,7 @@ test('merges only confirmed Scheduler, Cell, and Sandbox Run evidence and filter
   mocks.execService.execStream.mockReturnValue(streamOf(new ExecStreamResponse({
     eventType: ExecStreamEventType.OUTPUT,
     stream: StdioStream.STDOUT,
-    chunk: '1784604700\t/workspace/2026-07-21/report.md\0',
+    chunk: '1784604700\t/workspace/2026-07-21/report.md\n',
   })));
 
   render(RunDetailView);

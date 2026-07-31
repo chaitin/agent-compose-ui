@@ -24,7 +24,7 @@ async function* artifactStream(path: string) {
   yield new ExecStreamResponse({
     eventType: ExecStreamEventType.OUTPUT,
     stream: StdioStream.STDOUT,
-    chunk: `1784604700\t${path}\0`,
+    chunk: `1784604700\t${path}\n`,
   });
 }
 const deferred = <T,>() => {
@@ -138,7 +138,7 @@ test('ignores Workspace artifacts returned after the run identity changes', asyn
       yield new ExecStreamResponse({
         eventType: ExecStreamEventType.OUTPUT,
         stream: StdioStream.STDOUT,
-        chunk: `1784604700\t/workspace/${sandboxId === 'sandbox-a' ? 'run-a' : 'run-b'}.md\0`,
+        chunk: `1784604700\t/workspace/${sandboxId === 'sandbox-a' ? 'run-a' : 'run-b'}.md\n`,
       });
       if (sandboxId === 'sandbox-a') runACompleted.resolve();
     })();
