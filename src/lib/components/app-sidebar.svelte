@@ -3,7 +3,7 @@
   import { navGroups } from '$lib/nav';
   import { t } from '$lib/i18n.svelte';
   import { router, navigate } from '$lib/router.svelte';
-  import Boxes from '@lucide/svelte/icons/boxes';
+  import BrandMark from '$lib/components/brand-mark.svelte';
 
   let {
     collapsed = false,
@@ -28,11 +28,7 @@
 >
   <!-- 品牌 -->
   <div class="flex h-12 items-center gap-2 border-b border-sidebar-border px-3">
-    <div
-      class="flex size-7 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground"
-    >
-      <Boxes class="size-4" />
-    </div>
+    <BrandMark class={cn('h-8 shrink-0', collapsed ? 'w-8' : 'w-11')} />
     {#if !collapsed}
       <div class="min-w-0">
         <div class="truncate text-sm font-semibold text-foreground">agent-compose</div>
