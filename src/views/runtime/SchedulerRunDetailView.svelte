@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { GetSchedulerRunRequest } from '../../gen/agentcompose/v2/agentcompose_pb';
+  import { GetSchedulerRunRequest, ProjectRef } from '../../gen/agentcompose/v2/agentcompose_pb';
   import { projectService, runService, sandboxService } from '../../lib/rpc';
   import { schedulerRunEventId } from '../../lib/scheduler-run-event';
   import { store } from '../../lib/stores.svelte';
@@ -87,7 +87,7 @@
   async function loadEventId(current: number, controller: AbortController, requestedProject: string, requestedRun: string) {
     try {
       const response = await projectService.getSchedulerRun(new GetSchedulerRunRequest({
-        project: { projectId: requestedProject },
+        project: new ProjectRef({ selector: { case: "projectId", value: requestedProject } }),
         runId: requestedRun,
       }), { signal: controller.signal });
       if (current === generation && !controller.signal.aborted) eventId = schedulerRunEventId(response.run?.payloadJson ?? '');

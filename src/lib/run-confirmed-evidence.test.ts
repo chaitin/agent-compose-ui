@@ -54,7 +54,7 @@ test('does not mark a successful Cell as error only because stderr contains warn
 test('projects confirmed evidence, removes duplicate Run events, and tags artifacts', () => {
   const entries = buildConfirmedEvidenceTimeline({
     schedulerEvents: [new SchedulerEvent({
-      id: 'scheduler-start', type: 'loader.run.started', message: 'started', runId: 'loader-1', createdAt: { seconds: 1n },
+      id: 'scheduler-start', type: 'scheduler.run.started', message: 'started', runId: 'loader-1', createdAt: { seconds: 1n },
     })],
     cell: new SandboxHistoryCell({
       id: 'cell-1', source: 'prompt', stdout: 'stdout', stderr: 'stderr', output: 'answer', exitCode: 1,
@@ -91,10 +91,10 @@ test('deduplicates the real Scheduler child Run shape by semantic ownership', ()
   const resultJson = '{"cellId":"cell-1","sandboxId":"sandbox-1","exitCode":0,"success":true}';
   const entries = buildConfirmedEvidenceTimeline({
     schedulerEvents: [
-      new SchedulerEvent({ id: 'start', type: 'loader.run.started', message: 'loader run started', payloadJson: '{"source":"interval:40000"}' }),
-      new SchedulerEvent({ id: 'log', type: 'loader.log', message: 'yaml scheduler script interval executed', payloadJson: '{"source":"full-yaml-e2e"}' }),
-      new SchedulerEvent({ id: 'agent', type: 'loader.agent.completed', message: answer, payloadJson: JSON.stringify({ text: answer, output: answer, finalText: answer, sandboxId: 'sandbox-1', cellId: 'cell-1', success: true, exitCode: 0 }) }),
-      new SchedulerEvent({ id: 'done', type: 'loader.run.completed', message: 'loader run completed', payloadJson: JSON.stringify({ resultJson }) }),
+      new SchedulerEvent({ id: 'start', type: 'scheduler.run.started', message: 'loader run started', payloadJson: '{"source":"interval:40000"}' }),
+      new SchedulerEvent({ id: 'log', type: 'scheduler.log', message: 'yaml scheduler script interval executed', payloadJson: '{"source":"full-yaml-e2e"}' }),
+      new SchedulerEvent({ id: 'agent', type: 'scheduler.agent.completed', message: answer, payloadJson: JSON.stringify({ text: answer, output: answer, finalText: answer, sandboxId: 'sandbox-1', cellId: 'cell-1', success: true, exitCode: 0 }) }),
+      new SchedulerEvent({ id: 'done', type: 'scheduler.run.completed', message: 'loader run completed', payloadJson: JSON.stringify({ resultJson }) }),
     ],
     cell: new SandboxHistoryCell({ id: 'cell-1', source: prompt, stderr: answer, output: answer, success: true, exitCode: 0, stopReason: 'completed' }),
     sandboxRunEvents: [],

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 import EventSandboxDetailPage from './EventSandboxDetailPage.svelte';
-import { Sandbox } from '../gen/agentcompose/v2/agentcompose_pb';
+import { Sandbox, SandboxStatus } from '../gen/agentcompose/v2/agentcompose_pb';
 
 const mocks = vi.hoisted(() => ({
   loadLinks: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock('../views/runtime/SandboxDetailView.svelte', async () => ({
   default: (await import('../../test/fixtures/SandboxDetailViewStub.svelte')).default,
 }));
 
-function sandbox(id: string, updatedAt: string, status = 'RUNNING') {
+function sandbox(id: string, updatedAt: string, status = SandboxStatus.RUNNING) {
   return new Sandbox({ sandboxId: id, projectId: `project-${id}`, title: `Title ${id}`, status, updatedAt: Timestamp.fromDate(new Date(updatedAt)) });
 }
 
@@ -29,7 +29,7 @@ beforeEach(() => {
     { sandboxId: 'new', createdAt: '2026-07-17T00:00:00Z' },
   ]);
   mocks.getSandbox.mockImplementation(async ({ sandboxId }: { sandboxId: string }) => ({
-    sandbox: sandboxId === 'new' ? sandbox('new', '2026-07-17T02:00:00Z') : sandbox('old', '2026-07-16T02:00:00Z', 'STOPPED'),
+    sandbox: sandboxId === 'new' ? sandbox('new', '2026-07-17T02:00:00Z') : sandbox('old', '2026-07-16T02:00:00Z', SandboxStatus.STOPPED),
   }));
 });
 

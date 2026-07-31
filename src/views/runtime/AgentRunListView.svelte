@@ -3,7 +3,7 @@
   import { projectService, runService, runtimeProjectService } from '../../lib/rpc';
   import { store } from '../../lib/stores.svelte';
   import RuntimeBreadcrumb from './RuntimeBreadcrumb.svelte';
-  import { GetProjectRequest, ListRunsRequest, ListSchedulerEventsRequest, RunSource, RunStatus, type RunSummary, type SchedulerEvent } from '../../gen/agentcompose/v2/agentcompose_pb';
+  import { ProjectRef, GetProjectRequest, ListRunsRequest, ListSchedulerEventsRequest, RunSource, RunStatus, type RunSummary, type SchedulerEvent } from '../../gen/agentcompose/v2/agentcompose_pb';
   import { buildRunDateRange, consumeRunWindow } from '../../lib/run-history';
   import { filterAgentOwnedExecutions, groupSchedulerExecutions, mergeAgentOwnedExecutions, type AgentOwnedExecution } from '../../lib/agent-owned-executions';
   import RunAgentModal from '../../modals/RunAgentModal.svelte';
@@ -15,7 +15,7 @@
   let loading = $state(true);
   let loadingMore = $state(false);
   let hasMore = $state(false);
-  let schedulerCursor = $state('');
+  let schedulerOffset = $state(0); let schedulerTotal = $state(0);
   let serverOffset = $state(0);
   const PAGE_SIZE = 50;
   let requestGeneration = 0;
@@ -48,7 +48,7 @@
     projectRuns = [];
     schedulerEvents = [];
     executions = [];
-    schedulerCursor = '';
+    schedulerOffset = 0; schedulerTotal = 0;
     serverOffset = 0;
     (async () => {
       const [projectResult, schedulerResult] = await Promise.allSettled([
@@ -62,12 +62,12 @@
         }), { signal: controller.signal });
         })(),
         (async () => {
-          const project = await runtimeProjectService.getProject(new GetProjectRequest({ project: { projectId }, includeSpec: true }), { signal: controller.signal, timeoutMs: 30_000 });
+          const project = await runtimeProjectService.getProject(new GetProjectRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), includeSpec: true }), { signal: controller.signal, timeoutMs: 30_000 });
           const configuredAgent = project.project?.spec?.agents.find((agent) => agent.name === requestedAgent);
           if (generation === requestGeneration) agentSystemPrompt = configuredAgent?.systemPrompt ?? '';
           const hasScheduler = !!configuredAgent?.scheduler;
           return hasScheduler
-            ? projectService.listSchedulerEvents(new ListSchedulerEventsRequest({ project: { projectId }, agentName: requestedAgent, limit: 500 }), { signal: controller.signal })
+            ? projectService.listSchedulerEvents(new ListSchedulerEventsRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName: requestedAgent, limit: 500 }), { signal: controller.signal })
             : undefined;
         })(),
       ]);
@@ -79,14 +79,14 @@
       } else store.addToast(projectResult.reason?.message || '加载 Agent Run 历史失败', 'error');
       if (schedulerResult.status === 'fulfilled' && schedulerResult.value) {
         schedulerEvents = schedulerResult.value.events;
-        schedulerCursor = schedulerResult.value.nextCursor;
+        schedulerOffset = schedulerResult.value.events.length; schedulerTotal = schedulerResult.value.total;
       } else if (schedulerResult.status === 'rejected') {
         store.addToast(schedulerResult.reason?.message || '加载 Scheduler 历史失败', 'error');
       }
       executions = filterAgentOwnedExecutions(
         await mergeAgentOwnedExecutions(projectRuns, groupSchedulerExecutions(schedulerEvents), { projectId, agentName: requestedAgent }), filters,
       );
-      hasMore = projectHasMore || Boolean(schedulerCursor);
+      hasMore = projectHasMore || schedulerOffset < schedulerTotal;
       if (generation === requestGeneration) loading = false;
     })();
     return () => {
@@ -131,8 +131,8 @@
         runService.listRuns(new ListRunsRequest({ projectId, agentName: requestedAgent,
           status: applied.status, source: applied.source,
           ...range, sandboxId: applied.sandboxId.trim(), offset: 0, limit: target + 1 })),
-        schedulerCursor
-          ? projectService.listSchedulerEvents(new ListSchedulerEventsRequest({ project: { projectId }, agentName: requestedAgent, limit: 500, cursor: schedulerCursor }))
+        schedulerOffset < schedulerTotal
+          ? projectService.listSchedulerEvents(new ListSchedulerEventsRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName: requestedAgent, limit: 500, offset: schedulerOffset }))
           : Promise.resolve(undefined),
       ]);
       if (generation === requestGeneration) {
@@ -142,12 +142,12 @@
         } else store.addToast(projectResult.reason?.message || '加载更多 Agent Run 失败', 'error');
         if (schedulerResult.status === 'fulfilled' && schedulerResult.value) {
           schedulerEvents = [...schedulerEvents, ...schedulerResult.value.events];
-          schedulerCursor = schedulerResult.value.nextCursor;
+          schedulerOffset += schedulerResult.value.events.length; schedulerTotal = schedulerResult.value.total;
         } else if (schedulerResult.status === 'rejected') store.addToast(schedulerResult.reason?.message || '加载更多 Scheduler 历史失败', 'error');
         executions = filterAgentOwnedExecutions(
           await mergeAgentOwnedExecutions(projectRuns, groupSchedulerExecutions(schedulerEvents), { projectId, agentName: requestedAgent }), applied,
         );
-        hasMore = projectHasMore || Boolean(schedulerCursor);
+        hasMore = projectHasMore || schedulerOffset < schedulerTotal;
       }
     } catch (error: any) { if (generation === requestGeneration) store.addToast(error?.message || '加载更多运行历史失败', 'error'); }
     finally { if (generation === requestGeneration) loadingMore = false; }

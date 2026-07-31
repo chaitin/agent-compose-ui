@@ -11,7 +11,7 @@ test('submits one detached run and reports its returned run ID', () => {
   assert.match(source, /onstarted\?: \(runId: string\) => void;/);
   assert.match(
     source,
-    /runService\.startRun\(new StartRunRequest\(\{ run: req \}\)\)[\s\S]*const runId = response\.run\?\.runId \|\| '';[\s\S]*onstarted\(runId\);/,
+    /runService\.startAgentRun\(new StartAgentRunRequest\(\{ run: req \}\)\)[\s\S]*const runId = response\.run\?\.runId \|\| '';[\s\S]*onstarted\(runId\);/,
   );
   assert.match(source, /store\.navigateTo\('run-detail', \{ agentName, runId \}\)/);
 });
@@ -27,14 +27,14 @@ test('offers prompt and command inputs with explicit run overrides', () => {
 });
 
 test('keeps observation and stop controls on the run detail surface', () => {
-  assert.doesNotMatch(source, /runAgentStream|runAttach|stopRun/);
+  assert.doesNotMatch(source, /streamAgentRun|attachAgentRun|stopRun/);
   assert.doesNotMatch(source, /观察方式|停止中|取消交互 Run/);
 });
 
 test('uses one submit-then-observe mode', () => {
-  assert.match(source, /runService\.startRun/);
+  assert.match(source, /runService\.startAgentRun/);
   assert.match(source, /store\.navigateTo\('run-detail'/);
-  assert.doesNotMatch(source, /runAgentStream|submitMode/);
+  assert.doesNotMatch(source, /streamAgentRun|submitMode/);
 });
 
 test('loads sandbox choices from the authoritative sandbox service', () => {

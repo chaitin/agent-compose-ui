@@ -2,10 +2,10 @@ import { Code, ConnectError } from '@connectrpc/connect';
 import {
   ExecCommand,
   ExecRequest,
-  ExecStreamEventType,
+  StreamExecEventType,
   GetSandboxRequest,
   StdioStream,
-  type ExecStreamResponse,
+  type StreamExecResponse,
 } from '../gen/agentcompose/v2/agentcompose_pb';
 
 export const WORKSPACE_ARTIFACT_OUTPUT_BYTES = 256 * 1024;
@@ -66,7 +66,7 @@ export interface DiscoverWorkspaceArtifactsOptions {
   completedAt: string;
   now: () => Date;
   getSandbox(request: GetSandboxRequest, options?: { signal?: AbortSignal }): Promise<{ sandbox?: { status?: string } }>;
-  execStream(request: ExecRequest, options?: { signal?: AbortSignal }): AsyncIterable<ExecStreamResponse>;
+  streamExec(request: ExecRequest, options?: { signal?: AbortSignal }): AsyncIterable<StreamExecResponse>;
   signal?: AbortSignal;
 }
 
@@ -111,13 +111,13 @@ export async function discoverWorkspaceArtifacts(
   let truncated = false;
 
   try {
-    for await (const event of options.execStream(request, { signal: options.signal })) {
-      if (event.eventType === ExecStreamEventType.OUTPUT && event.stream === StdioStream.STDERR) {
+    for await (const event of options.streamExec(request, { signal: options.signal })) {
+      if (event.eventType === StreamExecEventType.OUTPUT && event.stream === StdioStream.STDERR) {
         return emptyResult('error', event.chunk || 'Artifact discovery wrote to stderr.');
       }
       if (event.result?.error) return emptyResult('error', event.result.error);
       if (event.result?.stdoutTruncated || event.result?.outputTruncated) truncated = true;
-      if (event.eventType !== ExecStreamEventType.OUTPUT || event.stream !== StdioStream.STDOUT || !event.chunk) continue;
+      if (event.eventType !== StreamExecEventType.OUTPUT || event.stream !== StdioStream.STDOUT || !event.chunk) continue;
 
       const bytes = encoder.encode(event.chunk);
       const remaining = WORKSPACE_ARTIFACT_OUTPUT_BYTES - outputBytes;

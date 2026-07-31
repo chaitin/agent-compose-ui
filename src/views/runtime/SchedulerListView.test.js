@@ -4,7 +4,7 @@ test('reads scheduler definitions and uses direct v2 scheduler controls', () => 
   expect(source).toContain('runtimeProjectService.getProject(new GetProjectRequest');
   expect(source).toContain('const request = new RunAgentRequest');
   expect(source).toContain('runService.runAgent(request)');
-  expect(source).toContain('runService.startRun(new StartRunRequest({ run: request }))');
+  expect(source).toContain('runService.startAgentRun(new StartAgentRunRequest({ run: request }))');
   expect(source).toContain("store.navigateTo('run-detail'");
   expect(source).toContain('projectService.listSchedulerEvents(new ListSchedulerEventsRequest');
   expect(source).toContain('projectService.setSchedulerEnabled(new SetSchedulerEnabledRequest');

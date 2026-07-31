@@ -1,5 +1,6 @@
 import { RunSource, RunStatus, type RunSummary, type SchedulerEvent } from '../gen/agentcompose/v2/agentcompose_pb';
 import { stableProjectRunId } from './run-scheduler-evidence';
+import { timestampToIso } from './proto-helpers';
 
 export type SchedulerExecutionStatus = 'running' | 'succeeded' | 'failed' | 'skipped' | 'unknown';
 export type SchedulerCapability = 'agent' | 'llm' | 'command' | 'event' | 'sandbox' | 'log';
@@ -56,12 +57,12 @@ const capabilityOrder: SchedulerCapability[] = ['agent', 'llm', 'command', 'even
 export function schedulerEventCapabilities(events: readonly SchedulerEvent[]): SchedulerCapability[] {
   const found = new Set<SchedulerCapability>();
   for (const event of events) {
-    if (event.type.startsWith('loader.agent.')) found.add('agent');
-    else if (event.type.startsWith('loader.llm.')) found.add('llm');
-    else if (event.type.startsWith('loader.command.')) found.add('command');
-    else if (event.type.startsWith('loader.event.')) found.add('event');
-    else if (event.type.startsWith('loader.sandbox.')) found.add('sandbox');
-    else if (event.type === 'loader.log') found.add('log');
+    if (event.type.startsWith('scheduler.agent.')) found.add('agent');
+    else if (event.type.startsWith('scheduler.llm.')) found.add('llm');
+    else if (event.type.startsWith('scheduler.command.')) found.add('command');
+    else if (event.type.startsWith('scheduler.event.')) found.add('event');
+    else if (event.type.startsWith('scheduler.sandbox.')) found.add('sandbox');
+    else if (event.type === 'scheduler.log') found.add('log');
   }
   return capabilityOrder.filter(value => found.has(value));
 }
@@ -97,12 +98,12 @@ export function groupSchedulerExecutions(events: readonly SchedulerEvent[]): Sch
   const results: SchedulerOwnedExecution[] = [];
   for (const [schedulerRunId, values] of groups) {
     const ordered = [...values].sort((left, right) => eventTimestamp(left).localeCompare(eventTimestamp(right)) || left.id.localeCompare(right.id));
-    const started = ordered.find(event => event.type === 'loader.run.started');
-    const terminal = [...ordered].reverse().find(event => ['loader.run.completed', 'loader.run.failed', 'loader.run.skipped'].includes(event.type));
+    const started = ordered.find(event => event.type === 'scheduler.run.started');
+    const terminal = [...ordered].reverse().find(event => ['scheduler.run.completed', 'scheduler.run.failed', 'scheduler.run.skipped'].includes(event.type));
     let status: SchedulerExecutionStatus = started ? 'running' : 'unknown';
-    if (terminal?.type === 'loader.run.completed') status = 'succeeded';
-    if (terminal?.type === 'loader.run.failed') status = 'failed';
-    if (terminal?.type === 'loader.run.skipped') status = 'skipped';
+    if (terminal?.type === 'scheduler.run.completed') status = 'succeeded';
+    if (terminal?.type === 'scheduler.run.failed') status = 'failed';
+    if (terminal?.type === 'scheduler.run.skipped') status = 'skipped';
     const startedAt = started ? eventTimestamp(started) : '';
     const completedAt = terminal ? eventTimestamp(terminal) : '';
     const startMs = Date.parse(startedAt);
@@ -141,7 +142,7 @@ export async function mergeAgentOwnedExecutions(
 ): Promise<AgentOwnedExecution[]> {
   const schedulerByProjectRun = new Map<string, SchedulerOwnedExecution>();
   for (const execution of schedulerExecutions) {
-    const terminalAgentRunCount = execution.events.filter(event => event.type === 'loader.agent.completed' || event.type === 'loader.agent.failed').length;
+    const terminalAgentRunCount = execution.events.filter(event => event.type === 'scheduler.agent.completed' || event.type === 'scheduler.agent.failed').length;
     const agentRunCount = terminalAgentRunCount + Number(execution.status === 'running');
     for (let sequence = 1; sequence <= agentRunCount; sequence++) {
       const clientRequestId = `${execution.schedulerRunId}:agent:${sequence}`;
@@ -160,8 +161,8 @@ export async function mergeAgentOwnedExecutions(
       triggerId: run.triggerId || scheduler?.triggerId || '',
       source: run.source,
       status: projectStatus(run.status),
-      startedAt: run.startedAt || scheduler?.startedAt || '',
-      completedAt: run.completedAt || scheduler?.completedAt || '',
+      startedAt: timestampToIso(run.startedAt) || scheduler?.startedAt || '',
+      completedAt: timestampToIso(run.completedAt) || scheduler?.completedAt || '',
       durationMs: Number(run.durationMs) || scheduler?.durationMs || 0,
       capabilities: scheduler?.capabilities ?? [],
       sandboxIds: [...new Set([run.sandboxId, ...(scheduler?.sandboxIds ?? [])].filter(Boolean))],

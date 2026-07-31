@@ -5,8 +5,8 @@ import { MetricStatus, MetricValue, Sandbox, SandboxStats } from '../../gen/agen
 import { store } from '../../lib/stores.svelte';
 
 const mocks = vi.hoisted(() => ({
-  runService: { listRuns: vi.fn(), startRun: vi.fn() },
-  execService: { exec: vi.fn(), execStream: vi.fn(), execAttach: vi.fn() },
+  runService: { listRuns: vi.fn(), startAgentRun: vi.fn() },
+  execService: { exec: vi.fn(), streamExec: vi.fn(), attachExec: vi.fn() },
   sandboxService: { listSandboxes: vi.fn(), getSandboxStats: vi.fn(), stopSandbox: vi.fn(), resumeSandbox: vi.fn(), removeSandbox: vi.fn() },
   attachFrames: [] as any[],
   terminals: [] as Array<{ disposed: boolean }>,
@@ -44,11 +44,11 @@ beforeEach(() => {
   vi.spyOn(store, 'navigateBack').mockImplementation(() => {});
   history.replaceState(null, '', '/#/project/project-1/agent/reviewer/sandboxes');
   mocks.sandboxService.listSandboxes.mockResolvedValue({ sandboxes: [new Sandbox({ sandboxId: 'sandbox-1', projectId: 'project-1', agentName: 'reviewer', status: 'running' })], nextCursor: '' });
-  mocks.execService.execStream.mockImplementation(async function* () {});
-  mocks.execService.execAttach.mockImplementation(async function* (requests: AsyncIterable<any>) {
+  mocks.execService.streamExec.mockImplementation(async function* () {});
+  mocks.execService.attachExec.mockImplementation(async function* (requests: AsyncIterable<any>) {
     for await (const frame of requests) mocks.attachFrames.push(frame);
   });
-  mocks.runService.startRun.mockResolvedValue({});
+  mocks.runService.startAgentRun.mockResolvedValue({});
   mocks.sandboxService.stopSandbox.mockResolvedValue({ sandbox: new Sandbox({ sandboxId: 'live', status: 'stopped' }) });
   mocks.sandboxService.resumeSandbox.mockResolvedValue({ sandbox: new Sandbox({ sandboxId: 'sandbox/a b', status: 'running' }) });
   mocks.sandboxService.getSandboxStats.mockResolvedValue({ stats: new SandboxStats({ sandboxId: 'sandbox-1', driver: 'docker' }) });
@@ -176,7 +176,7 @@ test('stops a running Sandbox through the direct lifecycle RPC', async () => {
 
   await fireEvent.click(within(live).getByRole('button', { name: '停止' }));
   expect(mocks.sandboxService.stopSandbox).toHaveBeenCalledWith(expect.objectContaining({ sandboxId: 'live' }));
-  expect(mocks.runService.startRun).not.toHaveBeenCalled();
+  expect(mocks.runService.startAgentRun).not.toHaveBeenCalled();
 });
 
 test('keeps Stop available while Sandbox stats are pending', async () => {
@@ -197,7 +197,7 @@ test('does not stop a running Sandbox when confirmation is canceled', async () =
   const row = (await screen.findByText('sandbox-1')).closest('article')!;
   await fireEvent.click(await within(row).findByRole('button', { name: '停止' }));
   expect(mocks.sandboxService.stopSandbox).not.toHaveBeenCalled();
-  expect(mocks.runService.startRun).not.toHaveBeenCalled();
+  expect(mocks.runService.startAgentRun).not.toHaveBeenCalled();
 });
 
 test('restores through the direct lifecycle RPC and opens the same-origin Jupyter proxy', async () => {
@@ -210,7 +210,7 @@ test('restores through the direct lifecycle RPC and opens the same-origin Jupyte
 
   await fireEvent.click(await screen.findByRole('button', { name: '恢复' }));
   expect(mocks.sandboxService.resumeSandbox).toHaveBeenCalledWith(expect.objectContaining({ sandboxId: 'sandbox/a b' }));
-  expect(mocks.runService.startRun).not.toHaveBeenCalled();
+  expect(mocks.runService.startAgentRun).not.toHaveBeenCalled();
 
   await fireEvent.click(await screen.findByRole('button', { name: 'Jupyter' }));
   expect(open).toHaveBeenCalledWith('/jupyter/sandbox%2Fa%20b', '_blank', 'noopener,noreferrer');

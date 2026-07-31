@@ -9,6 +9,7 @@
     ProjectRef,
     type ProjectSummary,
   } from '../gen/agentcompose/v2/agentcompose_pb';
+  import { timestampToIso } from '../lib/proto-helpers';
   import { onMount } from 'svelte';
   import type { ProjectEntry } from '../lib/types';
   import { deduplicateProjectEntries } from '../lib/projects';
@@ -79,16 +80,16 @@
           schedulerCount: p.schedulerCount,
           runningRunCount: p.runningRunCount,
           latestRunId: p.latestRunId,
-          createdAt: p.createdAt,
-          updatedAt: p.updatedAt,
+          createdAt: timestampToIso(p.createdAt),
+          updatedAt: timestampToIso(p.updatedAt),
         },
         source: { composePath: p.sourcePath || '', projectDir: '' },
         yamlContent: '',
         dirty: false,
       })) as ProjectEntry[]);
       visibleProjects = reset ? entries : deduplicateProjectEntries([...visibleProjects, ...entries]);
-      projectOffset = resp.nextOffset || visibleProjects.length;
-      hasMore = resp.hasMore;
+      projectOffset = reset ? resp.projects.length : projectOffset + resp.projects.length;
+      hasMore = projectOffset < resp.total;
       store.projects = deduplicateProjectEntries([...store.projects, ...entries]);
       void loadProjectStatuses(entries, generation, reset);
       return entries;
@@ -138,7 +139,7 @@
     // Fall back to loading from backend (expanded values; do not cache).
     try {
       const req = new GetProjectRequest({
-        project: new ProjectRef({ projectId: id }),
+        project: new ProjectRef({ selector: { case: "projectId", value: id } }),
         includeSpec: true,
       });
       const resp: any = await projectService.getProject(req);
@@ -370,14 +371,6 @@
     >
       <span class="icon">&#9881;</span> 系统管理
     </button>
-    <a
-      class="nav-item"
-      href="https://devboard.chaitin.net/devboard/issues?product_id=6a5f3c14839f64bb543f172d"
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      <span class="icon" aria-hidden="true">&#9993;</span> 反馈
-    </a>
   </div>
 </nav>
 

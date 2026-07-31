@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { Timestamp } from '@bufbuild/protobuf';
 import AgentRunListView from './AgentRunListView.svelte';
 import { AgentSpec, Project, ProjectSpec, RunSource, RunStatus, RunSummary, SchedulerEvent, SchedulerSpec } from '../../gen/agentcompose/v2/agentcompose_pb';
 import { store } from '../../lib/stores.svelte';
@@ -50,9 +51,9 @@ test('shows a pure Scheduler command execution and opens its Scheduler detail', 
   const navigate = vi.spyOn(store, 'navigateTo').mockImplementation(() => {});
   mocks.runService.listRuns.mockResolvedValue({ runs: [] });
   mocks.projectService.listSchedulerEvents.mockResolvedValue({ events: [
-    new SchedulerEvent({ id: 'done', runId: 'loader-1', triggerId: 'cron', type: 'loader.run.completed', createdAt: { seconds: 2n } }),
-    new SchedulerEvent({ id: 'command', runId: 'loader-1', triggerId: 'cron', type: 'loader.command.completed', message: '22 items', createdAt: { seconds: 1n } }),
-    new SchedulerEvent({ id: 'start', runId: 'loader-1', triggerId: 'cron', type: 'loader.run.started', createdAt: { seconds: 0n } }),
+    new SchedulerEvent({ id: 'done', runId: 'loader-1', triggerId: 'cron', type: 'scheduler.run.completed', createdAt: { seconds: 2n } }),
+    new SchedulerEvent({ id: 'command', runId: 'loader-1', triggerId: 'cron', type: 'scheduler.command.completed', message: '22 items', createdAt: { seconds: 1n } }),
+    new SchedulerEvent({ id: 'start', runId: 'loader-1', triggerId: 'cron', type: 'scheduler.run.started', createdAt: { seconds: 0n } }),
   ], nextCursor: '' });
 
   render(AgentRunListView);
@@ -67,19 +68,19 @@ test('renders task type and trigger source together without Scheduler capability
   const linkedSchedulerRunId = 'scheduler-linked';
   const linkedProjectRunId = await stableProjectRunId('project-1', 'old-agent', 'scheduler', `${linkedSchedulerRunId}:agent:1`);
   mocks.runService.listRuns.mockResolvedValue({ runs: [
-    new RunSummary({ runId: 'manual-run', source: RunSource.MANUAL, status: RunStatus.SUCCEEDED, startedAt: '2026-07-15T05:00:00Z' }),
-    new RunSummary({ runId: 'api-run', source: RunSource.API, status: RunStatus.SUCCEEDED, startedAt: '2026-07-15T04:00:00Z' }),
-    new RunSummary({ runId: linkedProjectRunId, source: RunSource.SCHEDULER, status: RunStatus.SUCCEEDED, startedAt: '2026-07-15T03:00:00Z' }),
-    new RunSummary({ runId: 'unknown-run', source: RunSource.UNSPECIFIED, status: RunStatus.SUCCEEDED, startedAt: '2026-07-15T01:00:00Z' }),
+    new RunSummary({ runId: 'manual-run', source: RunSource.MANUAL, status: RunStatus.SUCCEEDED, startedAt: Timestamp.fromDate(new Date('2026-07-15T05:00:00Z')) }),
+    new RunSummary({ runId: 'api-run', source: RunSource.API, status: RunStatus.SUCCEEDED, startedAt: Timestamp.fromDate(new Date('2026-07-15T04:00:00Z')) }),
+    new RunSummary({ runId: linkedProjectRunId, source: RunSource.SCHEDULER, status: RunStatus.SUCCEEDED, startedAt: Timestamp.fromDate(new Date('2026-07-15T03:00:00Z')) }),
+    new RunSummary({ runId: 'unknown-run', source: RunSource.UNSPECIFIED, status: RunStatus.SUCCEEDED, startedAt: Timestamp.fromDate(new Date('2026-07-15T01:00:00Z')) }),
   ] });
   mocks.projectService.listSchedulerEvents.mockResolvedValue({ events: [
-    new SchedulerEvent({ id: 'linked-start', runId: linkedSchedulerRunId, type: 'loader.run.started', createdAt: { seconds: 3n } }),
-    new SchedulerEvent({ id: 'linked-agent', runId: linkedSchedulerRunId, type: 'loader.agent.completed', createdAt: { seconds: 3n, nanos: 1 } }),
-    new SchedulerEvent({ id: 'linked-done', runId: linkedSchedulerRunId, type: 'loader.run.completed', createdAt: { seconds: 4n } }),
-    new SchedulerEvent({ id: 'pure-start', runId: 'scheduler-pure', type: 'loader.run.started', createdAt: { seconds: 1n } }),
-    new SchedulerEvent({ id: 'pure-command', runId: 'scheduler-pure', type: 'loader.command.completed', createdAt: { seconds: 2n } }),
-    new SchedulerEvent({ id: 'pure-sandbox', runId: 'scheduler-pure', type: 'loader.sandbox.created', createdAt: { seconds: 2n, nanos: 1 } }),
-    new SchedulerEvent({ id: 'pure-done', runId: 'scheduler-pure', type: 'loader.run.completed', createdAt: { seconds: 3n } }),
+    new SchedulerEvent({ id: 'linked-start', runId: linkedSchedulerRunId, type: 'scheduler.run.started', createdAt: { seconds: 3n } }),
+    new SchedulerEvent({ id: 'linked-agent', runId: linkedSchedulerRunId, type: 'scheduler.agent.completed', createdAt: { seconds: 3n, nanos: 1 } }),
+    new SchedulerEvent({ id: 'linked-done', runId: linkedSchedulerRunId, type: 'scheduler.run.completed', createdAt: { seconds: 4n } }),
+    new SchedulerEvent({ id: 'pure-start', runId: 'scheduler-pure', type: 'scheduler.run.started', createdAt: { seconds: 1n } }),
+    new SchedulerEvent({ id: 'pure-command', runId: 'scheduler-pure', type: 'scheduler.command.completed', createdAt: { seconds: 2n } }),
+    new SchedulerEvent({ id: 'pure-sandbox', runId: 'scheduler-pure', type: 'scheduler.sandbox.created', createdAt: { seconds: 2n, nanos: 1 } }),
+    new SchedulerEvent({ id: 'pure-done', runId: 'scheduler-pure', type: 'scheduler.run.completed', createdAt: { seconds: 3n } }),
   ], nextCursor: '' });
 
   render(AgentRunListView);
@@ -103,7 +104,7 @@ test('renders task type and trigger source together without Scheduler capability
 test('keeps Scheduler history when Project Run loading fails', async () => {
   mocks.runService.listRuns.mockRejectedValue(new Error('project runs unavailable'));
   mocks.projectService.listSchedulerEvents.mockResolvedValue({ events: [
-    new SchedulerEvent({ id: 'started', runId: 'loader-only', type: 'loader.run.started', createdAt: { seconds: 1n } }),
+    new SchedulerEvent({ id: 'started', runId: 'loader-only', type: 'scheduler.run.started', createdAt: { seconds: 1n } }),
   ], nextCursor: '' });
 
   render(AgentRunListView);
@@ -168,8 +169,8 @@ test('shows completed run diagnostics and navigates with the full run ID', async
     runId,
     runShortId: '7225ac53d21b',
     status: RunStatus.SUCCEEDED,
-    startedAt: '2026-07-15T02:03:09.736Z',
-    completedAt: '2026-07-15T02:03:11.236Z',
+    startedAt: Timestamp.fromDate(new Date('2026-07-15T02:03:09.736Z')),
+    completedAt: Timestamp.fromDate(new Date('2026-07-15T02:03:11.236Z')),
     durationMs: 1500n,
     exitCode: 0,
     warnings: ['cache fallback'],
@@ -218,7 +219,7 @@ test('computes running duration and omits an exit code', async () => {
   mocks.runService.listRuns.mockResolvedValue({ runs: [new RunSummary({
     runId: 'running-run',
     status: RunStatus.RUNNING,
-    startedAt: '2026-07-15T02:03:09.736Z',
+    startedAt: Timestamp.fromDate(new Date('2026-07-15T02:03:09.736Z')),
   })] });
 
   render(AgentRunListView);

@@ -2,18 +2,18 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, expect, test, vi } from 'vitest';
 import SchedulerListView from './SchedulerListView.svelte';
 import { Timestamp } from '@bufbuild/protobuf';
-import { AgentSpec, Project, ProjectScheduler, ProjectSpec, ResolvedTrigger, RunAgentRequest, RunDetail, RunSummary, SchedulerEvent, SchedulerSpec, TriggerSpec, RunSandboxCleanupPolicy } from '../../gen/agentcompose/v2/agentcompose_pb';
+import { AgentSpec, Project, ProjectScheduler, ProjectSpec, ResolvedTrigger, RunAgentRequest, RunDetail, RunSummary, SchedulerEvent, SchedulerSpec, TriggerSpec, TriggerKind, RunSandboxCleanupPolicy } from '../../gen/agentcompose/v2/agentcompose_pb';
 import { store } from '../../lib/stores.svelte';
 
 const mocks = vi.hoisted(() => ({
-  projectService: { getProject: vi.fn(), getScheduler: vi.fn(), listSchedulerEvents: vi.fn(), setSchedulerEnabled: vi.fn(), setSchedulerTriggerEnabled: vi.fn() }, runService: { runAgent: vi.fn(), startRun: vi.fn(), listRuns: vi.fn() },
+  projectService: { getProject: vi.fn(), getScheduler: vi.fn(), listSchedulerEvents: vi.fn(), setSchedulerEnabled: vi.fn(), setSchedulerTriggerEnabled: vi.fn() }, runService: { runAgent: vi.fn(), startAgentRun: vi.fn(), listRuns: vi.fn() },
 }));
 vi.mock('../../lib/rpc', () => ({ projectService: mocks.projectService, runtimeProjectService: mocks.projectService, runService: mocks.runService }));
 
 function project(projectId = 'project-1') {
   return { project: new Project({
     schedulers: [new ProjectScheduler({ projectId, agentName: 'worker', schedulerId: 'scheduler-1', enabled: true, triggerCount: 1 })],
-    spec: new ProjectSpec({ agents: [new AgentSpec({ name: 'worker', scheduler: new SchedulerSpec({ enabled: true, triggers: [new TriggerSpec({ name: 'nightly', kind: 'cron', cron: '0 1 * * *', prompt: 'scheduled prompt' })] }) })] }),
+    spec: new ProjectSpec({ agents: [new AgentSpec({ name: 'worker', scheduler: new SchedulerSpec({ enabled: true, triggers: [new TriggerSpec({ name: 'nightly', kind: TriggerKind.CRON, cron: '0 1 * * *', prompt: 'scheduled prompt' })] }) })] }),
   }) };
 }
 
@@ -29,9 +29,9 @@ beforeEach(() => {
   vi.spyOn(store, 'navigateTo').mockImplementation(() => {});
   vi.spyOn(store, 'addToast').mockImplementation(() => {});
   mocks.projectService.getProject.mockResolvedValue(project());
-  mocks.projectService.getScheduler.mockResolvedValue({ triggers: [new ResolvedTrigger({ spec: new TriggerSpec({ name: 'nightly', kind: 'cron', cron: '0 1 * * *', prompt: 'scheduled prompt' }), triggerId: 'nightly', enabled: true })] });
+  mocks.projectService.getScheduler.mockResolvedValue({ triggers: [new ResolvedTrigger({ spec: new TriggerSpec({ name: 'nightly', kind: TriggerKind.CRON, cron: '0 1 * * *', prompt: 'scheduled prompt' }), triggerId: 'nightly', enabled: true })] });
   mocks.runService.runAgent.mockResolvedValue({ run: new RunDetail({ summary: new RunSummary({ runId: 'run-new' }) }) });
-  mocks.runService.startRun.mockResolvedValue({ run: new RunSummary({ runId: 'run-detached' }) });
+  mocks.runService.startAgentRun.mockResolvedValue({ run: new RunSummary({ runId: 'run-detached' }) });
   mocks.runService.listRuns.mockResolvedValue({ runs: [new RunSummary({ runId: 'run-old', sandboxId: 'sandbox-existing' })] });
   mocks.projectService.listSchedulerEvents.mockResolvedValue({ events: [new SchedulerEvent({ id: 'event-1', type: 'trigger-fired', level: 'info', message: 'nightly completed', triggerId: 'nightly', createdAt: Timestamp.fromDate(new Date('2026-07-15T01:02:03Z')) })] });
   mocks.projectService.setSchedulerEnabled.mockResolvedValue({ scheduler: new ProjectScheduler({ projectId: 'project-1', agentName: 'worker', schedulerId: 'scheduler-1', enabled: false, triggerCount: 1 }) });
@@ -40,7 +40,7 @@ beforeEach(() => {
 
 test('uses the authoritative resolved trigger id and initially disabled state', async () => {
   mocks.projectService.getScheduler.mockResolvedValueOnce({ triggers: [new ResolvedTrigger({
-    spec: new TriggerSpec({ name: 'nightly', kind: 'cron', cron: '0 1 * * *' }),
+    spec: new TriggerSpec({ name: 'nightly', kind: TriggerKind.CRON, cron: '0 1 * * *' }),
     triggerId: 'resolved-trigger-42', enabled: false,
   })] });
   render(SchedulerListView);
@@ -136,7 +136,7 @@ test('uses direct scheduler and trigger controls without running an agent', asyn
   }));
   expect(await screen.findByRole('button', { name: '启用 Trigger nightly' })).toBeInTheDocument();
   expect(mocks.runService.runAgent).not.toHaveBeenCalled();
-  expect(mocks.runService.startRun).not.toHaveBeenCalled();
+  expect(mocks.runService.startAgentRun).not.toHaveBeenCalled();
 });
 
 test('shows optimistic busy state but waits for the scheduler response before changing enabled state', async () => {
@@ -193,16 +193,16 @@ test('uses the same RunAgentRequest snapshot for streaming wait and detached sta
   execution.value = 'detached'; await fireEvent.change(execution);
   await fireEvent.input(screen.getByLabelText('nightly Payload JSON'), { target: { value: '{"same":true}' } });
   await fireEvent.click(screen.getByRole('button', { name: '手动运行 nightly' }));
-  const detached = mocks.runService.startRun.mock.calls[0][0].run as RunAgentRequest;
+  const detached = mocks.runService.startAgentRun.mock.calls[0][0].run as RunAgentRequest;
   expect(RunAgentRequest.equals(waited, detached)).toBe(true);
   expect(mocks.runService.runAgent).toHaveBeenCalledTimes(1);
-  expect(mocks.runService.startRun).toHaveBeenCalledTimes(1);
+  expect(mocks.runService.startAgentRun).toHaveBeenCalledTimes(1);
   expect(store.navigateTo).toHaveBeenLastCalledWith('run-detail', { agentName: 'worker', runId: 'run-detached' });
 });
 
 test('ignores a detached response after switching projects', async () => {
   const pending = deferred<{ run: RunSummary }>();
-  mocks.runService.startRun.mockReturnValueOnce(pending.promise);
+  mocks.runService.startAgentRun.mockReturnValueOnce(pending.promise);
   mocks.projectService.getProject.mockImplementation((request) => Promise.resolve(project(request.project?.projectId)));
   render(SchedulerListView);
   await screen.findByText('nightly');
@@ -221,7 +221,7 @@ test('ignores a detached response after switching projects', async () => {
 });
 
 test('reports a detached start response without a Run ID as an error', async () => {
-  mocks.runService.startRun.mockResolvedValueOnce({ run: new RunSummary() });
+  mocks.runService.startAgentRun.mockResolvedValueOnce({ run: new RunSummary() });
   render(SchedulerListView);
   await screen.findByText('nightly');
   await fireEvent.click(screen.getByLabelText('nightly 一次性 Run 高级选项'));

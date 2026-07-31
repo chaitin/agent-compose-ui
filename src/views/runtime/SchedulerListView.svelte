@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { GetProjectRequest, GetSchedulerRequest, ListRunsRequest, ListSchedulerEventsRequest, RunAgentRequest, RunJupyterSpec, RunSandboxCleanupPolicy, RunSource, SetSchedulerEnabledRequest, SetSchedulerTriggerEnabledRequest, StartRunRequest, type ProjectScheduler, type ResolvedTrigger, type SchedulerEvent, type TriggerSpec } from '../../gen/agentcompose/v2/agentcompose_pb';
+  import { ProjectRef, GetProjectRequest, GetSchedulerRequest, ListRunsRequest, ListSchedulerEventsRequest, RunAgentRequest, RunJupyterSpec, RunSandboxCleanupPolicy, RunSource, SetSchedulerEnabledRequest, SetSchedulerTriggerEnabledRequest, StartAgentRunRequest, type ProjectScheduler, type ResolvedTrigger, type SchedulerEvent, type TriggerSpec } from '../../gen/agentcompose/v2/agentcompose_pb';
   import { projectService, runService, runtimeProjectService } from '../../lib/rpc';
   import { store } from '../../lib/stores.svelte';
   import RuntimeBreadcrumb from './RuntimeBreadcrumb.svelte';
   import { assertManagedWorkspace } from '../../lib/workspace/preflight';
 
-  type SchedulerRow = { sourceProjectId: string; summary: ProjectScheduler; triggers: TriggerSpec[]; resolvedTriggers: Record<string, ResolvedTrigger>; events: SchedulerEvent[]; eventsCursor: string; seenEventCursors: string[]; eventsLoading: boolean };
+  type SchedulerRow = { sourceProjectId: string; summary: ProjectScheduler; triggers: TriggerSpec[]; resolvedTriggers: Record<string, ResolvedTrigger>; events: SchedulerEvent[]; eventsOffset: number; eventsTotal: number; eventsLoading: boolean };
   let rows: SchedulerRow[] = $state([]);
   let payloads: Record<string, string> = $state({});
   type Overrides = { executionMode: 'wait' | 'detached'; sandboxId: string; driver: string; prompt: string; cleanupPolicy: RunSandboxCleanupPolicy; jupyterEnabled: boolean; jupyterExpose: boolean };
@@ -31,18 +31,18 @@
     loading = true;
     try {
       const [response, runResponse] = await Promise.all([
-        runtimeProjectService.getProject(new GetProjectRequest({ project: { projectId }, includeSpec: true }), { timeoutMs: 30_000 }),
+        runtimeProjectService.getProject(new GetProjectRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), includeSpec: true }), { timeoutMs: 30_000 }),
         runService.listRuns(new ListRunsRequest({ projectId, limit: 1000 })),
       ]);
       if (generation !== loadGeneration || projectId !== store.activeProjectId) return;
       const specs = new Map((response.project?.spec?.agents || []).map((agent) => [agent.name, agent.scheduler]));
       const summaries = (response.project?.schedulers || []).filter((summary) => !!specs.get(summary.agentName));
-      const details = await Promise.all(summaries.map((summary) => projectService.getScheduler(new GetSchedulerRequest({ project: { projectId }, agentName: summary.agentName })).catch(() => undefined)));
+      const details = await Promise.all(summaries.map((summary) => projectService.getScheduler(new GetSchedulerRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName: summary.agentName })).catch(() => undefined)));
       if (generation !== loadGeneration || projectId !== store.activeProjectId) return;
       rows = summaries.map((summary, index) => {
         const triggers = specs.get(summary.agentName)?.triggers || [];
         const resolvedTriggers = Object.fromEntries((details[index]?.triggers || []).filter((trigger) => trigger.spec?.name).map((trigger) => [trigger.spec!.name, trigger]));
-        return { sourceProjectId: projectId, summary, triggers, resolvedTriggers, events: [], eventsCursor: '', seenEventCursors: [], eventsLoading: false };
+        return { sourceProjectId: projectId, summary, triggers, resolvedTriggers, events: [], eventsOffset: 0, eventsTotal: 0, eventsLoading: false };
       });
       sandboxIds = [...new Set((runResponse.runs || []).map((run) => run.sandboxId).filter(Boolean))];
       for (const row of rows) void loadEvents(row, generation);
@@ -59,17 +59,16 @@
 
   async function loadEvents(row: SchedulerRow, generation: number, append = false) {
     const projectId = row.sourceProjectId;
-    const cursor = append ? row.eventsCursor : '';
-    if (append && (!cursor || row.eventsLoading || row.seenEventCursors.includes(cursor))) return;
+    const offset = append ? row.eventsOffset : 0;
+    if (append && (row.eventsOffset >= row.eventsTotal || row.eventsLoading)) return;
     if (append) rows = rows.map((current) => current.summary.schedulerId === row.summary.schedulerId ? { ...current, eventsLoading: true } : current);
     try {
-      const response = await projectService.listSchedulerEvents(new ListSchedulerEventsRequest({ project: { projectId }, agentName: row.summary.agentName, limit: 100, cursor }));
+      const response = await projectService.listSchedulerEvents(new ListSchedulerEventsRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName: row.summary.agentName, limit: 100, offset }));
       if (generation !== loadGeneration || projectId !== store.activeProjectId) return;
       rows = rows.map((current) => {
         if (current.summary.schedulerId !== row.summary.schedulerId) return current;
-        const seenEventCursors = cursor ? [...current.seenEventCursors, cursor] : current.seenEventCursors;
-        const nextCursor = response.nextCursor && !seenEventCursors.includes(response.nextCursor) ? response.nextCursor : '';
-        return { ...current, events: append ? [...current.events, ...response.events] : response.events, eventsCursor: nextCursor, seenEventCursors, eventsLoading: false };
+        const eventsOffset = append ? current.eventsOffset + response.events.length : response.events.length;
+        return { ...current, events: append ? [...current.events, ...response.events] : response.events, eventsOffset, eventsTotal: response.total, eventsLoading: false };
       });
     } catch (cause: any) {
       if (generation !== loadGeneration || projectId !== store.activeProjectId) return;
@@ -87,7 +86,7 @@
     controlling = key;
     error = '';
     try {
-      const response = await projectService.setSchedulerEnabled(new SetSchedulerEnabledRequest({ project: { projectId }, agentName: row.summary.agentName, enabled: !row.summary.enabled }));
+      const response = await projectService.setSchedulerEnabled(new SetSchedulerEnabledRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName: row.summary.agentName, enabled: !row.summary.enabled }));
       if (generation !== loadGeneration || projectId !== store.activeProjectId || !response.scheduler) return;
       rows = rows.map((current) => current.summary.schedulerId === row.summary.schedulerId ? { ...current, summary: response.scheduler! } : current);
     } catch (cause: any) {
@@ -109,7 +108,7 @@
     controlling = key;
     error = '';
     try {
-      const response = await projectService.setSchedulerTriggerEnabled(new SetSchedulerTriggerEnabledRequest({ project: { projectId }, agentName: row.summary.agentName, triggerId: resolved.triggerId, enabled: !resolved.enabled }));
+      const response = await projectService.setSchedulerTriggerEnabled(new SetSchedulerTriggerEnabledRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName: row.summary.agentName, triggerId: resolved.triggerId, enabled: !resolved.enabled }));
       if (generation !== loadGeneration || projectId !== store.activeProjectId || !response.trigger) return;
       rows = rows.map((current) => current.summary.schedulerId === row.summary.schedulerId
         ? { ...current, resolvedTriggers: { ...current.resolvedTriggers, [trigger.name]: response.trigger! } }
@@ -153,7 +152,7 @@
       const detached = advanced?.executionMode === 'detached';
       let runId = '';
       if (detached) {
-        const response = await runService.startRun(new StartRunRequest({ run: request }));
+        const response = await runService.startAgentRun(new StartAgentRunRequest({ run: request }));
         runId = response.run?.runId || '';
       } else {
         const response = await runService.runAgent(request);
@@ -205,7 +204,7 @@
     {/each}
     <section class="events" aria-label={`${row.summary.agentName} Scheduler 事件`}><h3>事件历史</h3>
       {#if row.events.length === 0}<p>暂无事件</p>{:else}{#each row.events as event (event.id)}<div class="event"><time>{formatTimestamp(event)}</time><strong>{event.type || 'event'} · {event.level || '-'}</strong><span>{event.message || '-'}</span></div>{/each}{/if}
-      {#if row.eventsCursor}<button aria-label={`加载更多 ${row.summary.agentName} Scheduler 事件`} onclick={() => loadEvents(row, loadGeneration, true)} disabled={row.eventsLoading}>{row.eventsLoading ? '加载中...' : '加载更多'}</button>{/if}
+      {#if row.eventsOffset < row.eventsTotal}<button aria-label={`加载更多 ${row.summary.agentName} Scheduler 事件`} onclick={() => loadEvents(row, loadGeneration, true)} disabled={row.eventsLoading}>{row.eventsLoading ? '加载中...' : '加载更多'}</button>{/if}
     </section>
   </article>{/each}</div>{/if}
   {#if error}<p class="error">{error}</p>{/if}

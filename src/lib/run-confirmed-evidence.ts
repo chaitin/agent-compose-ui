@@ -46,8 +46,8 @@ function ownedByExisting(content: string, existing?: ReadonlySet<string>): boole
 }
 
 function schedulerContent(event: SchedulerEvent, existing?: ReadonlySet<string>): string {
-  if (event.type === 'loader.run.completed') return event.message || 'loader run completed';
-  if (event.type !== 'loader.agent.completed') {
+  if (event.type === 'scheduler.run.completed') return event.message || 'loader run completed';
+  if (event.type !== 'scheduler.agent.completed') {
     return [event.message, event.payloadJson].filter(value => value && !ownedByExisting(value, existing)).join('\n') || event.type || '调度事件';
   }
   let payload: Record<string, unknown> = {};

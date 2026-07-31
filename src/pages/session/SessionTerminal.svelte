@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { Terminal } from '@xterm/xterm';
   import { FitAddon } from '@xterm/addon-fit';
-  import { ExecCommand, ExecRequest, ExecStreamEventType, EnvVarSpec } from '../../gen/agentcompose/v2/agentcompose_pb';
+  import { ExecCommand, ExecRequest, StreamExecEventType, EnvVarSpec } from '../../gen/agentcompose/v2/agentcompose_pb';
   import { execService } from '../../lib/rpc';
   import '@xterm/xterm/css/xterm.css';
 
@@ -55,8 +55,8 @@
       target: { case: 'sandboxId', value: sandboxId }, command: new ExecCommand({ command, args }), cwd: requestCwd,
       env: [new EnvVarSpec({ name: 'COLUMNS', value: String(columns) })], timeoutMs: 120_000, maxOutputBytes: 4 * 1024 * 1024,
     });
-    for await (const event of execService.execStream(request, { signal: active.signal })) {
-      if (event.eventType === ExecStreamEventType.OUTPUT && event.chunk) { const text = terminalText(event.chunk); terminal?.write(text); output += event.chunk; }
+    for await (const event of execService.streamExec(request, { signal: active.signal })) {
+      if (event.eventType === StreamExecEventType.OUTPUT && event.chunk) { const text = terminalText(event.chunk); terminal?.write(text); output += event.chunk; }
       if (event.result?.error) resultError = event.result.error;
     }
     if (resultError) throw new Error(resultError);

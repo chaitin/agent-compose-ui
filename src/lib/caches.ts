@@ -5,7 +5,7 @@ export function cacheDomainLabel(value: CacheDomain): string {
     [CacheDomain.OCI_IMAGE_STORE]: 'OCI 镜像存储',
     [CacheDomain.MATERIALIZED_IMAGE_CACHE]: '物化镜像缓存',
     [CacheDomain.RUNTIME_DERIVED_CACHE]: '运行时派生缓存',
-    [CacheDomain.SANDBOX_EPHEMERAL_STATE]: '沙箱临时状态',
+    [CacheDomain.SKILL_ARTIFACT_CACHE]: '技能产物缓存',
   } as Record<number, string>)[value] ?? '未指定';
 }
 

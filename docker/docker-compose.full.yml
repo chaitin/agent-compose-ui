@@ -55,7 +55,7 @@ services:
       - agent-web-net
 
   agent-compose:
-    image: ${AGENT_COMPOSE_IMAGE:-ghcr.io/chaitin/agent-compose:latest}
+    image: ${AGENT_COMPOSE_IMAGE:-chaitin/agent-compose:latest}
     restart: always
     environment:
       AGENT_COMPOSE_RUNTIME_BASE_URL: ${AGENT_COMPOSE_RUNTIME_BASE_URL:-http://agent-compose:7410}

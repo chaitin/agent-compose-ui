@@ -89,7 +89,7 @@ type attachRoundTripper struct {
 }
 
 func (t attachRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Path == "/agentcompose.v2.RunService/RunAttach" || req.URL.Path == "/agentcompose.v2.ExecService/ExecAttach" {
+	if req.URL.Path == "/agentcompose.v2.RunService/AttachAgentRun" || req.URL.Path == "/agentcompose.v2.ExecService/AttachExec" {
 		return t.attach.RoundTrip(req)
 	}
 	return t.ordinary.RoundTrip(req)

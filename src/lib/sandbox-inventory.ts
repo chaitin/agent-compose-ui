@@ -1,5 +1,6 @@
 import {
   ListSandboxesRequest,
+  SandboxStatus,
   type ListSandboxesResponse,
   type Sandbox,
 } from '../gen/agentcompose/v2/agentcompose_pb';
@@ -11,16 +12,13 @@ export type SandboxPageFetcher = (
 
 export async function listAllSandboxes(fetchPage: SandboxPageFetcher, signal?: AbortSignal): Promise<Sandbox[]> {
   const records: Sandbox[] = [];
-  const seen = new Set<string>();
-  let cursor = '';
+  let offset = 0;
 
   while (true) {
-    const response = await fetchPage(new ListSandboxesRequest({ limit: 100, cursor }), { signal });
+    const response = await fetchPage(new ListSandboxesRequest({ limit: 100, offset }), { signal });
     records.push(...response.sandboxes);
-    if (!response.nextCursor) return records;
-    if (seen.has(response.nextCursor)) throw new Error(`Sandbox pagination returned repeated cursor: ${response.nextCursor}`);
-    seen.add(response.nextCursor);
-    cursor = response.nextCursor;
+    if (response.sandboxes.length === 0 || records.length >= response.total) return records;
+    offset += response.sandboxes.length;
   }
 }
 
@@ -39,14 +37,16 @@ export function filterSandboxes(
   });
 }
 
-export function sandboxLifecycle(status: string): 'running' | 'stopped' | 'destroyed' | 'unknown' {
-  switch (status.trim().toLowerCase()) {
-    case 'running': return 'running';
-    case 'stopped':
-    case 'exited': return 'stopped';
-    case 'destroyed':
-    case 'removed':
-    case 'deleted': return 'destroyed';
-    default: return 'unknown';
+export function sandboxLifecycle(status?: SandboxStatus): 'running' | 'stopped' | 'destroyed' | 'unknown' {
+  switch (status) {
+    case SandboxStatus.RUNNING:
+      return 'running';
+    case SandboxStatus.STOPPED:
+    case SandboxStatus.FAILED:
+      return 'stopped';
+    case SandboxStatus.DELETING:
+      return 'destroyed';
+    default:
+      return 'unknown';
   }
 }

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { GetProjectRequest, ListRunsRequest, RunStatus, type RunDetail, type RunSummary } from '../../gen/agentcompose/v2/agentcompose_pb';
+  import { ProjectRef, GetProjectRequest, ListRunsRequest, RunStatus, type RunDetail, type RunSummary } from '../../gen/agentcompose/v2/agentcompose_pb';
   import { runService, runtimeProjectService } from '../../lib/rpc';
   import { store } from '../../lib/stores.svelte';
   import RunExecutionProcess from './RunExecutionProcess.svelte';
@@ -50,7 +50,7 @@
   async function loadProject(requestedProject: string, requestedGeneration: number, requestedController: AbortController) {
     try {
       const response = await runtimeProjectService.getProject(new GetProjectRequest({
-        project: { projectId: requestedProject },
+        project: new ProjectRef({ selector: { case: "projectId", value: requestedProject } }),
         includeSpec: true,
       }), { signal: requestedController.signal, timeoutMs: 30_000 });
       if (!isCurrent(requestedProject, requestedGeneration, requestedController.signal)) return;

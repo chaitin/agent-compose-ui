@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  Sandbox, SandboxHistoryCell, SandboxHistoryEvent, SandboxWatchEventType, StdioStream, WatchSandboxResponse,
+  Sandbox, SandboxHistoryCell, SandboxHistoryEvent, SandboxStatus, SandboxWatchEventType, StdioStream, WatchSandboxResponse,
 } from '../gen/agentcompose/v2/agentcompose_pb';
 import type { SandboxDetailSnapshot } from './sandbox-detail';
 import { mergeSandboxWatchEvent } from './sandbox-watch';
 
 function snapshot(cell?: SandboxHistoryCell): SandboxDetailSnapshot {
-  return { sandbox: new Sandbox({ sandboxId: 's1', status: 'RUNNING' }), cells: cell ? [cell] : [], events: [], runEvents: [], legacyHistory: false };
+  return { sandbox: new Sandbox({ sandboxId: 's1', status: SandboxStatus.RUNNING }), cells: cell ? [cell] : [], events: [], runEvents: [], legacyHistory: false };
 }
 
 describe('mergeSandboxWatchEvent', () => {
@@ -29,9 +29,9 @@ describe('mergeSandboxWatchEvent', () => {
   it('replaces lifecycle metadata from a sandbox update', () => {
     const next = mergeSandboxWatchEvent(snapshot(), new WatchSandboxResponse({
       eventType: SandboxWatchEventType.SANDBOX_UPDATED,
-      sandbox: new Sandbox({ sandboxId: 's1', status: 'STOPPED' }),
+      sandbox: new Sandbox({ sandboxId: 's1', status: SandboxStatus.STOPPED }),
     }));
-    expect(next.sandbox.status).toBe('STOPPED');
+    expect(next.sandbox.status).toBe(SandboxStatus.STOPPED);
   });
 
   it('starts and completes cells in place without changing their order', () => {

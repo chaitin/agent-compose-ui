@@ -2,4 +2,5 @@
 # umask 077 protects the gateway's SQLite databases (token DB, UI state DB)
 # which contain sensitive hashes and parsed env references.
 umask 077
-exec /usr/local/bin/agent-compose-ui-server
+# with-contenv: s6-overlay v3 does not inherit the container env by default.
+exec with-contenv /usr/local/bin/agent-compose-ui-server

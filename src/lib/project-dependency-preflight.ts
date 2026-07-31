@@ -29,7 +29,7 @@ export interface ProjectDependencyPreflightResult {
 function dockerImageAgents(spec: Pick<ProjectSpec, 'agents'>): Map<string, string[]> {
   const images = new Map<string, string[]>();
   for (const agent of spec.agents) {
-    const isDocker = agent.driver?.docker !== undefined || agent.driver?.name.trim().toLowerCase() === 'docker';
+    const isDocker = agent.driver?.config?.case === 'docker' || agent.driver?.name.trim().toLowerCase() === 'docker';
     const image = agent.image.trim();
     // A configured build is allowed to produce an image that does not exist
     // yet. Its validity and execution are handled by the build-plan step that

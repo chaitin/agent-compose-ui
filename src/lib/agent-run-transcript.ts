@@ -26,18 +26,16 @@ export async function listAllRunEvents(
   fetchPage: (request: ListRunEventsRequest) => Promise<ListRunEventsResponse>,
 ): Promise<{ events: RunEvent[]; historyAvailable: boolean }> {
   const events: RunEvent[] = [];
-  const seenCursors = new Set<string>();
-  let cursor = '';
+  let offset = 0;
   let historyAvailable = true;
 
   do {
-    const response = await fetchPage(new ListRunEventsRequest({ runId, limit: 100, cursor }));
+    const response = await fetchPage(new ListRunEventsRequest({ runId, limit: 100, offset }));
     events.push(...response.events);
     historyAvailable &&= response.historyAvailable;
-    if (!response.nextCursor || seenCursors.has(response.nextCursor)) break;
-    seenCursors.add(response.nextCursor);
-    cursor = response.nextCursor;
-  } while (cursor);
+    if (response.events.length === 0 || events.length >= response.total) break;
+    offset += response.events.length;
+  } while (true);
 
   return {
     events: events.sort((left, right) => left.seq < right.seq ? -1 : left.seq > right.seq ? 1 : 0),

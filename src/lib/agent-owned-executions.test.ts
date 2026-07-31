@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { Timestamp } from '@bufbuild/protobuf';
 import { RunSource, RunStatus, RunSummary, SchedulerEvent } from '../gen/agentcompose/v2/agentcompose_pb';
 import { stableProjectRunId } from './run-scheduler-evidence';
 import {
@@ -13,15 +14,15 @@ const event = (data: Partial<SchedulerEvent> & { id: string; runId: string; type
 
 test('groups every Scheduler operation family into one owned execution', () => {
   const events = [
-    event({ id: 'start', runId: 'loader-1', type: 'loader.run.started' }, 1n),
-    event({ id: 'command', runId: 'loader-1', type: 'loader.command.completed', payloadJson: '{"sandboxId":"sandbox-1"}' }, 2n),
-    event({ id: 'llm', runId: 'loader-1', type: 'loader.llm.completed' }, 3n),
-    event({ id: 'agent', runId: 'loader-1', type: 'loader.agent.completed' }, 4n),
-    event({ id: 'publish', runId: 'loader-1', type: 'loader.event.published' }, 5n),
-    event({ id: 'sandbox', runId: 'loader-1', type: 'loader.sandbox.rpc.completed' }, 6n),
-    event({ id: 'log', runId: 'loader-1', type: 'loader.log' }, 7n),
-    event({ id: 'warning', runId: 'loader-1', type: 'loader.deprecated_alias.warning', level: 'warning' }, 8n),
-    event({ id: 'done', runId: 'loader-1', type: 'loader.run.completed' }, 9n),
+    event({ id: 'start', runId: 'loader-1', type: 'scheduler.run.started' }, 1n),
+    event({ id: 'command', runId: 'loader-1', type: 'scheduler.command.completed', payloadJson: '{"sandboxId":"sandbox-1"}' }, 2n),
+    event({ id: 'llm', runId: 'loader-1', type: 'scheduler.llm.completed' }, 3n),
+    event({ id: 'agent', runId: 'loader-1', type: 'scheduler.agent.completed' }, 4n),
+    event({ id: 'publish', runId: 'loader-1', type: 'scheduler.event.published' }, 5n),
+    event({ id: 'sandbox', runId: 'loader-1', type: 'scheduler.sandbox.rpc.completed' }, 6n),
+    event({ id: 'log', runId: 'loader-1', type: 'scheduler.log' }, 7n),
+    event({ id: 'warning', runId: 'loader-1', type: 'scheduler.deprecated_alias.warning', level: 'warning' }, 8n),
+    event({ id: 'done', runId: 'loader-1', type: 'scheduler.run.completed' }, 9n),
   ];
 
   const [execution] = groupSchedulerExecutions(events);
@@ -35,9 +36,9 @@ test('groups every Scheduler operation family into one owned execution', () => {
 
 test('derives running, failed, and skipped lifecycle states without message guessing', () => {
   const grouped = groupSchedulerExecutions([
-    event({ id: 'running', runId: 'running', type: 'loader.run.started' }, 1n),
-    event({ id: 'failed', runId: 'failed', type: 'loader.run.failed', level: 'error', message: 'boom' }, 2n),
-    event({ id: 'skipped', runId: 'skipped', type: 'loader.run.skipped', level: 'warn', message: 'busy' }, 3n),
+    event({ id: 'running', runId: 'running', type: 'scheduler.run.started' }, 1n),
+    event({ id: 'failed', runId: 'failed', type: 'scheduler.run.failed', level: 'error', message: 'boom' }, 2n),
+    event({ id: 'skipped', runId: 'skipped', type: 'scheduler.run.skipped', level: 'warn', message: 'busy' }, 3n),
   ]);
   expect(Object.fromEntries(grouped.map(item => [item.schedulerRunId, item.status]))).toEqual({ running: 'running', failed: 'failed', skipped: 'skipped' });
   expect(grouped.find(item => item.schedulerRunId === 'failed')?.error).toBe('boom');
@@ -48,15 +49,15 @@ test('merges current sequenced Scheduler Agent runs by exact stable ID only', as
   const secondLinkedId = await stableProjectRunId('project-1', 'worker', 'scheduler', 'loader-multiple:agent:2');
   const legacyId = await stableProjectRunId('project-1', 'worker', 'scheduler', 'loader-legacy');
   const projectRuns = [
-    new RunSummary({ runId: firstLinkedId, agentName: 'worker', source: RunSource.SCHEDULER, status: RunStatus.SUCCEEDED, startedAt: '2026-01-03T00:00:00Z' }),
-    new RunSummary({ runId: secondLinkedId, agentName: 'worker', source: RunSource.SCHEDULER, status: RunStatus.SUCCEEDED, startedAt: '2026-01-02T00:00:00Z' }),
-    new RunSummary({ runId: legacyId, agentName: 'worker', source: RunSource.SCHEDULER, status: RunStatus.SUCCEEDED, startedAt: '2026-01-01T00:00:00Z' }),
+    new RunSummary({ runId: firstLinkedId, agentName: 'worker', source: RunSource.SCHEDULER, status: RunStatus.SUCCEEDED, startedAt: Timestamp.fromDate(new Date('2026-01-03T00:00:00Z')) }),
+    new RunSummary({ runId: secondLinkedId, agentName: 'worker', source: RunSource.SCHEDULER, status: RunStatus.SUCCEEDED, startedAt: Timestamp.fromDate(new Date('2026-01-02T00:00:00Z')) }),
+    new RunSummary({ runId: legacyId, agentName: 'worker', source: RunSource.SCHEDULER, status: RunStatus.SUCCEEDED, startedAt: Timestamp.fromDate(new Date('2026-01-01T00:00:00Z')) }),
   ];
   const scheduler = groupSchedulerExecutions([
-    event({ id: 'first', runId: 'loader-multiple', type: 'loader.agent.completed' }, 1n),
-    event({ id: 'second', runId: 'loader-multiple', type: 'loader.agent.failed', level: 'error' }, 2n),
-    event({ id: 'legacy', runId: 'loader-legacy', type: 'loader.agent.completed' }, 3n),
-    event({ id: 'other', runId: 'loader-other', type: 'loader.command.completed' }, 4n),
+    event({ id: 'first', runId: 'loader-multiple', type: 'scheduler.agent.completed' }, 1n),
+    event({ id: 'second', runId: 'loader-multiple', type: 'scheduler.agent.failed', level: 'error' }, 2n),
+    event({ id: 'legacy', runId: 'loader-legacy', type: 'scheduler.agent.completed' }, 3n),
+    event({ id: 'other', runId: 'loader-other', type: 'scheduler.command.completed' }, 4n),
   ]);
 
   const merged = await mergeAgentOwnedExecutions(projectRuns, scheduler, { projectId: 'project-1', agentName: 'worker' });
@@ -76,8 +77,8 @@ test('merges the next sequenced Agent Run while its Scheduler execution is still
     new RunSummary({ runId: secondLinkedId, agentName: 'worker', source: RunSource.SCHEDULER, status: RunStatus.RUNNING }),
   ];
   const scheduler = groupSchedulerExecutions([
-    event({ id: 'start', runId: 'loader-running', type: 'loader.run.started' }, 1n),
-    event({ id: 'first', runId: 'loader-running', type: 'loader.agent.completed' }, 2n),
+    event({ id: 'start', runId: 'loader-running', type: 'scheduler.run.started' }, 1n),
+    event({ id: 'first', runId: 'loader-running', type: 'scheduler.agent.completed' }, 2n),
   ]);
 
   const merged = await mergeAgentOwnedExecutions(projectRuns, scheduler, { projectId: 'project-1', agentName: 'worker' });
@@ -90,9 +91,9 @@ test('merges the next sequenced Agent Run while its Scheduler execution is still
 describe('unified filters', () => {
   test('Scheduler source includes every Scheduler execution and applies status, date, and Sandbox exactly', async () => {
     const items = await mergeAgentOwnedExecutions([], groupSchedulerExecutions([
-      event({ id: 'start', runId: 'loader-1', type: 'loader.run.started', payloadJson: '{"sandboxId":"sandbox-1"}' }, 1n),
-      event({ id: 'done', runId: 'loader-1', type: 'loader.run.completed' }, 2n),
-      event({ id: 'other', runId: 'loader-2', type: 'loader.llm.completed' }, 3n),
+      event({ id: 'start', runId: 'loader-1', type: 'scheduler.run.started', payloadJson: '{"sandboxId":"sandbox-1"}' }, 1n),
+      event({ id: 'done', runId: 'loader-1', type: 'scheduler.run.completed' }, 2n),
+      event({ id: 'other', runId: 'loader-2', type: 'scheduler.llm.completed' }, 3n),
     ]), { projectId: 'project-1', agentName: 'worker' });
 
     expect(filterAgentOwnedExecutions(items, { source: RunSource.SCHEDULER, status: RunStatus.SUCCEEDED, startedFrom: '', startedTo: '', sandboxId: 'sandbox-1' }).map(item => item.schedulerRunId)).toEqual(['loader-1']);

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { GetSandboxRequest, type Sandbox } from '../gen/agentcompose/v2/agentcompose_pb';
+  import { GetSandboxRequest, SandboxStatus, type Sandbox } from '../gen/agentcompose/v2/agentcompose_pb';
   import { loadEventSandboxLinks, type EventSandboxLink } from '../lib/event-sandbox-links';
   import { sandboxService } from '../lib/rpc';
   import SandboxDetailView from '../views/runtime/SandboxDetailView.svelte';
@@ -76,12 +76,14 @@
     }
   }
 
-  function statusLabel(value: string): string {
-    const status = value.trim().toUpperCase();
-    if (status === 'RUNNING') return '运行中';
-    if (status === 'STOPPED') return '已停止';
-    if (status === 'REMOVED' || status === 'DESTROYED') return '已销毁';
-    return value || '状态未知';
+  function statusLabel(status: SandboxStatus = SandboxStatus.UNSPECIFIED): string {
+    switch (status) {
+      case SandboxStatus.RUNNING: return '运行中';
+      case SandboxStatus.STOPPED: return '已停止';
+      case SandboxStatus.DELETING: return '已销毁';
+      case SandboxStatus.FAILED: return '已失败';
+      default: return '状态未知';
+    }
   }
 
   function selectSession(event: Event) {

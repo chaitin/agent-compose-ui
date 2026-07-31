@@ -1,4 +1,5 @@
 import type { RunSummary } from '../gen/agentcompose/v2/agentcompose_pb';
+import { isoToTimestamp } from './proto-helpers';
 
 function localDate(value: string, nextDay = false): Date | undefined {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -7,12 +8,12 @@ function localDate(value: string, nextDay = false): Date | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
-export function buildRunDateRange(from: string, to: string): { startedFrom: string; startedTo: string } {
+export function buildRunDateRange(from: string, to: string): { startedFrom?: { seconds: bigint; nanos: number }; startedTo?: { seconds: bigint; nanos: number } } {
   const lower = localDate(from);
   const nextUpper = localDate(to, true);
   return {
-    startedFrom: lower?.toISOString() ?? '',
-    startedTo: nextUpper ? new Date(nextUpper.getTime() - 1).toISOString() : '',
+    startedFrom: lower ? isoToTimestamp(lower.toISOString()) : undefined,
+    startedTo: nextUpper ? isoToTimestamp(new Date(nextUpper.getTime() - 1).toISOString()) : undefined,
   };
 }
 

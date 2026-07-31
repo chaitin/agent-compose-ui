@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { ProjectChangeAction, RunSource, RunStatus, SchedulerRunStatus, StartRunRequest } from '../gen/agentcompose/v2/agentcompose_pb';
+import { ProjectChangeAction, RunSource, RunStatus, SchedulerRunStatus, StartAgentRunRequest } from '../gen/agentcompose/v2/agentcompose_pb';
 import {
   cascadeDeleteProject,
   deleteProject,
@@ -72,7 +72,7 @@ describe('runYamlBatch', () => {
     const events = [];
     const first = deferredStream();
     const client = {
-      startRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}`, status: RunStatus.PENDING } }),
+      startAgentRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}`, status: RunStatus.PENDING } }),
       followRunLogs: ({ runId }) => runId === 'run-a'
         ? first.iterable
         : streamOf({ data: 'B', offset: 1n, runStatus: RunStatus.SUCCEEDED, isFinal: true }),
@@ -90,13 +90,13 @@ describe('runYamlBatch', () => {
     ]);
   });
 
-  test('sends a generated StartRunRequest with the complete manual run input', async () => {
+  test('sends a generated StartAgentRunRequest with the complete manual run input', async () => {
     const requests = [];
     await runYamlBatch({
       projectId: 'project-full', agents: [{ name: 'agent-full', prompt: 'prompt-full' }], isCurrent: () => true,
       ...callbacks([]),
       client: {
-        startRun: async (request) => {
+        startAgentRun: async (request) => {
           requests.push(request);
           return { started: true, run: { runId: 'run-full' } };
         },
@@ -104,7 +104,7 @@ describe('runYamlBatch', () => {
         getRun: runDetails(),
       },
     });
-    expect(requests[0]).toBeInstanceOf(StartRunRequest);
+    expect(requests[0]).toBeInstanceOf(StartAgentRunRequest);
     expect(requests[0].run).toMatchObject({
       projectId: 'project-full',
       agentName: 'agent-full',
@@ -120,7 +120,7 @@ describe('runYamlBatch', () => {
       ...callbacks([]),
       onStartFailed: (_name, error) => errors.push(error),
       client: {
-        startRun: async () => ({ started: false, warnings: ['', 'capacity exhausted', 'retry later'] }),
+        startAgentRun: async () => ({ started: false, warnings: ['', 'capacity exhausted', 'retry later'] }),
         followRunLogs: () => streamOf(),
       },
     });
@@ -136,7 +136,7 @@ describe('runYamlBatch', () => {
       ...callbacks([]),
       onStartFailed: (_name, error) => errors.push(error),
       client: {
-        startRun: async () => ({ started: true, run: {}, warnings: [] }),
+        startAgentRun: async () => ({ started: true, run: {}, warnings: [] }),
         followRunLogs: () => streamOf(),
       },
     });
@@ -148,7 +148,7 @@ describe('runYamlBatch', () => {
     await runYamlBatch({
       projectId: 'p1', agents, isCurrent: () => true, ...callbacks(events),
       client: {
-        startRun: async ({ run }) => run.agentName === 'a' ? { started: true } : { started: true, run: { runId: 'run-b' } },
+        startAgentRun: async ({ run }) => run.agentName === 'a' ? { started: true } : { started: true, run: { runId: 'run-b' } },
         followRunLogs: () => streamOf({ data: '', offset: 1n, isFinal: true, runStatus: RunStatus.SUCCEEDED }),
         getRun: runDetails(),
       },
@@ -156,12 +156,12 @@ describe('runYamlBatch', () => {
     expect(events).toEqual(['starting:a', 'failed:a', 'starting:b', 'started:b:run-b', 'chunk:b:', `finished:b:${RunStatus.SUCCEEDED}`]);
   });
 
-  test('continues to the next agent when startRun rejects', async () => {
+  test('continues to the next agent when startAgentRun rejects', async () => {
     const events = [];
     await runYamlBatch({
       projectId: 'p1', agents, isCurrent: () => true, ...callbacks(events),
       client: {
-        startRun: async ({ run }) => {
+        startAgentRun: async ({ run }) => {
           if (run.agentName === 'a') throw new Error('start unavailable');
           return { started: true, run: { runId: 'run-b' } };
         },
@@ -182,7 +182,7 @@ describe('runYamlBatch', () => {
       const pending = runYamlBatch({
         projectId: 'p1', agents, signal: controller.signal, isCurrent: () => current, ...callbacks(events),
         client: {
-          startRun: async () => ({ started: true, run: { runId: 'run-a' } }),
+          startAgentRun: async () => ({ started: true, run: { runId: 'run-a' } }),
         followRunLogs: () => first.iterable,
           getRun: runDetails(),
         },
@@ -203,7 +203,7 @@ describe('runYamlBatch', () => {
     await runYamlBatch({
       projectId: 'p1', agents: [agents[0]], startOffset: 7n, isCurrent: () => true, ...callbacks(events),
       client: {
-        startRun: async () => ({ started: true, run: { runId: 'run-a' } }),
+        startAgentRun: async () => ({ started: true, run: { runId: 'run-a' } }),
         followRunLogs: (request) => {
           requests.push(request);
           return streamOf(
@@ -228,7 +228,7 @@ describe('runYamlBatch', () => {
         onChunk: (_name, chunk) => chunks.push(chunk),
         onFinished: (_name, status) => finished.push(status),
         client: {
-          startRun: async () => ({ started: true, run: { runId: 'run-a', status: RunStatus.RUNNING } }),
+          startAgentRun: async () => ({ started: true, run: { runId: 'run-a', status: RunStatus.RUNNING } }),
           getRun: runDetails(status),
           followRunLogs: () => streamOf({ data: '', offset: 0n, runStatus: status, isFinal: true }),
         },
@@ -244,7 +244,7 @@ describe('runYamlBatch', () => {
     await runYamlBatch({
       projectId: 'p1', agents, isCurrent: () => true, ...callbacks(events),
       client: {
-        startRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}` } }),
+        startAgentRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}` } }),
         getRun: runDetails(),
         followRunLogs: () => streamOf({ data: 'last', offset: 1n, runStatus: RunStatus.SUCCEEDED, isFinal: false }),
       },
@@ -260,7 +260,7 @@ describe('runYamlBatch', () => {
     await runYamlBatch({
       projectId: 'p1', agents: [agents[0]], isCurrent: () => true, ...callbacks(events),
       client: {
-        startRun: async () => ({ started: true, run: { runId: 'run-a', status: RunStatus.PENDING } }),
+        startAgentRun: async () => ({ started: true, run: { runId: 'run-a', status: RunStatus.PENDING } }),
         getRun: async () => {
           if (getCalls++ === 0) throw new Error('not visible yet');
           return { run: { summary: { runId: 'run-a', status: RunStatus.SUCCEEDED } } };
@@ -278,7 +278,7 @@ describe('runYamlBatch', () => {
     await runYamlBatch({
       projectId: 'p1', agents, isCurrent: () => true, ...callbacks(events),
       client: {
-        startRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}`, status: RunStatus.RUNNING } }),
+        startAgentRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}`, status: RunStatus.RUNNING } }),
         getRun: async (request) => {
           if (getCalls++ % 2 === 0) return { run: { summary: { runId: request.runId, status: RunStatus.RUNNING } } };
           throw new Error('final unavailable');
@@ -298,7 +298,7 @@ describe('runYamlBatch', () => {
     await runYamlBatch({
       projectId: 'p1', agents, isCurrent: () => true, ...callbacks(events),
       client: {
-        startRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}`, status: RunStatus.RUNNING } }),
+        startAgentRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}`, status: RunStatus.RUNNING } }),
         getRun: async () => calls++ === 0
           ? { run: { summary: { runId: 'run-a', status: RunStatus.RUNNING } } }
           : Promise.reject(new Error('final unavailable')),
@@ -314,7 +314,7 @@ describe('runYamlBatch', () => {
     await runYamlBatch({
       projectId: 'p1', agents, isCurrent: () => true, ...callbacks(events),
       client: {
-        startRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}` } }),
+        startAgentRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}` } }),
         followRunLogs: async function* () { throw new Error('disconnected'); },
         getRun: runDetails(),
       },
@@ -442,14 +442,14 @@ describe('saveProject', () => {
     };
     const options = {
       currentProjectId: 'current',
-      expectedSpecHash: 'hash-before-edit',
+      submittedSpecHash: 'hash-before-edit',
       projects: [{ summary: { projectId: 'current', name: 'demo', sourcePath: '/srv/demo/agent-compose.yml' } }],
     };
 
     const preview = await previewProject(validYaml, client, options);
     expect(requests).toHaveLength(1);
     expect(requests[0].dryRun).toBe(true);
-    expect(requests[0].expectedSpecHash).toBe('');
+    expect(requests[0].submittedSpecHash).toBe('');
     expect(requests[0].source.composePath).toBe('/srv/demo/agent-compose.yml');
     expect(preview.response.changes).toHaveLength(1);
     expect(preview.response.unchanged).toBe(false);
@@ -458,7 +458,7 @@ describe('saveProject', () => {
     await preview.apply();
     expect(requests).toHaveLength(2);
     expect(requests[1].dryRun).toBe(false);
-    expect(requests[1].expectedSpecHash).toBe('hash-after-edit');
+    expect(requests[1].submittedSpecHash).toBe('hash-after-edit');
     expect(requests[1].source.composePath).toBe(requests[0].source.composePath);
     expect(requests[1].spec).toBe(requests[0].spec);
   });
@@ -479,7 +479,7 @@ describe('saveProject', () => {
       applyProject: async () => response,
     }, {
       currentProjectId: 'current',
-      expectedSpecHash: 'same-hash',
+      submittedSpecHash: 'same-hash',
       projects: [{ summary: { projectId: 'current', name: 'demo', specHash: 'same-hash' } }],
     });
 

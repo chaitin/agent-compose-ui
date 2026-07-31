@@ -1,10 +1,11 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { Timestamp } from '@bufbuild/protobuf';
 import RunAgentModal from './RunAgentModal.svelte';
 import { RunSummary, Sandbox } from '../gen/agentcompose/v2/agentcompose_pb';
 
 const mocks = vi.hoisted(() => ({
-  runService: { listRuns: vi.fn(), startRun: vi.fn(), runAgentStream: vi.fn(), runAttach: vi.fn(), stopRun: vi.fn() },
+  runService: { listRuns: vi.fn(), startAgentRun: vi.fn(), streamAgentRun: vi.fn(), attachAgentRun: vi.fn(), stopRun: vi.fn() },
   sandboxService: { listSandboxes: vi.fn() },
   store: { activeProjectId: 'project-1', addToast: vi.fn(), navigateTo: vi.fn() },
 }));
@@ -14,10 +15,10 @@ vi.mock('../lib/stores.svelte', () => ({ store: mocks.store }));
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.runService.listRuns.mockResolvedValue({ runs: [
-    new RunSummary({ runId: 'run-old', agentName: 'worker', sandboxId: 'sandbox-1', updatedAt: '2026-07-14T00:00:00Z' }),
+    new RunSummary({ runId: 'run-old', agentName: 'worker', sandboxId: 'sandbox-1', updatedAt: Timestamp.fromDate(new Date('2026-07-14T00:00:00Z')) }),
   ] });
-  mocks.runService.startRun.mockResolvedValue({ run: new RunSummary({ runId: 'run-new' }) });
-  mocks.runService.runAgentStream.mockImplementation(async function* () {});
+  mocks.runService.startAgentRun.mockResolvedValue({ run: new RunSummary({ runId: 'run-new' }) });
+  mocks.runService.streamAgentRun.mockImplementation(async function* () {});
   mocks.sandboxService.listSandboxes.mockResolvedValue({ sandboxes: [], nextCursor: '' });
 });
 afterEach(() => vi.useRealTimers());
@@ -57,7 +58,7 @@ test('hides observation modes and enters Run detail after submission returns a R
 });
 
 test('keeps the modal open and reports an error when detached submission returns no Run ID', async () => {
-  mocks.runService.startRun.mockResolvedValue({ run: new RunSummary() });
+  mocks.runService.startAgentRun.mockResolvedValue({ run: new RunSummary() });
   const onstarted = vi.fn();
   const oncreated = vi.fn();
   const onclose = vi.fn();
@@ -81,8 +82,8 @@ test('submits command, sandbox ID, and explicit driver override from the form', 
   await setDriver('docker');
   await setSandbox('sandbox-1');
   await fireEvent.click(screen.getByRole('button', { name: '运行' }));
-  await waitFor(() => expect(mocks.runService.startRun).toHaveBeenCalledTimes(1));
-  const request = mocks.runService.startRun.mock.calls[0][0].run;
+  await waitFor(() => expect(mocks.runService.startAgentRun).toHaveBeenCalledTimes(1));
+  const request = mocks.runService.startAgentRun.mock.calls[0][0].run;
   expect(request).toMatchObject({ prompt: '', command: 'bun test', sandboxId: 'sandbox-1', driver: 'docker' });
 });
 
@@ -90,7 +91,7 @@ test('disables the run button and sends no run RPC when the run content is empty
   render(RunAgentModal, { prefilledAgent: 'worker' });
   expect(screen.getByRole('button', { name: '运行' })).toBeDisabled();
   await fireEvent.click(screen.getByRole('button', { name: '运行' }));
-  expect(mocks.runService.startRun).not.toHaveBeenCalled();
+  expect(mocks.runService.startAgentRun).not.toHaveBeenCalled();
 });
 
 test('populates driver and sandbox options from the agent existing sandboxes', async () => {
