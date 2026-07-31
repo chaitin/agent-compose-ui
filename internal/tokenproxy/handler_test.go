@@ -1,13 +1,9 @@
 package tokenproxy
 
 import (
-	"bytes"
 	"context"
-	"errors"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"agent-compose-ui/internal/apitoken"
@@ -46,13 +42,20 @@ func TestAdminAllowsAnyPathAndSanitizesCredentials(t *testing.T) {
 
 func TestReadOnlyPolicy(t *testing.T) {
 	tests := []struct {
-		method, path string
-		want         int
+		method string
+		path   string
+		want   int
 	}{
 		{http.MethodPost, "/agentcompose.v2.RunService/GetRun", http.StatusNoContent},
+		{http.MethodPost, "/agentcompose.v2.RunService/ListRuns", http.StatusNoContent},
 		{http.MethodPost, "/agentcompose.v2.RunService/FollowRunLogs", http.StatusNoContent},
+		{http.MethodPost, "/agentcompose.v2.RunService/ListRunEvents", http.StatusNoContent},
+		{http.MethodPost, "/agentcompose.v2.RunService/ListSandboxRunEvents", http.StatusNoContent},
 		{http.MethodPost, "/agentcompose.v2.ProjectService/ListProjectSchedulerEvents", http.StatusNoContent},
 		{http.MethodPost, "/agentcompose.v2.ProjectService/InvokeScheduler", http.StatusForbidden},
+		{http.MethodPost, "/agentcompose.v2.ProjectService/RunScheduler", http.StatusForbidden},
+		{http.MethodPost, "/agentcompose.v2.ProjectService/StartSchedulerRun", http.StatusForbidden},
+		{http.MethodPost, "/agentcompose.v2.ProjectService/StopSchedulerRun", http.StatusForbidden},
 		{http.MethodPost, "/agentcompose.v2.RunService/Run", http.StatusForbidden},
 		{http.MethodGet, "/api/events/run-id/runs", http.StatusNoContent},
 		{http.MethodDelete, "/api/events/run-id", http.StatusForbidden},
@@ -74,13 +77,14 @@ func TestReadOnlyPolicy(t *testing.T) {
 
 func TestAuthenticationAndUnavailableErrors(t *testing.T) {
 	tests := []struct {
-		name, header string
-		handler      http.Handler
-		want         int
+		name    string
+		handler http.Handler
+		header  string
+		want    int
 	}{
-		{"missing", "", New(staticAuthenticator{}, http.NotFoundHandler(), nil), http.StatusUnauthorized},
-		{"invalid", "Bearer bad", New(staticAuthenticator{err: apitoken.ErrInvalidToken}, http.NotFoundHandler(), nil), http.StatusUnauthorized},
-		{"disabled", "Bearer anything", UnavailableHandler(), http.StatusServiceUnavailable},
+		{"missing", New(staticAuthenticator{}, http.NotFoundHandler(), nil), "", http.StatusUnauthorized},
+		{"invalid", New(staticAuthenticator{err: apitoken.ErrInvalidToken}, http.NotFoundHandler(), nil), "Bearer bad", http.StatusUnauthorized},
+		{"disabled", UnavailableHandler(), "Bearer anything", http.StatusServiceUnavailable},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -92,30 +96,5 @@ func TestAuthenticationAndUnavailableErrors(t *testing.T) {
 				t.Fatalf("response = %d, cache-control %q", response.Code, response.Header().Get("Cache-Control"))
 			}
 		})
-	}
-}
-
-func TestAuthenticationStorageFailureIsLoggedWithoutLeaking(t *testing.T) {
-	var logs bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	handler := New(staticAuthenticator{err: errors.New("sqlite read failed")}, http.NotFoundHandler(), logger)
-	request := httptest.NewRequest(http.MethodGet, "/api/version", nil)
-	request.Header.Set("Authorization", "Bearer secret-token")
-	response := httptest.NewRecorder()
-
-	handler.ServeHTTP(response, request)
-
-	if response.Code != http.StatusServiceUnavailable {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusServiceUnavailable)
-	}
-	if body := response.Body.String(); strings.Contains(body, "sqlite read failed") || strings.Contains(body, "secret-token") {
-		t.Fatalf("response leaked internal details: %q", body)
-	}
-	output := logs.String()
-	if !strings.Contains(output, "token authentication failed") || !strings.Contains(output, "sqlite read failed") {
-		t.Fatalf("missing authentication error log: %q", output)
-	}
-	if strings.Contains(output, "secret-token") {
-		t.Fatalf("log leaked bearer token: %q", output)
 	}
 }

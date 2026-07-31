@@ -2,28 +2,25 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
-	"net/url"
-	"os"
-	"os/signal"
+	"strings"
 	"sync"
-	"syscall"
 	"time"
+
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
 	"agent-compose-ui/internal/apitoken"
 	"agent-compose-ui/internal/auth"
 	"agent-compose-ui/internal/config"
+	"agent-compose-ui/internal/localfs"
+	"agent-compose-ui/internal/projectenv"
 	"agent-compose-ui/internal/proxy"
 	"agent-compose-ui/internal/tokenproxy"
-
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
-	"github.com/samber/do/v2"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 )
 
 const (
@@ -31,154 +28,142 @@ const (
 	tokenListenAddr = ":8081"
 )
 
-func Run() error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+func New(cfg config.Config) http.Handler {
+	handlers, cleanup, err := newHandlers(cfg, nil)
+	if err != nil {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "gateway unavailable", http.StatusServiceUnavailable)
+		})
+	}
+	_ = cleanup
+	return handlers.browser
+}
 
-	di := do.New()
-	Register(di)
+type gatewayHandlers struct {
+	browser http.Handler
+	token   http.Handler
+}
 
-	browserServer := do.MustInvoke[*http.Server](di)
-	tokenServer := do.MustInvokeNamed[*http.Server](di, "token")
-	tokens := do.MustInvoke[*TokenRuntime](di)
-	defer func() {
-		if err := tokens.Close(); err != nil {
-			slog.Error("close token store", "error", err)
+func newHandlers(cfg config.Config, logger *slog.Logger) (gatewayHandlers, func() error, error) {
+	manager := auth.New(cfg)
+	var daemonHandler http.Handler = proxy.NewDaemon(cfg.AgentComposeURL)
+	cleanup := func() error { return nil }
+	if cfg.AgentComposeDBPath != "" {
+		globals, err := projectenv.OpenGlobalStore(cfg.AgentComposeDBPath)
+		if err != nil {
+			return gatewayHandlers{}, cleanup, err
 		}
-	}()
-	logger := do.MustInvoke[*slog.Logger](di)
-	authManager := do.MustInvoke[*auth.Manager](di)
-	backend := do.MustInvoke[*url.URL](di)
-	cfg := do.MustInvoke[config.Config](di)
-	logger.Info("agent-compose-ui server started", "listen", cfg.ListenAddr, "token_listen", tokenListenAddr, "token_enabled", cfg.TokenDBPath != "", "backend", backend.String(), "auth_enabled", authManager.Enabled(), "oauth_enabled", authManager.OAuthEnabled())
-	if err := servePair(ctx, browserServer, tokenServer); err != nil {
-		return fmt.Errorf("agent-compose-ui server failed: %w", err)
+		shadows, err := projectenv.OpenShadowStore(cfg.UIStateDBPath)
+		if err != nil {
+			_ = globals.Close()
+			return gatewayHandlers{}, cleanup, err
+		}
+		fallback := daemonHandler
+		daemonHandler = projectenv.NewHandler(cfg.AgentComposeURL, globals, shadows, fallback)
+		cleanup = func() error { return errors.Join(shadows.Close(), globals.Close()) }
 	}
-	return nil
-}
-
-func Register(di do.Injector) {
-	do.Provide(di, NewLogger)
-	do.Provide(di, NewConfig)
-	do.Provide(di, NewBackendURL)
-	do.Provide(di, NewEcho)
-	do.Provide(di, NewAuthManager)
-	do.Provide(di, NewBackendProxy)
-	do.Provide(di, NewTokenRuntime)
-	do.Provide(di, NewHTTPServer)
-	do.ProvideNamed(di, "token", NewTokenHTTPServer)
-}
-
-func NewLogger(di do.Injector) (*slog.Logger, error) {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	slog.SetDefault(logger)
-	return logger, nil
-}
-
-func NewConfig(di do.Injector) (config.Config, error) {
-	return config.LoadFromEnv(), nil
-}
-
-func NewBackendURL(di do.Injector) (*url.URL, error) {
-	cfg := do.MustInvoke[config.Config](di)
-	backend, err := url.Parse(cfg.BackendURL)
-	if err != nil {
-		return nil, fmt.Errorf("parse backend URL: %w", err)
+	daemonProxy := manager.Require(daemonHandler)
+	scriptProxy := manager.Require(proxy.NewScripts(cfg.ScriptServiceURL, cfg.ScriptServiceToken))
+	projectStorage := manager.Require(localfs.New(localfs.NewStorage(cfg.ProjectStorageRoot, cfg.LegacyProjectStorageRoot)))
+	authHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		serveAuth(manager, w, r)
+	})
+	managementHandler := apitoken.UnavailableHandler()
+	machineHandler := tokenproxy.UnavailableHandler()
+	if cfg.TokenDBPath != "" {
+		store, err := apitoken.OpenStore(cfg.TokenDBPath)
+		if err != nil {
+			_ = cleanup()
+			return gatewayHandlers{}, func() error { return nil }, err
+		}
+		previousCleanup := cleanup
+		cleanup = func() error { return errors.Join(store.Close(), previousCleanup()) }
+		managementHandler = apitoken.NewHTTPHandler(store)
+		machineHandler = tokenproxy.New(store, proxy.NewTokenDaemon(cfg.AgentComposeURL), logger)
 	}
-	return backend, nil
+	return gatewayHandlers{
+		browser: recoverHTTPPanics(routeHandler(authHandler, managementHandler, scriptProxy, daemonProxy, projectStorage)),
+		token:   recoverHTTPPanics(machineHandler),
+	}, cleanup, nil
 }
 
-func NewEcho(di do.Injector) (*echo.Echo, error) {
-	app := echo.New()
-	app.HideBanner = true
-	app.HidePort = true
-	app.Use(middleware.RequestLogger())
-	app.Use(middleware.Recover())
-	registerRoutes(app, do.MustInvoke[*auth.Manager](di), do.MustInvoke[http.Handler](di), do.MustInvoke[*TokenRuntime](di).Management)
-	return app, nil
-}
-
-func NewAuthManager(di do.Injector) (*auth.Manager, error) {
-	return auth.NewManagerFromEnv(), nil
-}
-
-func NewBackendProxy(di do.Injector) (http.Handler, error) {
-	return proxy.NewBackendProxy(do.MustInvoke[*url.URL](di)), nil
-}
-
-type TokenRuntime struct {
-	Management http.Handler
-	Machine    http.Handler
-	store      *apitoken.Store
-}
-
-func NewTokenRuntime(di do.Injector) (*TokenRuntime, error) {
-	cfg := do.MustInvoke[config.Config](di)
-	if cfg.TokenDBPath == "" {
-		return &TokenRuntime{
-			Management: apitoken.UnavailableHandler(),
-			Machine:    tokenproxy.UnavailableHandler(),
-		}, nil
+func routeHandler(authHandler, managementHandler, scriptProxy, daemonProxy http.Handler, storageHandlers ...http.Handler) http.Handler {
+	var projectStorage http.Handler = localfs.New()
+	if len(storageHandlers) > 0 && storageHandlers[0] != nil {
+		projectStorage = storageHandlers[0]
 	}
-	store, err := apitoken.OpenStore(cfg.TokenDBPath)
-	if err != nil {
-		return nil, err
-	}
-	return &TokenRuntime{
-		Management: apitoken.NewHTTPHandler(store),
-		Machine: tokenproxy.New(
-			store,
-			proxy.NewTokenBackendProxy(do.MustInvoke[*url.URL](di)),
-			do.MustInvoke[*slog.Logger](di),
-		),
-		store: store,
-	}, nil
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		switch {
+		case path == "/api/auth" || strings.HasPrefix(path, "/api/auth/"):
+			authHandler.ServeHTTP(w, r)
+		case path == "/ui-api" || strings.HasPrefix(path, "/ui-api/"):
+			managementHandler.ServeHTTP(w, r)
+		case strings.HasPrefix(path, "/script-api/"):
+			scriptProxy.ServeHTTP(w, r)
+		case strings.HasPrefix(path, "/api/local-workspace/") || strings.HasPrefix(path, "/api/project-storage/"):
+			projectStorage.ServeHTTP(w, r)
+		case isDaemonPath(path):
+			daemonProxy.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
 }
 
-func (r *TokenRuntime) Close() error {
-	if r == nil {
+func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
+	if ctx.Err() != nil {
 		return nil
 	}
-	return r.store.Close()
+	browserListener, err := net.Listen("tcp", cfg.ListenAddr)
+	if err != nil {
+		return err
+	}
+	tokenListener, err := net.Listen("tcp", tokenListenAddr)
+	if err != nil {
+		_ = browserListener.Close()
+		return err
+	}
+	handlers, cleanup, err := newHandlers(cfg, logger)
+	if err != nil {
+		_ = browserListener.Close()
+		_ = tokenListener.Close()
+		return err
+	}
+	defer func() { _ = cleanup() }()
+	browserServer := newServer(cfg, handlers.browser)
+	tokenServer := newTokenServer(handlers.token)
+	return servePair(ctx, browserServer, browserListener, tokenServer, tokenListener)
 }
 
-func NewHTTPServer(di do.Injector) (*http.Server, error) {
-	cfg := do.MustInvoke[config.Config](di)
+func newServer(cfg config.Config, handler http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              cfg.ListenAddr,
-		Handler:           do.MustInvoke[*echo.Echo](di),
-		ReadHeaderTimeout: 15 * time.Second,
-	}, nil
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 }
 
-func NewTokenHTTPServer(di do.Injector) (*http.Server, error) {
+func newTokenServer(handler http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              tokenListenAddr,
-		Handler:           h2c.NewHandler(do.MustInvoke[*TokenRuntime](di).Machine, &http2.Server{}), //nolint:staticcheck // Attach RPCs require cleartext HTTP/2.
+		Handler:           h2c.NewHandler(handler, &http2.Server{}), //nolint:staticcheck // Attach RPCs require cleartext HTTP/2.
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 		MaxHeaderBytes:    32 << 10,
-	}, nil
+	}
 }
 
-func registerRoutes(app *echo.Echo, authManager *auth.Manager, backend, tokenManagement http.Handler) {
-	app.GET("/api/auth/status", authManager.HandleStatus)
-	app.HEAD("/api/auth/status", authManager.HandleStatus)
-	app.POST("/api/auth/login", authManager.HandleLogin)
-	app.POST("/api/auth/logout", authManager.HandleLogout)
-	app.GET("/oauth/authorize", authManager.HandleOAuthAuthorize)
-	app.HEAD("/oauth/authorize", authManager.HandleOAuthAuthorize)
-	app.GET("/oauth/callback", authManager.HandleOAuthCallback)
-	app.HEAD("/oauth/callback", authManager.HandleOAuthCallback)
-	app.Any("/ui-api/*", authManager.Protect(echo.WrapHandler(tokenManagement)))
-	app.Any("/*", authManager.Protect(echo.WrapHandler(backend)))
+type servingServer struct {
+	server   *http.Server
+	listener net.Listener
 }
 
-func servePair(ctx context.Context, browser, token *http.Server) error {
-	servers := []*http.Server{browser, token}
+func servePair(ctx context.Context, browser *http.Server, browserListener net.Listener, token *http.Server, tokenListener net.Listener) error {
+	servers := []servingServer{{browser, browserListener}, {token, tokenListener}}
 	results := make(chan error, len(servers))
-	for _, server := range servers {
-		go func() { results <- normalizeServeError(server.ListenAndServe()) }()
+	for _, item := range servers {
+		go func() { results <- normalizeServeError(item.server.Serve(item.listener)) }()
 	}
 
 	var firstErr error
@@ -188,7 +173,7 @@ func servePair(ctx context.Context, browser, token *http.Server) error {
 		received = 1
 	case <-ctx.Done():
 	}
-	shutdownErr := shutdownAll(servers)
+	shutdownErr := shutdownAll(servers, shutdownTimeout)
 	for received < len(servers) {
 		firstErr = errors.Join(firstErr, <-results)
 		received++
@@ -196,17 +181,17 @@ func servePair(ctx context.Context, browser, token *http.Server) error {
 	return errors.Join(firstErr, shutdownErr)
 }
 
-func shutdownAll(servers []*http.Server) error {
-	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+func shutdownAll(servers []servingServer, timeout time.Duration) error {
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	errorsByServer := make([]error, len(servers))
 	var wg sync.WaitGroup
-	for index, server := range servers {
+	errorsByServer := make([]error, len(servers))
+	for index, item := range servers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := server.Shutdown(ctx); err != nil {
-				errorsByServer[index] = errors.Join(err, server.Close())
+			if err := item.server.Shutdown(shutdownCtx); err != nil {
+				errorsByServer[index] = errors.Join(err, item.server.Close())
 			}
 		}()
 	}
@@ -214,9 +199,94 @@ func shutdownAll(servers []*http.Server) error {
 	return errors.Join(errorsByServer...)
 }
 
+func serve(ctx context.Context, server *http.Server, listener net.Listener) error {
+	return serveWithShutdownTimeout(ctx, server, listener, shutdownTimeout)
+}
+
+func serveWithShutdownTimeout(ctx context.Context, server *http.Server, listener net.Listener, timeout time.Duration) error {
+	serveResult := make(chan error, 1)
+	go func() {
+		serveResult <- server.Serve(listener)
+	}()
+
+	select {
+	case err := <-serveResult:
+		return normalizeServeError(err)
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		shutdownErr := server.Shutdown(shutdownCtx)
+		cancel()
+		if shutdownErr != nil {
+			closeErr := server.Close()
+			serveErr := normalizeServeError(<-serveResult)
+			return errors.Join(shutdownErr, closeErr, serveErr)
+		}
+		return normalizeServeError(<-serveResult)
+	}
+}
+
 func normalizeServeError(err error) error {
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
 	return err
+}
+
+func serveAuth(manager *auth.Manager, w http.ResponseWriter, r *http.Request) {
+	switch r.URL.Path {
+	case "/api/auth/status":
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			methodNotAllowed(w, http.MethodGet, http.MethodHead)
+			return
+		}
+		manager.Status(w, r)
+	case "/api/auth/login":
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w, http.MethodPost)
+			return
+		}
+		manager.Login(w, r)
+	case "/api/auth/logout":
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w, http.MethodPost)
+			return
+		}
+		manager.Logout(w, r)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func isDaemonPath(path string) bool {
+	return strings.HasPrefix(path, "/agentcompose.v1.") ||
+		strings.HasPrefix(path, "/agentcompose.v2.") ||
+		strings.HasPrefix(path, "/health.v1.") ||
+		strings.HasPrefix(path, "/api/") ||
+		strings.HasPrefix(path, "/oauth/") ||
+		strings.HasPrefix(path, "/agent-compose/session/") ||
+		path == "/jupyter" ||
+		strings.HasPrefix(path, "/jupyter/")
+}
+
+func methodNotAllowed(w http.ResponseWriter, methods ...string) {
+	w.Header().Set("Allow", strings.Join(methods, ", "))
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusMethodNotAllowed)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+}
+
+func recoverHTTPPanics(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				if recovered == http.ErrAbortHandler {
+					panic(recovered)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
 }

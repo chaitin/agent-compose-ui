@@ -1,32 +1,99 @@
 package config
 
 import (
+	"fmt"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 )
 
+type AuthMode string
+
 const (
-	DefaultListenAddr = "127.0.0.1:8080"
-	DefaultBackendURL = "http://agent-compose:7410"
+	AuthDisabled AuthMode = "disabled"
+	AuthPassword AuthMode = "password"
 )
 
 type Config struct {
-	ListenAddr  string
-	BackendURL  string
-	TokenDBPath string
+	ListenAddr, AuthUsername, AuthPassword, AuthSecret string
+	AuthMode                                           AuthMode
+	SessionTTL                                         time.Duration
+	AgentComposeURL, ScriptServiceURL                  *url.URL
+	ScriptServiceToken                                 string
+	AgentComposeDBPath, UIStateDBPath, TokenDBPath     string
+	ProjectStorageRoot, LegacyProjectStorageRoot       string
 }
 
-func LoadFromEnv() Config {
-	cfg := Config{
-		ListenAddr:  DefaultListenAddr,
-		BackendURL:  DefaultBackendURL,
-		TokenDBPath: strings.TrimSpace(os.Getenv("TOKEN_DB_PATH")),
+func Load(getenv func(string) string) (Config, error) {
+	cfg := Config{ListenAddr: "127.0.0.1:8080", AuthMode: AuthDisabled, AuthUsername: "admin", SessionTTL: 24 * time.Hour}
+	if value := strings.TrimSpace(getenv("AUTH_MODE")); value != "" {
+		cfg.AuthMode = AuthMode(value)
 	}
-	if backendURL := strings.TrimSpace(os.Getenv("AGENT_COMPOSE_URL")); backendURL != "" {
-		cfg.BackendURL = backendURL
+	if value := strings.TrimSpace(getenv("AUTH_USERNAME")); value != "" {
+		cfg.AuthUsername = value
 	}
-	if listenAddr := strings.TrimSpace(os.Getenv("LISTEN_ADDR")); listenAddr != "" {
-		cfg.ListenAddr = listenAddr
+	cfg.AuthPassword, cfg.AuthSecret = getenv("AUTH_PASSWORD"), getenv("AUTH_SECRET")
+	if cfg.AuthMode != AuthDisabled && cfg.AuthMode != AuthPassword {
+		return Config{}, fmt.Errorf("AUTH_MODE must be disabled or password")
 	}
-	return cfg
+	if cfg.AuthMode == AuthPassword && (cfg.AuthPassword == "" || cfg.AuthSecret == "") {
+		return Config{}, fmt.Errorf("AUTH_PASSWORD and AUTH_SECRET are required in password mode")
+	}
+	if raw := strings.TrimSpace(getenv("AUTH_SESSION_TTL")); raw != "" {
+		ttl, err := time.ParseDuration(raw)
+		if err != nil || ttl <= 0 {
+			return Config{}, fmt.Errorf("AUTH_SESSION_TTL must be a positive duration")
+		}
+		cfg.SessionTTL = ttl
+	}
+	parse := func(name, fallback string) (*url.URL, error) {
+		raw := strings.TrimSpace(getenv(name))
+		if raw == "" {
+			raw = fallback
+		}
+		value, err := url.ParseRequestURI(raw)
+		if err != nil || (value.Scheme != "http" && value.Scheme != "https") || value.Host == "" {
+			return nil, fmt.Errorf("%s must be an absolute HTTP URL", name)
+		}
+		return value, nil
+	}
+	var err error
+	if cfg.AgentComposeURL, err = parse("AGENT_COMPOSE_URL", "http://agent-compose:7410"); err != nil {
+		return Config{}, err
+	}
+	if cfg.ScriptServiceURL, err = parse("SCRIPT_SERVICE_URL", "http://scripts:7420"); err != nil {
+		return Config{}, err
+	}
+	cfg.ScriptServiceToken = getenv("SCRIPT_SERVICE_TOKEN")
+	if cfg.ScriptServiceToken == "" {
+		return Config{}, fmt.Errorf("SCRIPT_SERVICE_TOKEN is required")
+	}
+	cfg.AgentComposeDBPath = strings.TrimSpace(getenv("AGENT_COMPOSE_DB_PATH"))
+	cfg.UIStateDBPath = strings.TrimSpace(getenv("UI_STATE_DB_PATH"))
+	cfg.TokenDBPath = strings.TrimSpace(getenv("TOKEN_DB_PATH"))
+	if (cfg.AgentComposeDBPath == "") != (cfg.UIStateDBPath == "") {
+		return Config{}, fmt.Errorf("AGENT_COMPOSE_DB_PATH and UI_STATE_DB_PATH must be configured together")
+	}
+	if cfg.AgentComposeDBPath != "" && cfg.AgentComposeDBPath == cfg.UIStateDBPath {
+		return Config{}, fmt.Errorf("AGENT_COMPOSE_DB_PATH and UI_STATE_DB_PATH must be different")
+	}
+	cfg.ProjectStorageRoot = strings.TrimSpace(getenv("PROJECT_STORAGE_ROOT"))
+	if cfg.ProjectStorageRoot == "" {
+		cfg.ProjectStorageRoot = filepath.Join(os.TempDir(), "agent-compose-ui", "projects")
+	}
+	cfg.LegacyProjectStorageRoot = strings.TrimSpace(getenv("LEGACY_PROJECT_STORAGE_ROOT"))
+	for name, value := range map[string]string{
+		"PROJECT_STORAGE_ROOT":        cfg.ProjectStorageRoot,
+		"LEGACY_PROJECT_STORAGE_ROOT": cfg.LegacyProjectStorageRoot,
+	} {
+		if value == "" {
+			continue
+		}
+		if !filepath.IsAbs(value) || filepath.Clean(value) != value {
+			return Config{}, fmt.Errorf("%s must be an absolute clean path", name)
+		}
+	}
+	return cfg, nil
 }

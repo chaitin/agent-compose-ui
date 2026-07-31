@@ -3,7 +3,7 @@ package proxy
 import (
 	"context"
 	"crypto/tls"
-	"log/slog"
+	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -14,62 +14,63 @@ import (
 	"golang.org/x/net/http2"
 )
 
-func NewBackendProxy(backend *url.URL) http.Handler {
-	return newBackendProxy(backend, defaultTransport(), nil)
+const scriptTokenHeader = "X-Script-Service-Token"
+
+var transport = &http.Transport{
+	Proxy:                 http.ProxyFromEnvironment,
+	DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+	ForceAttemptHTTP2:     true,
+	MaxIdleConns:          100,
+	MaxIdleConnsPerHost:   20,
+	IdleConnTimeout:       90 * time.Second,
+	TLSHandshakeTimeout:   10 * time.Second,
+	ResponseHeaderTimeout: 60 * time.Second,
 }
 
-func NewTokenBackendProxy(backend *url.URL) http.Handler {
-	return newBackendProxy(backend, tokenTransport(backend), func(req *http.Request) {
-		for _, name := range []string{
-			"Authorization", "Cookie", "Proxy-Authorization", "Forwarded",
-			"X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-IP",
-		} {
-			req.Header.Del(name)
-		}
-		// A nil X-Forwarded-For value prevents ReverseProxy from synthesizing one.
+func NewDaemon(target *url.URL) http.Handler {
+	return newReverseProxy(target, nil, transport)
+}
+
+func NewTokenDaemon(target *url.URL) http.Handler {
+	return newReverseProxy(target, func(req *http.Request) {
+		// A nil X-Forwarded-For value tells ReverseProxy not to synthesize one.
 		req.Header["X-Forwarded-For"] = nil
-	})
+		req.Header.Del("X-Forwarded-Host")
+		req.Header.Del("X-Forwarded-Proto")
+		req.Header.Del("X-Real-IP")
+	}, tokenTransport(target))
 }
 
-func newBackendProxy(backend *url.URL, transport http.RoundTripper, amend func(*http.Request)) http.Handler {
-	proxy := httputil.NewSingleHostReverseProxy(backend)
-	originalDirector := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		originalHost := req.Host
-		originalDirector(req)
-		if req.Header.Get("X-Forwarded-Host") == "" {
-			req.Header.Set("X-Forwarded-Host", originalHost)
-		}
+func NewScripts(target *url.URL, scriptToken string) http.Handler {
+	return newReverseProxy(target, func(req *http.Request) {
+		req.Header.Del(scriptTokenHeader)
+		req.Header.Set(scriptTokenHeader, scriptToken)
+	}, transport)
+}
+
+func newReverseProxy(target *url.URL, amend func(*http.Request), roundTripper http.RoundTripper) http.Handler {
+	reverseProxy := httputil.NewSingleHostReverseProxy(target)
+	director := reverseProxy.Director
+	reverseProxy.Director = func(req *http.Request) {
+		forwardedHost := req.Host
+		director(req)
+		req.Header.Set("X-Forwarded-Host", forwardedHost)
 		if amend != nil {
 			amend(req)
 		}
 	}
-	proxy.Transport = transport
-	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		slog.Error("proxy request failed", "path", r.URL.Path, "error", err)
+	reverseProxy.Transport = roundTripper
+	reverseProxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, _ error) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
-		_, _ = w.Write([]byte(`{"error":"failed to proxy daemon request"}` + "\n"))
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "bad gateway"})
 	}
-	return proxy
-}
-
-func defaultTransport() *http.Transport {
-	return &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          256,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-	}
+	return reverseProxy
 }
 
 func tokenTransport(target *url.URL) http.RoundTripper {
-	ordinary := defaultTransport()
 	if !strings.EqualFold(target.Scheme, "http") {
-		return ordinary
+		return transport
 	}
 	h2cTransport := &http2.Transport{
 		AllowHTTP: true,
@@ -79,7 +80,7 @@ func tokenTransport(target *url.URL) http.RoundTripper {
 		ReadIdleTimeout: 30 * time.Second,
 		PingTimeout:     10 * time.Second,
 	}
-	return attachRoundTripper{ordinary: ordinary, attach: h2cTransport}
+	return attachRoundTripper{ordinary: transport, attach: h2cTransport}
 }
 
 type attachRoundTripper struct {

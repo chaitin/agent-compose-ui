@@ -1,0 +1,5 @@
+#!/bin/sh
+# The stock nginx image entrypoint runs envsubst on /etc/nginx/templates/*
+# and then execs the command. We invoke it as the service's run target so
+# template rendering happens at service start, not image build time.
+exec /docker-entrypoint.sh nginx -g 'daemon off;'

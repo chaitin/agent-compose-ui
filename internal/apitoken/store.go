@@ -101,7 +101,8 @@ func (s *Store) List(ctx context.Context) ([]Metadata, error) {
 	for rows.Next() {
 		var item Metadata
 		var createdAt int64
-		var expiresAt, revokedAt sql.NullInt64
+		var expiresAt sql.NullInt64
+		var revokedAt sql.NullInt64
 		if err := rows.Scan(&item.ID, &item.Name, &item.Role, &createdAt, &expiresAt, &revokedAt); err != nil {
 			return nil, fmt.Errorf("scan api token: %w", err)
 		}
@@ -123,7 +124,7 @@ func (s *Store) List(ctx context.Context) ([]Metadata, error) {
 }
 
 func (s *Store) Revoke(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE api_token SET revoked_at=COALESCE(revoked_at, ?) WHERE id=?`, s.now().UTC().Unix(), id)
+	_, err := s.db.ExecContext(ctx, `UPDATE api_token SET revoked_at=COALESCE(revoked_at, ?) WHERE id=?`, time.Now().UTC().Unix(), id)
 	if err != nil {
 		return fmt.Errorf("revoke api token: %w", err)
 	}
@@ -138,7 +139,8 @@ func (s *Store) Authenticate(ctx context.Context, raw string) (Identity, error) 
 	}
 	var digest []byte
 	var role Role
-	var expiresAt, revokedAt sql.NullInt64
+	var expiresAt sql.NullInt64
+	var revokedAt sql.NullInt64
 	err := s.db.QueryRowContext(ctx, `SELECT secret_hash, role, expires_at, revoked_at FROM api_token WHERE id=?`, lookupID).Scan(&digest, &role, &expiresAt, &revokedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		digest = dummyDigest[:]

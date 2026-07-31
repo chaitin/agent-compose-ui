@@ -11,8 +11,10 @@ import (
 	"time"
 )
 
-const maxCreateBody = 4 << 10
-const defaultValidityDays = 90
+const (
+	maxCreateBody       = 4 << 10
+	defaultValidityDays = 90
+)
 
 var allowedValidityDays = map[int]struct{}{1: {}, 7: {}, 30: {}, 90: {}, 365: {}}
 
@@ -46,10 +48,6 @@ func UnavailableHandler() http.Handler {
 }
 
 func (h *HTTPHandler) list(w http.ResponseWriter, r *http.Request) {
-	if !sameOrigin(r) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "cross-site request rejected"})
-		return
-	}
 	items, err := h.store.List(r.Context())
 	if err != nil {
 		writeStoreError(w, err)

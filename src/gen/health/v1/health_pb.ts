@@ -260,3 +260,4 @@ export class ProcessUsage extends Message<ProcessUsage> {
     return proto3.util.equals(ProcessUsage, a, b);
   }
 }
+

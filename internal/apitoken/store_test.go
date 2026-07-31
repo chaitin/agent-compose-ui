@@ -1,6 +1,7 @@
 package apitoken
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"path/filepath"
@@ -26,13 +27,19 @@ func TestStoreCreateAuthenticateListAndRevoke(t *testing.T) {
 	if !strings.HasPrefix(created.Token, tokenPrefix) {
 		t.Fatalf("token = %q", created.Token)
 	}
+	if created.ExpiresAt == nil || !created.ExpiresAt.Equal(baseTime.Add(90*24*time.Hour)) {
+		t.Fatalf("ExpiresAt = %v", created.ExpiresAt)
+	}
 	identity, err := store.Authenticate(t.Context(), created.Token)
 	if err != nil || identity.ID != created.ID || identity.Role != RoleReadOnlyAdmin {
 		t.Fatalf("Authenticate() = %#v, %v", identity, err)
 	}
 	items, err := store.List(t.Context())
-	if err != nil || len(items) != 1 || items[0].ExpiresAt == nil || !items[0].ExpiresAt.Equal(*created.ExpiresAt) {
+	if err != nil || len(items) != 1 || items[0].ID != created.ID {
 		t.Fatalf("List() = %#v, %v", items, err)
+	}
+	if items[0].ExpiresAt == nil || !items[0].ExpiresAt.Equal(*created.ExpiresAt) {
+		t.Fatalf("listed ExpiresAt = %v", items[0].ExpiresAt)
 	}
 	if err := store.Revoke(t.Context(), created.ID); err != nil {
 		t.Fatal(err)
@@ -115,5 +122,23 @@ func TestOpenStoreMigratesLegacyTokensWithoutExpiringThem(t *testing.T) {
 	items, err := store.List(t.Context())
 	if err != nil || len(items) != 1 || items[0].ExpiresAt != nil {
 		t.Fatalf("List() = %#v, %v", items, err)
+	}
+}
+
+func TestAuthenticateRejectsMalformedAndUnknownTokens(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "tokens.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	_, unknown, err := generateToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{"", "invalid", unknown} {
+		if _, err := store.Authenticate(context.Background(), raw); err != ErrInvalidToken {
+			t.Errorf("Authenticate(%q) = %v", raw, err)
+		}
 	}
 }

@@ -12,7 +12,10 @@ const (
 	RoleReadOnlyAdmin Role = "read-only-admin"
 )
 
-var ErrInvalidToken = errors.New("invalid api token")
+var (
+	ErrInvalidToken = errors.New("invalid api token")
+	ErrUnavailable  = errors.New("api token store unavailable")
+)
 
 func (r Role) Valid() bool {
 	return r == RoleAdmin || r == RoleReadOnlyAdmin

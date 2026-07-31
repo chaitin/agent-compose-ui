@@ -1,0 +1,5 @@
+#!/bin/sh
+# umask 077 protects the gateway's SQLite databases (token DB, UI state DB)
+# which contain sensitive hashes and parsed env references.
+umask 077
+exec /usr/local/bin/agent-compose-ui-server
