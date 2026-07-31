@@ -104,6 +104,10 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	entries, err := h.storage.List(q["projectKey"], "skills", q["path"])
 	if err != nil {
+		if q["path"] == "" && errors.Is(err, ErrNotFound) {
+			writeJSONResponse(w, http.StatusOK, map[string]any{"entries": []Entry{}})
+			return
+		}
 		writeStorageAPIError(w, err)
 		return
 	}

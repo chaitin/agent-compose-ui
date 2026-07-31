@@ -17,6 +17,15 @@ import (
 
 const testProjectKey = "ws_0123456789abcdef0123456789abcdef"
 
+func TestHandlerListEmptySkillsBeforeFirstCreate(t *testing.T) {
+	h := NewHandler(&Storage{ProjectRoot: projectRoot(t), MaxFileBytes: 1024})
+
+	listed := request(t, h, http.MethodGet, "/api/project-files/skills?projectKey="+testProjectKey, "", "")
+	if listed.Code != http.StatusOK || listed.Body.String() != "{\"entries\":[]}\n" {
+		t.Fatalf("list empty skills = %d %s", listed.Code, listed.Body.String())
+	}
+}
+
 func TestHandlerCreateListReadWriteDeleteRoundTrip(t *testing.T) {
 	root := projectRoot(t)
 	h := NewHandler(&Storage{ProjectRoot: root, MaxFileBytes: 1024})
