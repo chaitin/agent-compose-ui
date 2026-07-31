@@ -544,8 +544,11 @@ func normalizeDaemonProjectSpec(spec map[string]any) {
 	for _, value := range arrayValue(spec["agents"]) {
 		agent := objectValue(value)
 		driver := objectValue(agent["driver"])
-		if strings.EqualFold(stringValue(driver["name"]), "docker") && driver["docker"] == nil {
-			driver["docker"] = map[string]any{}
+		runtime := strings.ToLower(strings.TrimSpace(stringValue(driver["name"])))
+		if runtime == "docker" || runtime == "boxlite" || runtime == "microsandbox" {
+			if driver[runtime] == nil {
+				driver[runtime] = map[string]any{}
+			}
 		}
 		normalizeSchedulerSpec(objectValue(agent["scheduler"]))
 	}

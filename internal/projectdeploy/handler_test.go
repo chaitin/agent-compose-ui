@@ -335,6 +335,36 @@ func TestPreviewNormalizesCurrentDaemonProjectSpec(t *testing.T) {
 	}
 }
 
+func TestNormalizeDaemonProjectSpecAddsMissingRuntimeConfigs(t *testing.T) {
+	tests := []struct {
+		runtime string
+	}{
+		{runtime: "docker"},
+		{runtime: "boxlite"},
+		{runtime: "microsandbox"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.runtime, func(t *testing.T) {
+			spec := map[string]any{
+				"agents": []any{
+					map[string]any{
+						"name":   "worker",
+						"driver": map[string]any{"name": test.runtime},
+					},
+				},
+			}
+
+			normalizeDaemonProjectSpec(spec)
+
+			driver := objectValue(objectValue(arrayValue(spec["agents"])[0])["driver"])
+			if objectValue(driver[test.runtime]) == nil {
+				t.Fatalf("driver = %#v", driver)
+			}
+		})
+	}
+}
+
 func TestProjectVariablePreviewOnlyReplacesVariables(t *testing.T) {
 	var dryRunSpec map[string]any
 	applyCalls := 0
