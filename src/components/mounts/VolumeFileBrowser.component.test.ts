@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import VolumeFileBrowser from './VolumeFileBrowser.svelte';
-import { volumeFileApi } from '../../lib/volume-files/api';
+import { VolumeFileApiError, volumeFileApi } from '../../lib/volume-files/api';
 
 vi.mock('../../lib/volume-files/api', async () => {
   const actual = await vi.importActual<typeof import('../../lib/volume-files/api')>('../../lib/volume-files/api');
@@ -20,6 +20,35 @@ test('uses a Workspace-style toolbar, file navigation and preview pane', async (
   expect(screen.getByRole('region', { name: '卷文件预览' })).toBeInTheDocument();
   await fireEvent.click(await screen.findByRole('button', { name: 'a.txt' }));
   expect(await screen.findByRole('textbox', { name: '文件内容' })).toHaveValue('hello');
+});
+
+test('disables mutations while the volume file service is unavailable and recovers on reload', async () => {
+  vi.mocked(volumeFileApi.list)
+    .mockRejectedValueOnce(new VolumeFileApiError(503, 'unavailable', 'volume files unavailable'))
+    .mockResolvedValueOnce([file]);
+  render(VolumeFileBrowser, { projectKey: KEY_A, volume: 'managed' });
+  expect(await screen.findByRole('alert')).toHaveTextContent('卷文件服务未配置');
+  expect(screen.queryByText('目录为空')).not.toBeInTheDocument();
+  expect(screen.getByLabelText('新建文件夹')).toBeDisabled();
+  expect(screen.getByRole('button', { name: '创建文件夹' })).toBeDisabled();
+  expect(screen.getByLabelText('上传文件')).toBeDisabled();
+  expect(screen.getByRole('button', { name: '重新加载' })).toBeEnabled();
+  await fireEvent.click(screen.getByRole('button', { name: '重新加载' }));
+  expect(await screen.findByText('a.txt')).toBeInTheDocument();
+  expect(screen.getByLabelText('新建文件夹')).toBeEnabled();
+  expect(screen.getByLabelText('上传文件')).toBeEnabled();
+});
+
+test('explains that a missing physical volume must be created by applying the project', async () => {
+  vi.mocked(volumeFileApi.list).mockRejectedValue(new VolumeFileApiError(404, 'not_found', 'volume not found'));
+  render(VolumeFileBrowser, { projectKey: KEY_A, volume: 'managed' });
+  const alert = await screen.findByRole('alert');
+  expect(alert).toHaveTextContent('卷尚未创建');
+  expect(alert).toHaveTextContent('请先应用项目');
+  expect(screen.queryByText('目录为空')).not.toBeInTheDocument();
+  expect(screen.getByLabelText('新建文件夹')).toBeDisabled();
+  expect(screen.getByRole('button', { name: '创建文件夹' })).toBeDisabled();
+  expect(screen.getByLabelText('上传文件')).toBeDisabled();
 });
 
 test('styles file actions by intent', async () => {
