@@ -8,11 +8,13 @@
   import TechnicalDetails from '$lib/components/technical-details.svelte';
   import Timestamp from '$lib/components/timestamp.svelte';
   import { router } from '$lib/router.svelte';
-  import { getAutomationRunById, type AutomationRun } from '../api/loaders';
+  import { getAutomationRun, type AutomationRun } from '../api/loaders';
   import { parseAutomationResult } from '../model/automation-result';
   import { triggerKindLabel } from '../model/presentation';
 
-  const runId = $derived(decodeURIComponent(router.path.split('/')[2] || ''));
+  const parts = $derived(router.path.split('/').filter(Boolean));
+  const projectId = $derived(decodeURIComponent(parts[1] || ''));
+  const runId = $derived(decodeURIComponent(parts[3] || ''));
   let run = $state<AutomationRun | null>(null);
   let loading = $state(true);
   let error = $state('');
@@ -20,7 +22,7 @@
 
   onMount(async () => {
     try {
-      run = await getAutomationRunById(runId);
+      run = await getAutomationRun(projectId, runId);
     } catch (cause) {
       error = cause instanceof Error ? cause.message : '自动化运行加载失败';
     } finally {

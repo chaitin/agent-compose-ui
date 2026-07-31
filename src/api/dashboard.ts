@@ -1,6 +1,6 @@
 import { RunSource, type RunSummary } from '../gen/agentcompose/v2/agentcompose_pb.js';
 import { timestampToISOString } from '../model/timestamps';
-import { listAutomationTasks, listRecentAutomationRuns, type AutomationRun, type AutomationTask } from './loaders';
+import { listRecentProjectAutomationRuns, type AutomationRun, type AutomationTask } from './loaders';
 import { listRuns, runStatusName } from './runs';
 
 const ACTIVITY_LIMIT = 20;
@@ -19,6 +19,8 @@ export type DashboardActivity = {
   schedulerRunId: string;
   schedulerId: string;
   sandboxId: string;
+  projectId: string;
+  agentName: string;
 };
 
 export type DashboardOverview = {
@@ -30,12 +32,11 @@ export type DashboardOverview = {
 };
 
 export async function getDashboardOverview(): Promise<DashboardOverview> {
-  const [projectRuns, tasks] = await Promise.all([listRuns({ limit: SOURCE_LIMIT }), listAutomationTasks()]);
-  const schedulerRuns = await listRecentAutomationRuns(
-    tasks.map((task) => task.id),
-    SOURCE_LIMIT,
-  );
-  return buildDashboardOverview(projectRuns, schedulerRuns, tasks);
+  const [projectRuns, automation] = await Promise.all([
+    listRuns({ limit: SOURCE_LIMIT }),
+    listRecentProjectAutomationRuns(ACTIVITY_LIMIT),
+  ]);
+  return buildDashboardOverview(projectRuns, automation.runs, automation.tasks);
 }
 
 function buildDashboardOverview(
@@ -81,6 +82,8 @@ function projectActivity(run: RunSummary, linkedSchedulerRun?: AutomationRun): D
     schedulerRunId: '',
     schedulerId: run.schedulerId,
     sandboxId: run.sandboxId,
+    projectId: run.projectId,
+    agentName: run.agentName,
   };
 }
 
@@ -98,6 +101,8 @@ function schedulerActivity(run: AutomationRun, task?: AutomationTask): Dashboard
     schedulerRunId: run.id,
     schedulerId: run.loaderId,
     sandboxId: '',
+    projectId: task?.projectId ?? '',
+    agentName: task?.agentName ?? '',
   };
 }
 
