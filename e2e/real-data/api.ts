@@ -107,18 +107,15 @@ export function schedulerEventsRequest(projectId: string, agentName: string): Li
 }
 
 export async function findTrackedSandbox(
-  fetchPage: (request: ListSandboxesRequest) => Promise<{ sandboxes: Sandbox[]; nextCursor: string }>,
+  fetchPage: (request: ListSandboxesRequest) => Promise<{ sandboxes: Sandbox[]; total: number }>,
   trackedIds: ReadonlySet<string>,
 ): Promise<Sandbox | undefined> {
-  const seen = new Set<string>();
-  let cursor = '';
+  let offset = 0;
   while (true) {
-    const page = await fetchPage(new ListSandboxesRequest({ limit: 100, cursor }));
+    const page = await fetchPage(new ListSandboxesRequest({ limit: 100, offset }));
     const tracked = page.sandboxes.find(sandbox => trackedIds.has(sandbox.sandboxId));
-    if (tracked || !page.nextCursor) return tracked;
-    if (seen.has(page.nextCursor)) throw new Error(`Sandbox pagination returned repeated cursor: ${page.nextCursor}`);
-    seen.add(page.nextCursor);
-    cursor = page.nextCursor;
+    if (tracked || page.sandboxes.length === 0 || offset + page.sandboxes.length >= page.total) return tracked;
+    offset += page.sandboxes.length;
   }
 }
 

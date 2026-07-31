@@ -38,17 +38,17 @@ describe('real-data fixture safety', () => {
     expect(imagePlatform(image)).toBe('linux/amd64');
   });
 
-  test('walks sandbox cursors until a tracked sandbox is found', async () => {
-    const cursors: string[] = [];
+  test('walks sandbox pages until a tracked sandbox is found', async () => {
+    const offsets: number[] = [];
     const found = await findTrackedSandbox(async request => {
-      cursors.push(request.cursor);
-      return request.cursor
-        ? { sandboxes: [new Sandbox({ sandboxId: 'tracked' })], nextCursor: 'unused' }
-        : { sandboxes: [new Sandbox({ sandboxId: 'other' })], nextCursor: 'next' };
+      offsets.push(request.offset);
+      return request.offset === 0
+        ? { sandboxes: [new Sandbox({ sandboxId: 'other' })], total: 2 }
+        : { sandboxes: [new Sandbox({ sandboxId: 'tracked' })], total: 2 };
     }, new Set(['tracked']));
 
     expect(found?.sandboxId).toBe('tracked');
-    expect(cursors).toEqual(['', 'next']);
+    expect(offsets).toEqual([0, 1]);
   });
 
   test('probes the complete direct v2 read-only surface', () => {
@@ -66,7 +66,7 @@ describe('real-data fixture safety', () => {
       expect(source).toContain(call);
     }
     const schedulerRequest = schedulerEventsRequest('project-1', 'agent-1');
-    expect(schedulerRequest.project?.projectId).toBe('project-1');
+    expect(schedulerRequest.project?.selector?.value).toBe('project-1');
     expect(schedulerRequest.agentName).toBe('agent-1');
     expect(schedulerRequest.limit).toBe(100);
   });
