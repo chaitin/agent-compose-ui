@@ -22,21 +22,20 @@ test('uses a Workspace-style toolbar, file navigation and preview pane', async (
   expect(await screen.findByRole('textbox', { name: '文件内容' })).toHaveValue('hello');
 });
 
-test('disables mutations while the volume file service is unavailable and recovers on reload', async () => {
+test('disables icon actions while unavailable and recovers after identity change', async () => {
   vi.mocked(volumeFileApi.list)
     .mockRejectedValueOnce(new VolumeFileApiError(503, 'unavailable', 'volume files unavailable'))
     .mockResolvedValueOnce([file]);
-  render(VolumeFileBrowser, { projectKey: KEY_A, volume: 'managed' });
+  const view = render(VolumeFileBrowser, { projectKey: KEY_A, volume: 'managed' });
   expect(await screen.findByRole('alert')).toHaveTextContent('卷文件服务未配置');
   expect(screen.queryByText('目录为空')).not.toBeInTheDocument();
-  expect(screen.getByLabelText('新建文件夹')).toBeDisabled();
-  expect(screen.getByRole('button', { name: '创建文件夹' })).toBeDisabled();
-  expect(screen.getByLabelText('上传文件')).toBeDisabled();
-  expect(screen.getByRole('button', { name: '重新加载' })).toBeEnabled();
-  await fireEvent.click(screen.getByRole('button', { name: '重新加载' }));
+  expect(screen.getByRole('button', { name: '新建文件夹' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '上传文件' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: '重新加载' })).not.toBeInTheDocument();
+  await view.rerender({ projectKey: KEY_B, volume: 'other' });
   expect(await screen.findByText('a.txt')).toBeInTheDocument();
-  expect(screen.getByLabelText('新建文件夹')).toBeEnabled();
-  expect(screen.getByLabelText('上传文件')).toBeEnabled();
+  expect(screen.getByRole('button', { name: '新建文件夹' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: '上传文件' })).toBeEnabled();
 });
 
 test('explains that a missing physical volume must be created by applying the project', async () => {
@@ -46,14 +45,17 @@ test('explains that a missing physical volume must be created by applying the pr
   expect(alert).toHaveTextContent('卷尚未创建');
   expect(alert).toHaveTextContent('请先应用项目');
   expect(screen.queryByText('目录为空')).not.toBeInTheDocument();
-  expect(screen.getByLabelText('新建文件夹')).toBeDisabled();
-  expect(screen.getByRole('button', { name: '创建文件夹' })).toBeDisabled();
-  expect(screen.getByLabelText('上传文件')).toBeDisabled();
+  expect(screen.getByRole('button', { name: '新建文件夹' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '上传文件' })).toBeDisabled();
 });
 
 test('styles file actions by intent', async () => {
   render(VolumeFileBrowser, { projectKey: KEY_A, volume: 'managed' });
-  expect(screen.getByRole('button', { name: '重新加载' })).toHaveClass('ui-button', 'ghost');
+  const toolbar = screen.getByRole('toolbar', { name: '卷文件操作' });
+  expect(within(toolbar).getByRole('button', { name: '新建文件夹' })).toHaveClass('ui-button', 'ghost');
+  expect(within(toolbar).getByRole('button', { name: '上传文件' })).toHaveClass('ui-button', 'ghost');
+  expect(within(toolbar).queryByRole('button', { name: '重新加载' })).not.toBeInTheDocument();
+  expect(within(toolbar).queryByRole('textbox', { name: '新建文件夹' })).not.toBeInTheDocument();
   await fireEvent.click(await screen.findByRole('button', { name: '删除 a.txt' }));
   const dialog = screen.getByRole('dialog', { name: '确认删除' });
   expect(within(dialog).getByRole('button', { name: '取消' })).toHaveClass('ui-button', 'ghost');
@@ -70,9 +72,11 @@ test('lists, previews and provides a download link without physical paths', asyn
 
 test('creates folders, uploads and confirms deletion', async () => {
   render(VolumeFileBrowser, { projectKey: KEY_A, volume: 'managed' }); await screen.findByText('a.txt');
-  await fireEvent.input(screen.getByLabelText('新建文件夹'), { target: { value: 'docs' } }); await fireEvent.click(screen.getByRole('button', { name: '创建文件夹' }));
+  await fireEvent.click(screen.getByRole('button', { name: '新建文件夹' }));
+  await fireEvent.input(screen.getByLabelText('目录名'), { target: { value: 'docs' } }); await fireEvent.click(screen.getByRole('button', { name: '创建' }));
   expect(volumeFileApi.mkdir).toHaveBeenCalledWith(KEY_A, 'managed', 'docs', expect.any(AbortSignal));
-  const input = screen.getByLabelText('上传文件'); await fireEvent.change(input, { target: { files: [new File(['x'], 'x.txt')] } });
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: '新建文件夹' })).not.toBeInTheDocument());
+  const input = screen.getByLabelText('选择上传文件'); await fireEvent.change(input, { target: { files: [new File(['x'], 'x.txt')] } });
   await waitFor(() => expect(volumeFileApi.upload).toHaveBeenCalled());
   await fireEvent.click(screen.getByRole('button', { name: '删除 a.txt' })); const dialog = screen.getByRole('dialog');
   expect(volumeFileApi.removeFile).not.toHaveBeenCalled(); await fireEvent.click(within(dialog).getByRole('button', { name: '确认删除' }));
@@ -114,13 +118,13 @@ test('warns that folder deletion is recursive and only removes it after confirma
 test('shows actionable conflict messaging', async () => {
   const { VolumeFileApiError } = await import('../../lib/volume-files/api'); vi.mocked(volumeFileApi.removeFile).mockRejectedValue(new VolumeFileApiError(409, 'conflict', 'resource conflict'));
   render(VolumeFileBrowser, { projectKey: KEY_A, volume: 'managed' }); await screen.findByText('a.txt'); await fireEvent.click(screen.getByRole('button', { name: '删除 a.txt' })); await fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确认删除' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('冲突'); expect(screen.getByRole('button', { name: '重新加载' })).toBeInTheDocument();
+  expect(await screen.findByRole('alert')).toHaveTextContent('冲突');
 });
 
 test('a mutation invalidates an older preview and ignores its late completion', async () => {
   const pending = deferred<Awaited<ReturnType<typeof volumeFileApi.preview>>>(); vi.mocked(volumeFileApi.preview).mockReturnValue(pending.promise);
   render(VolumeFileBrowser, { projectKey: KEY_A, volume: 'managed' }); await fireEvent.click(await screen.findByRole('button', { name: 'a.txt' }));
-  await fireEvent.input(screen.getByLabelText('新建文件夹'), { target: { value: 'docs' } }); await fireEvent.click(screen.getByRole('button', { name: '创建文件夹' }));
+  await fireEvent.click(screen.getByRole('button', { name: '新建文件夹' })); await fireEvent.input(screen.getByLabelText('目录名'), { target: { value: 'docs' } }); await fireEvent.click(screen.getByRole('button', { name: '创建' }));
   pending.resolve({ path: 'a.txt', content: 'late preview', sha256: 'a'.repeat(64), truncated: false }); await Promise.resolve();
   expect(screen.queryByDisplayValue('late preview')).not.toBeInTheDocument(); expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
@@ -129,21 +133,21 @@ test('serializes mutations and disables later operations until the first settles
   const oldMutation = deferred<void>();
   vi.mocked(volumeFileApi.mkdir).mockReturnValueOnce(oldMutation.promise);
   render(VolumeFileBrowser, { projectKey: KEY_A, volume: 'managed' }); await screen.findByText('a.txt');
-  const folder = screen.getByLabelText('新建文件夹'); await fireEvent.input(folder, { target: { value: 'old' } }); await fireEvent.click(screen.getByRole('button', { name: '创建文件夹' }));
-  expect(screen.getByRole('button', { name: '创建文件夹' })).toBeDisabled();
-  expect(screen.getByLabelText('上传文件')).toBeDisabled();
+  await fireEvent.click(screen.getByRole('button', { name: '新建文件夹' })); const folder = screen.getByLabelText('目录名'); await fireEvent.input(folder, { target: { value: 'old' } }); await fireEvent.click(screen.getByRole('button', { name: '创建' }));
+  expect(screen.getByRole('button', { name: '正在创建…' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '上传文件' })).toBeDisabled();
   expect(screen.getByRole('button', { name: '删除 a.txt' })).toBeDisabled();
-  await fireEvent.click(screen.getByRole('button', { name: '创建文件夹' }));
   expect(volumeFileApi.mkdir).toHaveBeenCalledOnce(); oldMutation.resolve();
-  await waitFor(() => expect(screen.getByRole('button', { name: '创建文件夹' })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole('button', { name: '新建文件夹' })).toBeEnabled());
 });
 
 test('keeps a failed folder name and resets upload input after failure for same-file retry', async () => {
   vi.mocked(volumeFileApi.mkdir).mockRejectedValueOnce(new Error('mkdir failed')); vi.mocked(volumeFileApi.upload).mockRejectedValue(new Error('upload failed'));
   render(VolumeFileBrowser, { projectKey: KEY_A, volume: 'managed' }); await screen.findByText('a.txt');
-  const folder = screen.getByLabelText('新建文件夹'); await fireEvent.input(folder, { target: { value: 'docs' } }); await fireEvent.click(screen.getByRole('button', { name: '创建文件夹' }));
+  await fireEvent.click(screen.getByRole('button', { name: '新建文件夹' })); const folder = screen.getByLabelText('目录名'); await fireEvent.input(folder, { target: { value: 'docs' } }); await fireEvent.click(screen.getByRole('button', { name: '创建' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('mkdir failed'); expect(folder).toHaveValue('docs');
-  const input = screen.getByLabelText('上传文件') as HTMLInputElement; const selected = new File(['x'], 'same.txt'); await fireEvent.change(input, { target: { files: [selected] } });
+  await fireEvent.click(screen.getByRole('button', { name: '取消' }));
+  const input = screen.getByLabelText('选择上传文件') as HTMLInputElement; const selected = new File(['x'], 'same.txt'); await fireEvent.change(input, { target: { files: [selected] } });
   await waitFor(() => expect(volumeFileApi.upload).toHaveBeenCalledTimes(1)); expect(input.value).toBe('');
   await fireEvent.change(input, { target: { files: [selected] } }); await waitFor(() => expect(volumeFileApi.upload).toHaveBeenCalledTimes(2));
 });
@@ -182,14 +186,15 @@ test('preserves the draft on CAS conflict and supports reload then retry', async
   await waitFor(() => expect(volumeFileApi.write).toHaveBeenLastCalledWith(KEY_A, 'managed', 'a.txt', 'retry', 'b'.repeat(64), expect.any(AbortSignal)));
 });
 
-test('requires confirmation before user navigation discards a dirty draft', async () => {
+test('requires confirmation before folder navigation discards a dirty draft', async () => {
   const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true); vi.stubGlobal('confirm', confirm);
+  vi.mocked(volumeFileApi.list).mockResolvedValueOnce([file, { name: 'docs', path: 'docs', dir: true, size: 0, mtimeMs: 1 }]).mockResolvedValue([]);
   render(VolumeFileBrowser, { projectKey: KEY_A, volume: 'managed' });
   await fireEvent.click(await screen.findByRole('button', { name: 'a.txt' }));
   await fireEvent.input(screen.getByRole('textbox', { name: '文件内容' }), { target: { value: 'mine' } });
-  await fireEvent.click(screen.getByRole('button', { name: '重新加载' }));
+  await fireEvent.click(screen.getByRole('button', { name: 'docs' }));
   expect(confirm).toHaveBeenCalledOnce(); expect(volumeFileApi.list).toHaveBeenCalledOnce();
-  await fireEvent.click(screen.getByRole('button', { name: '重新加载' }));
+  await fireEvent.click(screen.getByRole('button', { name: 'docs' }));
   await waitFor(() => expect(volumeFileApi.list).toHaveBeenCalledTimes(2));
 });
 
@@ -200,7 +205,7 @@ test('resets saving state on identity invalidation and disables editing while sa
   const editor = screen.getByRole('textbox', { name: '文件内容' }); await fireEvent.input(editor, { target: { value: 'mine' } });
   await fireEvent.click(screen.getByRole('button', { name: '保存文件' })); expect(editor).toBeDisabled();
   await view.rerender({ projectKey: KEY_B, volume: 'other' });
-  await screen.findByText('a.txt'); expect(screen.getByRole('button', { name: '重新加载' })).toBeEnabled();
+  await screen.findByText('a.txt'); expect(screen.getByRole('button', { name: '新建文件夹' })).toBeEnabled();
   pending.resolve({ ...file, sha256: 'b'.repeat(64) }); await Promise.resolve();
   expect(screen.queryByDisplayValue('mine')).not.toBeInTheDocument();
 });
