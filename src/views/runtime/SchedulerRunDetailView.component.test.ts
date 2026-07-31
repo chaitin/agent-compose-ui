@@ -339,7 +339,7 @@ test('aborts stale navigation and only renders the latest scheduler run', async 
   const first = deferred<ListSchedulerEventsResponse>();
   let staleSignal: AbortSignal | undefined;
   mocks.projectService.listSchedulerEvents.mockImplementation((request, options) => {
-    if (request.cursor === '' && request.project?.projectId === 'project-1' && mocks.projectService.listSchedulerEvents.mock.calls.length === 1) {
+    if (request.offset === 0 && request.project?.selector?.value === 'project-1' && mocks.projectService.listSchedulerEvents.mock.calls.length === 1) {
       staleSignal = options?.signal;
       return first.promise;
     }

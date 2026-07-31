@@ -121,9 +121,9 @@ test('labels image types and expands inspected details directly below the select
 test('selects only currently loaded images and opens bulk removal for that selection', async () => {
   mocks.listImages.mockReset();
   mocks.listImages
-    .mockResolvedValueOnce({ images: [finalImage, intermediateImage], hasMore: true, nextOffset: 2 })
-    .mockResolvedValueOnce({ images: [finalImage, intermediateImage], hasMore: true, nextOffset: 2 })
-    .mockResolvedValueOnce({ images: [appendedImage], hasMore: false, nextOffset: 3 });
+    .mockResolvedValueOnce({ images: [finalImage, intermediateImage], total: 3 })
+    .mockResolvedValueOnce({ images: [finalImage, intermediateImage], total: 3 })
+    .mockResolvedValueOnce({ images: [appendedImage], total: 3 });
   render(ImageListView);
   await fireEvent.click(screen.getByRole('checkbox', { name: '显示中间层' }));
   const selectAll = await screen.findByLabelText('选择当前已加载镜像');

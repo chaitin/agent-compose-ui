@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { Code, ConnectError } from '@connectrpc/connect';
 import { Timestamp } from '@bufbuild/protobuf';
 import RunDetailView from './RunDetailView.svelte';
-import { StreamExecEventType, StreamExecResponse, GetSchedulerRunResponse, ListSandboxHistoryResponse, ListSandboxRunEventsResponse, RunDetail, RunEvent, RunEventKind, RunSource, RunStatus, RunSummary, SandboxHistoryCell, SchedulerEvent, SchedulerRun, StdioStream } from '../../gen/agentcompose/v2/agentcompose_pb';
+import { StreamExecEventType, StreamExecResponse, GetSchedulerRunResponse, ListSandboxHistoryResponse, ListSandboxRunEventsResponse, RunDetail, RunEvent, RunEventKind, RunSource, RunStatus, RunSummary, SandboxHistoryCell, SandboxStatus, SchedulerEvent, SchedulerRun, StdioStream } from '../../gen/agentcompose/v2/agentcompose_pb';
 import { store } from '../../lib/stores.svelte';
 import { stableProjectRunId } from '../../lib/run-scheduler-evidence';
 
@@ -86,7 +86,7 @@ beforeEach(() => {
   mocks.projectService.listSchedulerEvents.mockResolvedValue({ events: [], nextCursor: '' });
   mocks.projectService.getSchedulerRun.mockResolvedValue(new GetSchedulerRunResponse());
   mocks.sandboxService.listSandboxHistory.mockResolvedValue(new ListSandboxHistoryResponse());
-  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: { status: 'RUNNING' } });
+  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: { status: SandboxStatus.RUNNING } });
   mocks.execService.streamExec.mockReturnValue(emptyLogs());
 });
 afterEach(() => cleanup());
@@ -204,7 +204,7 @@ test('merges parent Scheduler logs for a manually triggered child Agent Run with
   expect(await screen.findByText('Loader started')).toBeInTheDocument();
   expect(screen.getByText('yaml scheduler script interval executed')).toBeInTheDocument();
   expect(mocks.projectService.listSchedulerEvents).toHaveBeenCalledWith(expect.objectContaining({
-    project: expect.objectContaining({ projectId: 'project-1' }), agentName: 'script-agent',
+    project: expect.objectContaining({ selector: { case: 'projectId', value: 'project-1' } }), agentName: 'script-agent',
   }), expect.objectContaining({ signal: expect.any(AbortSignal) }));
 });
 
@@ -217,7 +217,7 @@ test('pages structured events and renders them instead of inferred log evidence'
     })
     .mockResolvedValueOnce({
       events: [new RunEvent({ id: 'event-1', seq: 1n, kind: RunEventKind.AGENT_MESSAGE, agent: 'worker', text: 'structured answer' })],
-      historyAvailable: true,
+      total: 2, historyAvailable: true,
     });
   mocks.runService.followRunLogs.mockReturnValue(streamOf(logChunk('$ inferred command', 10)));
 
@@ -237,7 +237,7 @@ test('ignores deferred structured history after the run identity changes', async
   mocks.runService.getRun.mockResolvedValue({ run: failedRunDetail() });
   mocks.runService.listRunEvents
     .mockReturnValueOnce(old.promise)
-    .mockResolvedValueOnce({ events: [new RunEvent({ id: 'new', seq: 1n, text: 'new evidence' })], historyAvailable: true });
+    .mockResolvedValueOnce({ events: [new RunEvent({ id: 'new', seq: 1n, text: 'new evidence' })], total: 1, historyAvailable: true });
 
   render(RunDetailView);
   await waitFor(() => expect(mocks.runService.listRunEvents).toHaveBeenCalledTimes(1));

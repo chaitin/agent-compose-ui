@@ -4,6 +4,7 @@
   import SessionTerminal from '../../pages/session/SessionTerminal.svelte';
   import FileBrowser from '../../pages/session/FileBrowser.svelte';
   import { execService, sandboxService } from '../../lib/rpc';
+  import { timestampToIso } from '../../lib/proto-helpers';
   import type { SandboxLifecycle } from '../../lib/runtime-inventory';
   import { filterSandboxes, listAllSandboxes, sandboxLifecycle } from '../../lib/sandbox-inventory';
   import { formatMetric, sandboxJupyterPath } from '../../lib/sandboxes';
@@ -210,7 +211,7 @@
         </div>
         {#if statsRefresh[item.sandboxId]?.loading}<div class="stats-status">指标加载中{statsRefresh[item.sandboxId]?.stale ? '，当前显示旧样本' : ''}</div>{:else if statsRefresh[item.sandboxId]?.error}<div class="stats-status error">指标加载失败：{statsRefresh[item.sandboxId]?.error}{statsRefresh[item.sandboxId]?.stale ? '；当前显示旧样本' : ''}</div>{/if}
         {#if state === 'destroyed'}<div class="stats-status">运行环境已销毁；实时 Terminal、Files、Jupyter 和 Stats 不再可用。</div>{/if}
-        {#if stats[item.sandboxId]}{@const sandboxStats = stats[item.sandboxId]!}<div class="metrics"><span>Driver {sandboxStats.driver || '-'}</span><span>采样时间 {sandboxStats.sampledAt || '未提供'}</span><span>CPU {metricText(sandboxStats.cpuPercent)}</span><span>内存使用 {metricText(sandboxStats.memoryUsageBytes)}</span><span>内存上限 {metricText(sandboxStats.memoryLimitBytes)}</span><span>内存占比 {metricText(sandboxStats.memoryPercent)}</span><span>网络接收 {metricText(sandboxStats.networkRxBytes)}</span><span>网络发送 {metricText(sandboxStats.networkTxBytes)}</span><span>块读取 {metricText(sandboxStats.blockReadBytes)}</span><span>块写入 {metricText(sandboxStats.blockWriteBytes)}</span><span>运行时间 {metricText(sandboxStats.uptimeSeconds)}</span></div>{/if}
+        {#if stats[item.sandboxId]}{@const sandboxStats = stats[item.sandboxId]!}<div class="metrics"><span>Driver {sandboxStats.driver || '-'}</span><span>采样时间 {timestampToIso(sandboxStats.sampledAt) || '未提供'}</span><span>CPU {metricText(sandboxStats.cpuPercent)}</span><span>内存使用 {metricText(sandboxStats.memoryUsageBytes)}</span><span>内存上限 {metricText(sandboxStats.memoryLimitBytes)}</span><span>内存占比 {metricText(sandboxStats.memoryPercent)}</span><span>网络接收 {metricText(sandboxStats.networkRxBytes)}</span><span>网络发送 {metricText(sandboxStats.networkTxBytes)}</span><span>块读取 {metricText(sandboxStats.blockReadBytes)}</span><span>块写入 {metricText(sandboxStats.blockWriteBytes)}</span><span>运行时间 {metricText(sandboxStats.uptimeSeconds)}</span></div>{/if}
         {#if outputs[item.sandboxId]}<pre>{outputs[item.sandboxId]}</pre>{/if}
       </article>
     {/each}
