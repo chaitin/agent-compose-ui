@@ -12,7 +12,7 @@
   import TechnicalDetails from '$lib/components/technical-details.svelte';
   import { preloadMonaco } from '$lib/monaco';
   import { navigate, router } from '$lib/router.svelte';
-  import { listAgentDefinitions, type AgentDefinition } from '../api/agents';
+  import { listProjectAgentDefinitions, type AgentDefinition } from '../api/agents';
   import {
     getAutomationTask,
     listAutomationTasks,
@@ -27,7 +27,7 @@
   } from '../api/loaders';
   import {
     applyProjectPreview,
-    listProjectViews,
+    getProjectView,
     type ProjectDeploymentPreview,
     type ProjectView,
   } from '../api/projects';
@@ -61,7 +61,7 @@
 
   let tasks = $state<AutomationTask[]>([]);
   let agents = $state<AgentDefinition[]>([]);
-  let projects = $state<ProjectView[]>([]);
+  let project = $state<ProjectView | null>(null);
   let draft = $state<Draft>(emptyDraft());
   let loading = $state(true);
   let saving = $state(false);
@@ -82,37 +82,34 @@
   const MIN_EDITOR_PANE_WIDTH = 420;
 
   const parts = $derived(router.path.split('/').filter(Boolean));
-  const taskId = $derived(parts[1] && parts[1] !== 'new' ? decodeURIComponent(parts[1]) : '');
-  const editing = $derived(parts[1] === 'new' || parts[2] === 'edit');
-  const creating = $derived(parts[1] === 'new');
+  const projectId = $derived(parts[0] === 'projects' && parts[1] ? decodeURIComponent(parts[1]) : '');
+  const routeAgentName = $derived(
+    parts[2] === 'automations' && parts[3] && parts[3] !== 'new' ? decodeURIComponent(parts[3]) : '',
+  );
+  const editing = $derived(parts[2] === 'automations' && (parts[3] === 'new' || parts[4] === 'edit'));
+  const creating = $derived(parts[2] === 'automations' && parts[3] === 'new');
+  const projectPath = $derived(`/projects/${encodeURIComponent(projectId)}`);
+  const listPath = $derived(`${projectPath}/automations`);
   const draftDirty = $derived(editing && draftSignature() !== draftBaseline);
   const presentedChanges = $derived(preview ? presentProjectChanges(preview.changes) : []);
   const availableAgents = $derived(
     agents.filter(
-      (agent) =>
-        (taskId || !tasks.some((task) => task.projectId === agent.projectId && task.agentName === agent.agentName)) &&
-        projects.find((project) => project.projectId === agent.projectId)?.editable,
+      (agent) => (!creating || !tasks.some((task) => task.agentName === agent.agentName)) && project?.editable,
     ),
   );
   const selectedDraftAgent = $derived(
-    agents.find(
-      (agent) =>
-        agent.id === draft.agentId ||
-        (agent.agentName === draft.agentId &&
-          (!taskId || agent.projectId === tasks.find((task) => task.id === taskId)?.projectId)),
-    ),
+    agents.find((agent) => agent.id === draft.agentId || agent.agentName === draft.agentId),
   );
 
   onMount(async () => {
     await load();
     const params = new URLSearchParams(window.location.search);
-    const contextProject = params.get('project');
     const contextAgent = params.get('agent');
-    if (creating && contextProject && contextAgent) {
-      const agent = agents.find((item) => item.projectId === contextProject && item.agentName === contextAgent);
+    if (creating && contextAgent) {
+      const agent = agents.find((item) => item.agentName === contextAgent);
       if (agent) draft.agentId = agent.id;
-    } else if (editing && taskId) {
-      await loadDraft(taskId);
+    } else if (editing && routeAgentName) {
+      await loadDraft(routeAgentName);
     }
   });
 
@@ -144,10 +141,11 @@
     loading = true;
     error = '';
     try {
-      [tasks, agents, projects] = await Promise.all([
-        listAutomationTasks(),
-        listAgentDefinitions(),
-        listProjectViews(),
+      if (!projectId) throw new Error(t('项目不存在'));
+      [tasks, agents, project] = await Promise.all([
+        listAutomationTasks(projectId),
+        listProjectAgentDefinitions(projectId),
+        getProjectView(projectId),
       ]);
     } catch (cause) {
       error = errorMessage(cause);
@@ -156,25 +154,25 @@
     }
   }
 
-  async function loadDraft(id: string): Promise<void> {
+  async function loadDraft(agentName: string): Promise<void> {
     try {
-      draft = draftFromDetail(await getAutomationTask(id));
+      draft = draftFromDetail(await getAutomationTask(projectId, agentName));
       draftBaseline = draftSignature();
     } catch (cause) {
       error = errorMessage(cause);
     }
   }
 
-  async function beginEdit(id: string): Promise<void> {
-    await loadDraft(id);
-    navigate(`/automations/${encodeURIComponent(id)}/edit`);
+  async function beginEdit(task: AutomationTask): Promise<void> {
+    await loadDraft(task.agentName);
+    navigate(`${listPath}/${encodeURIComponent(task.agentName)}/edit`);
   }
 
   function beginCreate(): void {
     draft = emptyDraft();
     draftBaseline = draftSignature();
     validation = null;
-    navigate('/automations/new');
+    navigate(`${listPath}/new`);
   }
 
   async function validate(): Promise<boolean> {
@@ -199,6 +197,10 @@
       error = t('请选择绑定智能体');
       return;
     }
+    if (!selectedDraftAgent) {
+      error = t('请选择绑定智能体');
+      return;
+    }
     const environmentError = validateAgentEnvironment(draft.envItems ?? []);
     if (environmentError) {
       error = t(environmentError);
@@ -208,7 +210,10 @@
     error = '';
     try {
       if (!(await validate())) return;
-      preview = await previewAutomationTask({ ...draft, id: creating ? undefined : taskId });
+      preview = await previewAutomationTask(projectId, selectedDraftAgent.agentName, {
+        ...draft,
+        id: creating ? undefined : draft.id,
+      });
     } catch (cause) {
       error = errorMessage(cause);
     } finally {
@@ -225,7 +230,7 @@
       preview = null;
       await load();
       draftBaseline = draftSignature();
-      navigate('/automations');
+      navigate(listPath);
     } catch (cause) {
       error = errorMessage(cause);
     } finally {
@@ -236,7 +241,7 @@
   async function prepareRun(task: AutomationTask): Promise<void> {
     error = '';
     try {
-      runTask = await getAutomationTask(task.id);
+      runTask = await getAutomationTask(projectId, task.agentName);
       runTriggerId = runTask.triggers.find((trigger) => trigger.enabled)?.triggerId ?? '';
       runPayload = '{}';
     } catch (cause) {
@@ -250,9 +255,9 @@
     error = '';
     try {
       JSON.parse(runPayload);
-      const run = await runAutomationTaskNow(runTask.id, runPayload, runTriggerId);
+      const run = await runAutomationTaskNow(projectId, runTask.agentName, runPayload, runTriggerId);
       runTask = null;
-      navigate(`/automation-runs/${encodeURIComponent(run.id)}`);
+      navigate(`${projectPath}/automation-runs/${encodeURIComponent(run.id)}`);
     } catch (cause) {
       error = errorMessage(cause);
     } finally {
@@ -262,7 +267,7 @@
 
   async function toggle(task: AutomationTask): Promise<void> {
     try {
-      await setAutomationTaskEnabled(task.id, !task.enabled);
+      await setAutomationTaskEnabled(projectId, task.agentName, !task.enabled);
       await load();
     } catch (cause) {
       error = errorMessage(cause);
@@ -271,7 +276,7 @@
 
   async function remove(task: AutomationTask): Promise<void> {
     try {
-      preview = await previewDeleteAutomationTask(task.id);
+      preview = await previewDeleteAutomationTask(projectId, task.agentName);
     } catch (cause) {
       error = errorMessage(cause);
     }
@@ -354,9 +359,10 @@
   data-page-layout={editing ? 'editor' : 'document'}
   class={editing ? 'flex min-h-full flex-col lg:h-full lg:min-h-0 lg:overflow-hidden' : 'min-h-full'}
 >
-  <PageHeader title="自动化" description="管理自动化与执行结果">
+  <PageHeader title="自动化" description={`${project?.name || projectId} · ${t('管理自动化与执行结果')}`}>
     {#snippet actions()}
       {#if !editing}
+        <Button variant="outline" size="sm" onclick={() => navigate(projectPath)}>{t('返回项目')}</Button>
         <Button size="sm" onpointerenter={preloadMonaco} onfocus={preloadMonaco} onclick={beginCreate}>
           <Plus class="size-3.5" />
           {t('配置自动化')}
@@ -388,7 +394,7 @@
             <p class="mt-1 text-xs text-muted-foreground">{t('保存前预览项目变更')}</p>
           </div>
           <div class="flex gap-2">
-            <Button type="button" variant="outline" onclick={() => navigate('/automations')}>{t('取消')}</Button>
+            <Button type="button" variant="outline" onclick={() => navigate(listPath)}>{t('取消')}</Button>
             <Button type="button" variant="outline" onclick={validate}>{t('校验')}</Button>
             <Button type="submit" disabled={saving}>{t(saving ? '正在生成预览…' : '预览部署')}</Button>
           </div>
@@ -413,7 +419,7 @@
               >
                 <option value="">{t('请选择')}</option>
                 {#each availableAgents as agent (agent.id)}
-                  <option value={agent.id}>{agent.projectName} / {agent.name}</option>
+                  <option value={agent.id}>{agent.name}</option>
                 {/each}
               </select>
             </label>
@@ -519,10 +525,10 @@
     <AutomationCollection
       {tasks}
       {agents}
-      {projects}
+      {project}
       {loading}
       onRun={prepareRun}
-      onEdit={(task) => beginEdit(task.id)}
+      onEdit={beginEdit}
       onToggle={toggle}
       onRemove={remove}
     />

@@ -16,7 +16,7 @@
   let {
     tasks,
     agents,
-    projects,
+    project,
     loading,
     onRun,
     onEdit,
@@ -25,7 +25,7 @@
   }: {
     tasks: AutomationTask[];
     agents: AgentDefinition[];
-    projects: ProjectView[];
+    project: ProjectView | null;
     loading: boolean;
     onRun: (task: AutomationTask) => void;
     onEdit: (task: AutomationTask) => void;
@@ -36,39 +36,30 @@
   const params = new URLSearchParams(window.location.search);
   let query = $state(params.get('agent') ?? '');
   let statusFilter = $state<'all' | 'enabled' | 'disabled'>('enabled');
-  let projectFilter = $state(params.get('project') ?? 'all');
 
   const enabledCount = $derived(tasks.filter((task) => task.enabled).length);
   const disabledCount = $derived(tasks.length - enabledCount);
-  const projectOptions = $derived(
-    projects
-      .map((project) => [project.projectId, project.name] as const)
-      .sort((left, right) => left[1].localeCompare(right[1], 'zh-CN')),
-  );
-  const visibleTasks = $derived(filterTasks(tasks, query, statusFilter, projectFilter));
+  const visibleTasks = $derived(filterTasks(tasks, query, statusFilter));
 
   function agentForTask(task: AutomationTask): AgentDefinition | undefined {
     return agents.find((agent) => agent.projectId === task.projectId && agent.agentName === task.agentName);
   }
 
   function taskEditable(task: AutomationTask): boolean {
-    return projects.find((project) => project.projectId === task.projectId)?.editable ?? false;
+    return project?.projectId === task.projectId && project.editable;
   }
 
   function filterTasks(
     items: AutomationTask[],
     value: string,
     status: 'all' | 'enabled' | 'disabled',
-    projectId: string,
   ): AutomationTask[] {
     const normalized = value.trim().toLowerCase();
     return items
       .filter((task) => status === 'all' || task.enabled === (status === 'enabled'))
-      .filter((task) => projectId === 'all' || task.projectId === projectId)
       .filter((task) => {
-        const agent = agentForTask(task);
         return normalized
-          ? `${task.name} ${task.description} ${agent?.projectName ?? ''} ${task.agentName} ${task.id}`
+          ? `${task.name} ${task.description} ${project?.name ?? ''} ${task.agentName} ${task.id}`
               .toLowerCase()
               .includes(normalized)
           : true;
@@ -76,8 +67,8 @@
       .sort(
         (left, right) =>
           Number(right.enabled) - Number(left.enabled) ||
-          (agentForTask(left)?.projectName ?? left.projectId).localeCompare(
-            agentForTask(right)?.projectName ?? right.projectId,
+          (agentForTask(left)?.name ?? left.agentName).localeCompare(
+            agentForTask(right)?.name ?? right.agentName,
             'zh-CN',
           ) ||
           left.name.localeCompare(right.name, 'zh-CN'),
@@ -88,14 +79,6 @@
 <PageContent class="space-y-4">
   <div class="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 lg:flex-row lg:items-center">
     <Input bind:value={query} class="lg:max-w-sm" placeholder={t('搜索项目、智能体、自动化或 ID')} />
-    <select
-      class="h-9 rounded-lg border border-input bg-background px-3 text-sm lg:max-w-64"
-      bind:value={projectFilter}
-      aria-label={t('项目筛选')}
-    >
-      <option value="all">{t('全部项目')}</option>
-      {#each projectOptions as option (option[0])}<option value={option[0]}>{option[1]}</option>{/each}
-    </select>
     <div class="flex rounded-lg bg-muted p-1 lg:ml-auto" aria-label={t('自动化状态筛选')}>
       {#each [{ value: 'enabled', label: `${t('已启用')} ${enabledCount}` }, { value: 'disabled', label: `${t('已停用')} ${disabledCount}` }, { value: 'all', label: `${t('全部')} ${tasks.length}` }] as option (option.value)}
         <button
@@ -130,9 +113,12 @@
               <button
                 type="button"
                 class="max-w-full text-left"
-                onclick={() => navigate(`/projects/${task.projectId}/agents/${encodeURIComponent(task.agentName)}`)}
+                onclick={() =>
+                  navigate(
+                    `/projects/${encodeURIComponent(task.projectId)}/agents/${encodeURIComponent(task.agentName)}`,
+                  )}
               >
-                <div class="truncate font-medium">{taskAgent?.projectName || task.projectId.slice(0, 8)}</div>
+                <div class="truncate font-medium">{project?.name || task.projectId.slice(0, 8)}</div>
                 <div class="truncate text-xs text-muted-foreground">{taskAgent?.name || task.agentName}</div>
               </button>
             </td>
@@ -197,7 +183,7 @@
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <p class="truncate text-xs text-muted-foreground">
-              {taskAgent?.projectName || task.projectId.slice(0, 8)} / {taskAgent?.name || task.agentName}
+              {project?.name || task.projectId.slice(0, 8)} / {taskAgent?.name || task.agentName}
             </p>
             <h2 class="mt-1 truncate font-medium">{task.name}</h2>
           </div>

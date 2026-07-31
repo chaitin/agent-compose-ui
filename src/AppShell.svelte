@@ -59,7 +59,8 @@
     const path = router.path.replace(/\/+$/, '') || '/';
     let target = '';
     if (path === '/ui' || path === '/workbench') target = '/';
-    else if (path === '/automation-tasks') target = '/automations';
+    else if (path === '/automation-tasks' || path.startsWith('/automations')) target = '/projects';
+    else if (path.startsWith('/automation-runs')) target = '/projects';
     else if (path === '/agents') target = '/projects';
     else if (path.startsWith('/debug/runs/')) target = `/runs/${path.slice('/debug/runs/'.length)}/terminal`;
     if (target) router.replace(target);
@@ -116,6 +117,11 @@
   const p = $derived(router.path);
   const runDetailId = $derived(matchDetail('/runs', p));
   const sandboxDetailId = $derived(matchDetail('/sandboxes', p));
+
+  function projectSubroute(path: string, segment: 'automations' | 'automation-runs'): boolean {
+    const parts = path.split('/').filter(Boolean);
+    return parts[0] === 'projects' && Boolean(parts[1]) && parts[2] === segment;
+  }
 
   $effect(() => {
     void p;
@@ -190,12 +196,12 @@
       >
         {#if p === '/'}
           <Overview canWrite={auth.enabled} />
+        {:else if projectSubroute(p, 'automation-runs')}
+          <AutomationRunDetail />
+        {:else if projectSubroute(p, 'automations')}
+          <Automations />
         {:else if p.startsWith('/projects') || p.startsWith('/agents')}
           <Projects />
-        {:else if p.startsWith('/automation-runs/')}
-          <AutomationRunDetail />
-        {:else if p.startsWith('/automations')}
-          <Automations />
         {:else if p.startsWith('/events/')}
           <EventDetail canWrite={auth.enabled} />
         {:else if p.startsWith('/events')}

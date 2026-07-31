@@ -2,7 +2,6 @@
 import type { Component } from 'svelte';
 import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
 import FolderKanban from '@lucide/svelte/icons/folder-kanban';
-import CalendarClock from '@lucide/svelte/icons/calendar-clock';
 import Activity from '@lucide/svelte/icons/activity';
 import Webhook from '@lucide/svelte/icons/webhook';
 import Box from '@lucide/svelte/icons/box';
@@ -40,12 +39,6 @@ const navGroupDefinitions: NavGroup[] = [
         href: '/projects',
         icon: FolderKanban,
         match: (path) => startsWith('/projects')(path) || startsWith('/agents')(path),
-      },
-      {
-        label: '自动化',
-        href: '/automations',
-        icon: CalendarClock,
-        match: (path) => startsWith('/automations')(path) || startsWith('/automation-runs')(path),
       },
       {
         label: '运行记录',

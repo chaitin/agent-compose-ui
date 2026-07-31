@@ -61,7 +61,6 @@ scheduler.on('webhook.ui-regression.acceptance', 'ui-webhook-multi-conversation'
 const routes = [
   '/',
   '/projects',
-  '/automations',
   '/sandboxes',
   '/runs/unlinked',
   '/events',
@@ -312,24 +311,27 @@ async function setMonacoValue(page: Page, value: string): Promise<void> {
 
 async function configureWebhookAutomation(page: Page, script: string): Promise<void> {
   await ensureWebhookAcceptanceAgent(page);
-  await page.getByRole('button', { name: '自动化', exact: true }).click();
+  const projectResponse = await page.request.post('/agentcompose.v2.ProjectService/GetProject', {
+    data: { project: { name: 'ui-agents' }, includeSpec: true },
+  });
+  const projectBody = (await projectResponse.json()) as {
+    project: {
+      summary: { projectId: string };
+      schedulers: Array<{ agentName: string; displayName: string; triggerCount: number }>;
+      spec: { agents: Array<Record<string, unknown>> };
+    };
+  };
+  const scheduler = projectBody.project.schedulers.find((item) => item.displayName === webhookSchedulerDisplayName);
+  expect(scheduler).toBeTruthy();
+  await navigateInApp(
+    page,
+    `/projects/${encodeURIComponent(projectBody.project.summary.projectId)}/automations?agent=${encodeURIComponent(scheduler!.agentName)}`,
+  );
   await expect(page.getByRole('heading', { name: '自动化', exact: true })).toBeVisible();
   const taskRow = page.locator('tbody tr:visible, article:visible').filter({ hasText: webhookSchedulerDisplayName });
   if (!(await taskRow.isVisible())) await page.getByRole('button', { name: /^全部 \d+$/ }).click();
   await expect(taskRow).toBeVisible();
 
-  const schedulersResponse = await page.request.post('/agentcompose.v2.ProjectService/ListSchedulers', { data: {} });
-  const schedulers = (await schedulersResponse.json()) as {
-    schedulers: Array<{ projectId: string; agentName: string; displayName: string; triggerCount: number }>;
-  };
-  const scheduler = schedulers.schedulers.find((item) => item.displayName === webhookSchedulerDisplayName);
-  expect(scheduler).toBeTruthy();
-  const projectResponse = await page.request.post('/agentcompose.v2.ProjectService/GetProject', {
-    data: { project: { projectId: scheduler!.projectId }, includeSpec: true },
-  });
-  const projectBody = (await projectResponse.json()) as {
-    project: { spec: { agents: Array<Record<string, unknown>> } };
-  };
   const agents = projectBody.project.spec.agents.map((agent) => {
     const driver =
       (agent.driver as { name?: string; docker?: unknown } | undefined)?.name === 'docker'
@@ -363,9 +365,13 @@ async function configureWebhookAutomation(page: Page, script: string): Promise<v
 
   await expect
     .poll(async () => {
-      const response = await page.request.post('/agentcompose.v2.ProjectService/ListSchedulers', { data: {} });
-      const body = (await response.json()) as { schedulers: typeof schedulers.schedulers };
-      return body.schedulers.find((item) => item.displayName === webhookSchedulerDisplayName)?.triggerCount ?? 0;
+      const response = await page.request.post('/agentcompose.v2.ProjectService/GetProject', {
+        data: { project: { projectId: projectBody.project.summary.projectId } },
+      });
+      const body = (await response.json()) as { project: { schedulers: typeof projectBody.project.schedulers } };
+      return (
+        body.project.schedulers.find((item) => item.displayName === webhookSchedulerDisplayName)?.triggerCount ?? 0
+      );
     })
     .toBe(2);
 }
@@ -556,7 +562,7 @@ test('keeps product terminology concise and raw audit values in request details'
   });
 
   await login(page);
-  for (const route of ['/projects', '/automations', '/sandboxes', '/events', '/settings', '/audit']) {
+  for (const route of ['/projects', '/sandboxes', '/events', '/settings', '/audit']) {
     await navigateInApp(page, route);
     const visibleText = await page.locator('body').innerText();
     expect(visibleText).not.toMatch(
@@ -609,16 +615,7 @@ test('keeps primary pages within phone and tablet viewports', async ({ page }) =
     { width: 768, height: 1024 },
   ]) {
     await page.setViewportSize(viewport);
-    for (const route of [
-      '/',
-      '/projects',
-      '/automations',
-      '/sandboxes',
-      '/runs/unlinked',
-      '/events',
-      '/settings',
-      '/audit',
-    ]) {
+    for (const route of ['/', '/projects', '/sandboxes', '/runs/unlinked', '/events', '/settings', '/audit']) {
       await navigateInApp(page, route);
       await page.waitForTimeout(100);
       const dimensions = await page.evaluate(() => ({
@@ -1029,7 +1026,13 @@ test('loads the code editor only after intent and keeps the transition responsiv
   await page.waitForTimeout(500);
   expect(editorRequests, 'the overview should not preload Monaco').toEqual([]);
 
-  await navigateInApp(page, '/automations');
+  const projectsResponse = await page.request.get('/api/ui/v1/projects');
+  const projectsBody = (await projectsResponse.json()) as {
+    projects: Array<{ projectId: string; editable: boolean; agents: Array<unknown> }>;
+  };
+  const project = projectsBody.projects.find((item) => item.editable && item.agents.length > 0);
+  test.skip(!project, 'No editable Project with Agents is available');
+  await navigateInApp(page, `/projects/${encodeURIComponent(project!.projectId)}/automations`);
   const createButton = page.getByRole('button', { name: '配置自动化' });
   await createButton.hover();
   await page.waitForTimeout(500);
@@ -2433,15 +2436,16 @@ test('shows conversation send feedback before a stream request finishes', async 
   }
 });
 
-test('groups agents by project and prioritizes enabled automations', async ({ page }) => {
+test('keeps automations under their Project and prioritizes enabled tasks', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page);
   const projectResponse = await page.request.get('/api/ui/v1/projects');
   const projectBody = (await projectResponse.json()) as {
-    projects: Array<{ name: string; agents: Array<{ displayName: string }> }>;
+    projects: Array<{ projectId: string; name: string; agents: Array<{ displayName: string }> }>;
   };
   const project = projectBody.projects.find((item) => item.agents.length > 0);
   test.skip(!project, 'No Project with Agents is available');
+  await expect(page.getByRole('navigation').getByRole('button', { name: '自动化', exact: true })).toHaveCount(0);
   await navigateInApp(page, '/projects');
   await expect(page.getByRole('heading', { name: '项目', exact: true })).toBeVisible();
   await page.locator('aside').getByText(project!.name, { exact: true }).click();
@@ -2449,7 +2453,8 @@ test('groups agents by project and prioritizes enabled automations', async ({ pa
   await page.getByPlaceholder('搜索项目或智能体…').fill('__no_matching_project__');
   await expect(page.getByText('没有匹配的项目')).toBeVisible();
 
-  await navigateInApp(page, '/automations');
+  await navigateInApp(page, `/projects/${encodeURIComponent(project!.projectId)}/automations`);
+  await expect(page).toHaveURL(new RegExp(`/projects/${project!.projectId}/automations`));
   const automationFilters = page.getByLabel('自动化状态筛选');
   await expect(automationFilters.getByRole('button', { name: /已启用 \d+/, pressed: true })).toBeVisible();
   const automationRows = page.locator('tbody tr').filter({ has: page.getByText('已启用', { exact: true }) });
@@ -2480,7 +2485,7 @@ test('previews Agent automation as a Project deployment without applying it', as
 
   await navigateInApp(
     page,
-    `/automations/new?project=${encodeURIComponent(target!.project.projectId)}&agent=${encodeURIComponent(target!.agent.agentName)}`,
+    `/projects/${encodeURIComponent(target!.project.projectId)}/automations/new?agent=${encodeURIComponent(target!.agent.agentName)}`,
   );
   await expect(page.getByLabel('所属项目 / 智能体')).not.toHaveValue('');
   await page.getByLabel('名称').fill('Preview only automation');
@@ -2598,7 +2603,7 @@ test('keeps the automation editor usable on mobile', async ({ page }) => {
 
   await navigateInApp(
     page,
-    `/automations/new?project=${encodeURIComponent(target!.project.projectId)}&agent=${encodeURIComponent(target!.agent.agentName)}`,
+    `/projects/${encodeURIComponent(target!.project.projectId)}/automations/new?agent=${encodeURIComponent(target!.agent.agentName)}`,
   );
   await expect(page.getByLabel('所属项目 / 智能体')).not.toHaveValue('');
   await expect(page.getByRole('heading', { name: '基本信息', exact: true })).toBeVisible();
@@ -2628,12 +2633,17 @@ test('fills the owning Project and Agent when editing automation', async ({ page
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page);
   await page.evaluate(() => localStorage.removeItem('ac.automationConfigPaneWidth'));
-  await navigateInApp(page, '/automations');
+  const projects = (await (await page.request.get('/api/ui/v1/projects')).json()) as {
+    projects: Array<{ projectId: string; name: string }>;
+  };
+  const project = projects.projects.find((item) => item.name === 'ui-agents');
+  test.skip(!project, 'ui-agents Project is unavailable');
+  await navigateInApp(page, `/projects/${encodeURIComponent(project!.projectId)}/automations`);
   const row = page.locator('tbody tr').filter({ hasText: 'UI Agent Shell Regression' });
   await row.getByRole('button', { name: '编辑' }).click();
   const owner = page.getByLabel('所属项目 / 智能体');
   await expect(owner).not.toHaveValue('');
-  await expect(owner.locator('option:checked')).toContainText('ui-agents / LLM Shell Regression Agent');
+  await expect(owner.locator('option:checked')).toContainText('LLM Shell Regression Agent');
 
   const pane = page.locator('section[data-scroll-pane]');
   const handle = page.getByRole('button', { name: '调整配置栏宽度' });
@@ -2796,7 +2806,7 @@ test('preserves a Cron timezone through an automation deployment', async ({ page
     const { AgentSpec, ProjectSpec, SchedulerSpec, TriggerKind, TriggerSpec } =
       await import('/src/gen/agentcompose/v2/agentcompose_pb.ts');
     const projects = await listProjectViews();
-    const tasks = await listAutomationTasks();
+    const tasks = (await Promise.all(projects.map((project) => listAutomationTasks(project.projectId)))).flat();
     const target = tasks.find((task) =>
       projects.some(
         (project) =>
@@ -2849,8 +2859,8 @@ test('preserves a Cron timezone through an automation deployment', async ({ page
     let timezone = '';
     let operationError = '';
     try {
-      const detail = await getAutomationTask(target.id);
-      const preview = await previewAutomationTask({
+      const detail = await getAutomationTask(target.projectId, target.agentName);
+      const preview = await previewAutomationTask(target.projectId, target.agentName, {
         ...detail,
         name: `${detail.name} Timezone Roundtrip`,
         triggers: detail.configuredTriggers,
@@ -3295,7 +3305,13 @@ test('runs a real LLM conversation and an automation agent shell task', async ({
     await expect(chatPanel.getByRole('button', { name: '查看运行', exact: true }).last()).toBeVisible();
   }
 
-  await page.getByRole('button', { name: '自动化', exact: true }).click();
+  const automationProjects = (await (await page.request.get('/api/ui/v1/projects')).json()) as {
+    projects: Array<{ projectId: string; name: string }>;
+  };
+  const automationProject = automationProjects.projects.find((item) => item.name === 'ui-agents');
+  expect(automationProject).toBeTruthy();
+  const automationPath = `/projects/${encodeURIComponent(automationProject!.projectId)}/automations`;
+  await navigateInApp(page, automationPath);
   await expect(page.getByRole('heading', { name: '自动化' })).toBeVisible();
   const taskName = webhookSchedulerDisplayName;
   const taskRow = page.locator('tbody tr:visible, article:visible').filter({ hasText: taskName });
@@ -3321,12 +3337,15 @@ test('runs a real LLM conversation and an automation agent shell task', async ({
   if (await confirmDeployment.isEnabled()) await confirmDeployment.click();
   else {
     await deploymentDialog.getByRole('button', { name: '取消' }).click();
-    await navigateInApp(page, '/automations');
+    await navigateInApp(page, automationPath);
   }
   await expect(taskRow).toBeVisible({ timeout: 30_000 });
   const resumedAutomationRunId = process.env.AGENT_COMPOSE_E2E_RESUME_AUTOMATION_RUN_ID;
   if (resumedAutomationRunId) {
-    await navigateInApp(page, `/automation-runs/${resumedAutomationRunId}`);
+    await navigateInApp(
+      page,
+      `/projects/${encodeURIComponent(automationProject!.projectId)}/automation-runs/${encodeURIComponent(resumedAutomationRunId)}`,
+    );
   } else {
     await taskRow.getByRole('button', { name: '运行', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: '开始运行' }).click();

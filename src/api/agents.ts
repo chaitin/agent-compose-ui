@@ -60,18 +60,32 @@ export async function listAgentDefinitions(query = ''): Promise<AgentDefinition[
     const response = await projectClient.getProject({ project: projectById(summary.projectId), includeSpec: true });
     const project = response.project;
     if (!project) continue;
-    for (const agent of project.agents) {
-      const spec = project.spec?.agents.find((value) => value.name === agent.agentName);
-      const mapped = agentFromV2(project, agent, spec, presets);
-      if (
-        !query ||
-        `${mapped.name} ${mapped.agentName} ${mapped.description}`.toLowerCase().includes(query.toLowerCase())
-      ) {
-        result.push(mapped);
-      }
-    }
+    result.push(...agentDefinitionsFromProject(project, presets, query));
   }
   return result;
+}
+
+export async function listProjectAgentDefinitions(projectId: string, query = ''): Promise<AgentDefinition[]> {
+  const [response, presets] = await Promise.all([
+    projectClient.getProject({ project: projectById(projectId), includeSpec: true }),
+    listWorkspacePresets(),
+  ]);
+  if (!response.project) throw new Error('项目不存在');
+  return agentDefinitionsFromProject(response.project, presets, query);
+}
+
+function agentDefinitionsFromProject(project: Project, presets: WorkspacePreset[], query: string): AgentDefinition[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  return project.agents
+    .map((agent) => {
+      const spec = project.spec?.agents.find((value) => value.name === agent.agentName);
+      return agentFromV2(project, agent, spec, presets);
+    })
+    .filter(
+      (agent) =>
+        !normalizedQuery ||
+        `${agent.name} ${agent.agentName} ${agent.description}`.toLowerCase().includes(normalizedQuery),
+    );
 }
 
 async function listProjects() {

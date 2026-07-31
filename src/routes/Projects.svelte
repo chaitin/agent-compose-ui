@@ -779,7 +779,7 @@
             <button
               type="button"
               class="rounded-lg border border-border bg-card p-4 text-left transition-colors hover:bg-accent/40"
-              onclick={() => navigate(`/automations?project=${encodeURIComponent(selectedProject.projectId)}`)}
+              onclick={() => navigate(`/projects/${encodeURIComponent(selectedProject.projectId)}/automations`)}
             >
               <div class="text-xs text-muted-foreground">{t('自动化任务')}</div>
               <div class="mt-1 text-lg font-semibold">{selectedProject.schedulerCount}</div>
@@ -839,8 +839,8 @@
                       onclick={() =>
                         navigate(
                           selectedAgent.hasScheduler
-                            ? `/automations?project=${encodeURIComponent(selectedProject.projectId)}&agent=${encodeURIComponent(selectedAgent.agentName)}`
-                            : `/automations/new?project=${encodeURIComponent(selectedProject.projectId)}&agent=${encodeURIComponent(selectedAgent.agentName)}`,
+                            ? `/projects/${encodeURIComponent(selectedProject.projectId)}/automations?agent=${encodeURIComponent(selectedAgent.agentName)}`
+                            : `/projects/${encodeURIComponent(selectedProject.projectId)}/automations/new?agent=${encodeURIComponent(selectedAgent.agentName)}`,
                         )}>{t(selectedAgent.hasScheduler ? '管理自动化' : '配置自动化')}</Button
                     >{/if}
                   {#if selectedProject.editable}<Button

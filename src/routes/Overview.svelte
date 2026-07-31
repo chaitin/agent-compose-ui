@@ -101,15 +101,21 @@
       navigate(`/runs/${encodeURIComponent(activity.projectRunId)}`);
       return;
     }
-    if (activity.schedulerRunId) {
-      navigate(`/automation-runs/${encodeURIComponent(activity.schedulerRunId)}`);
+    if (activity.schedulerRunId && activity.projectId) {
+      navigate(
+        `/projects/${encodeURIComponent(activity.projectId)}/automation-runs/${encodeURIComponent(activity.schedulerRunId)}`,
+      );
       return;
     }
     if (activity.sandboxId) {
       navigate(`/sandboxes/${encodeURIComponent(activity.sandboxId)}`);
       return;
     }
-    navigate(activity.schedulerId ? `/automations/${encodeURIComponent(activity.schedulerId)}` : '/automations');
+    navigate(
+      activity.projectId
+        ? `/projects/${encodeURIComponent(activity.projectId)}/automations${activity.agentName ? `?agent=${encodeURIComponent(activity.agentName)}` : ''}`
+        : '/projects',
+    );
   }
 
   function onActivityKeydown(event: KeyboardEvent, activity: DashboardActivity): void {
