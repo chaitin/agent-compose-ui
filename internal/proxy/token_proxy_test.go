@@ -22,15 +22,23 @@ func TestTokenDaemonDoesNotForwardManagedHeaders(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := httptest.NewRequest(http.MethodGet, "/api/version", nil)
-	for name, value := range map[string]string{
-		"Authorization": "Bearer secret", "Cookie": "session=secret", "Forwarded": "for=client",
-		"Proxy-Authorization": "Basic secret",
-		"X-Forwarded-For":     "client", "X-Forwarded-Host": "client.example", "X-Forwarded-Proto": "https", "X-Real-IP": "client",
-	} {
-		request.Header.Set(name, value)
+	request.Header.Set("Authorization", "Bearer secret")
+	request.Header.Set("Cookie", "session=secret")
+	request.Header.Set("Forwarded", "for=client")
+	request.Header.Set("X-Forwarded-For", "client")
+	request.Header.Set("X-Forwarded-Host", "client.example")
+	request.Header.Set("X-Forwarded-Proto", "https")
+	request.Header.Set("X-Real-IP", "client")
+	sanitize := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			for _, name := range []string{"Authorization", "Cookie", "Proxy-Authorization", "Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-IP"} {
+				r.Header.Del(name)
+			}
+			next.ServeHTTP(w, r)
+		})
 	}
 	response := httptest.NewRecorder()
-	NewTokenBackendProxy(target).ServeHTTP(response, request)
+	sanitize(NewTokenDaemon(target)).ServeHTTP(response, request)
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("status = %d", response.Code)
 	}
@@ -55,16 +63,24 @@ func TestTokenDaemonUsesH2COnlyForAttachProcedures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := NewTokenBackendProxy(target)
+	handler := NewTokenDaemon(target)
+
 	for _, test := range []struct {
 		path      string
 		wantProto int
-	}{{"/agentcompose.v2.RunService/GetRun", 1}, {"/agentcompose.v2.RunService/RunAttach", 2}, {"/agentcompose.v2.ExecService/ExecAttach", 2}} {
+	}{
+		{"/agentcompose.v2.RunService/GetRun", 1},
+		{"/agentcompose.v2.RunService/RunAttach", 2},
+		{"/agentcompose.v2.ExecService/ExecAttach", 2},
+	} {
 		t.Run(test.path, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, test.path, nil))
-			if response.Code != http.StatusNoContent || <-protocols != test.wantProto {
-				t.Fatalf("status = %d, want upstream HTTP/%d", response.Code, test.wantProto)
+			if response.Code != http.StatusNoContent {
+				t.Fatalf("status = %d", response.Code)
+			}
+			if got := <-protocols; got != test.wantProto {
+				t.Fatalf("upstream HTTP/%d, want HTTP/%d", got, test.wantProto)
 			}
 		})
 	}

@@ -16,12 +16,9 @@ concurrency:
   group: image-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/agent-compose-ui
-
 jobs:
   image:
-    name: Build and push UI image
+    name: Build and push image
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,7 +29,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE }}
+          images: ghcr.io/${{ github.repository_owner }}/agent-compose-ui
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -50,8 +47,10 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: nginx/Dockerfile
+          file: docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=agent-compose-ui
+          cache-to: type=gha,scope=agent-compose-ui,mode=max

@@ -1,0 +1,70 @@
+# nginx server config template. The official nginx image runs envsubst on this
+# file at container start. This configuration contains no application secrets;
+# upstream configuration is consumed by the loopback Go gateway instead.
+# nginx builtin variables ($host, $uri, $remote_addr, $upstream_*) are NOT in
+# the container env and are therefore left untouched.
+
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  '' close;
+}
+
+server {
+  listen 80;
+  server_name _;
+  client_max_body_size 10m;
+
+  root /usr/share/nginx/html;
+  index index.html;
+
+  gzip on;
+  gzip_comp_level 5;
+  gzip_min_length 1024;
+  gzip_types text/plain text/css application/javascript application/json application/wasm image/svg+xml;
+
+  # Token management is a browser-facing management API. Authentication and
+  # RBAC are provided by the deployment gateway in front of this container.
+  location /ui-api/ {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_http_version 1.1;
+  }
+
+  # Explicit backend boundary. Authentication, upstream selection, and secret
+  # injection are owned by the loopback Go gateway, never by nginx or the SPA.
+  location ~ ^/(agentcompose\.v[12]\.|health\.v1\.|api/|oauth/|agent-compose/session/|jupyter(?:/|$)) {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_http_version 1.1;
+    proxy_buffering off;
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+  }
+
+  # The gateway replaces any browser-supplied script token with its server-side
+  # credential before forwarding to the script service.
+  location /script-api/ {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_http_version 1.1;
+    proxy_read_timeout 60s;
+    proxy_send_timeout 60s;
+  }
+
+  # SPA fallback: static assets and client-side routes never require auth at
+  # nginx; the UI login gate and gateway protect backend data.
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+}

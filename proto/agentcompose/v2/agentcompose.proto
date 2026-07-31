@@ -1,0 +1,1713 @@
+syntax = "proto3";
+
+package agentcompose.v2;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "agent-compose/proto/agentcompose/v2;agentcomposev2";
+
+service ProjectService {
+  rpc ValidateProject(ValidateProjectRequest) returns (ValidateProjectResponse);
+  rpc ApplyProject(ApplyProjectRequest) returns (ApplyProjectResponse);
+  rpc GetProject(GetProjectRequest) returns (GetProjectResponse);
+  rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
+  rpc RemoveProject(RemoveProjectRequest) returns (RemoveProjectResponse);
+  rpc WatchProject(WatchProjectRequest) returns (stream WatchProjectResponse);
+  rpc GetScheduler(GetSchedulerRequest) returns (GetSchedulerResponse);
+  rpc ListSchedulers(ListSchedulersRequest) returns (ListSchedulersResponse);
+  rpc ListSchedulerEvents(ListSchedulerEventsRequest) returns (ListSchedulerEventsResponse);
+  rpc RunScheduler(RunSchedulerRequest) returns (RunSchedulerResponse);
+  rpc StartSchedulerRun(StartSchedulerRunRequest) returns (StartSchedulerRunResponse);
+  rpc GetSchedulerRun(GetSchedulerRunRequest) returns (GetSchedulerRunResponse);
+  rpc ListSchedulerRuns(ListSchedulerRunsRequest) returns (ListSchedulerRunsResponse);
+  rpc StopSchedulerRun(StopSchedulerRunRequest) returns (StopSchedulerRunResponse);
+  rpc SetSchedulerEnabled(SetSchedulerEnabledRequest) returns (SetSchedulerEnabledResponse);
+  rpc SetSchedulerTriggerEnabled(SetSchedulerTriggerEnabledRequest) returns (SetSchedulerTriggerEnabledResponse);
+}
+
+service RunService {
+  rpc RunAgent(RunAgentRequest) returns (RunAgentResponse);
+  rpc StartRun(StartRunRequest) returns (StartRunResponse);
+  // Stable server-stream projection of RunAgent for non-interactive stream views.
+  // Interactive clients that need stdin, resize, signal, or multi-turn prompt
+  // attachment should use RunAttach.
+  rpc RunAgentStream(RunAgentRequest) returns (stream RunAgentStreamResponse);
+  rpc RunAttach(stream RunAttachRequest) returns (stream RunAttachResponse);
+  rpc GetRun(GetRunRequest) returns (GetRunResponse);
+  rpc ListRuns(ListRunsRequest) returns (ListRunsResponse);
+  rpc FollowRunLogs(FollowRunLogsRequest) returns (stream RunLogChunk);
+  rpc StopRun(StopRunRequest) returns (StopRunResponse);
+  rpc ListRunEvents(ListRunEventsRequest) returns (ListRunEventsResponse);
+  rpc ListSandboxRunEvents(ListSandboxRunEventsRequest) returns (ListSandboxRunEventsResponse);
+}
+
+service ExecService {
+  rpc Exec(ExecRequest) returns (ExecResponse);
+  // Stable server-stream projection of Exec for non-interactive stream views.
+  // Interactive clients that need stdin, resize, or signal attachment should use
+  // ExecAttach.
+  rpc ExecStream(ExecRequest) returns (stream ExecStreamResponse);
+  rpc ExecAttach(stream ExecAttachRequest) returns (stream ExecAttachResponse);
+}
+
+service ImageService {
+  rpc ListImages(ListImagesRequest) returns (ListImagesResponse);
+  rpc PullImage(PullImageRequest) returns (PullImageResponse);
+  rpc InspectImage(InspectImageRequest) returns (InspectImageResponse);
+  rpc RemoveImage(RemoveImageRequest) returns (RemoveImageResponse);
+  rpc BuildImage(BuildImageRequest) returns (stream BuildImageEvent);
+}
+
+service CacheService {
+  rpc ListCaches(ListCachesRequest) returns (ListCachesResponse);
+  rpc InspectCache(InspectCacheRequest) returns (InspectCacheResponse);
+  rpc PruneCaches(PruneCachesRequest) returns (PruneCachesResponse);
+  rpc RemoveCache(RemoveCacheRequest) returns (RemoveCacheResponse);
+}
+
+service VolumeService {
+  rpc ListVolumes(ListVolumesRequest) returns (ListVolumesResponse);
+  rpc CreateVolume(CreateVolumeRequest) returns (CreateVolumeResponse);
+  rpc InspectVolume(InspectVolumeRequest) returns (InspectVolumeResponse);
+  rpc RemoveVolume(RemoveVolumeRequest) returns (RemoveVolumeResponse);
+  rpc PruneVolumes(PruneVolumesRequest) returns (PruneVolumesResponse);
+}
+
+service SandboxService {
+  rpc RemoveSandbox(RemoveSandboxRequest) returns (RemoveSandboxResponse);
+  rpc GetSandboxStats(GetSandboxStatsRequest) returns (GetSandboxStatsResponse);
+  rpc GetSandbox(GetSandboxRequest) returns (GetSandboxResponse);
+  rpc StopSandbox(StopSandboxRequest) returns (StopSandboxResponse);
+  rpc ResumeSandbox(ResumeSandboxRequest) returns (ResumeSandboxResponse);
+  rpc ListSandboxes(ListSandboxesRequest) returns (ListSandboxesResponse);
+  rpc ListSandboxHistory(ListSandboxHistoryRequest) returns (ListSandboxHistoryResponse);
+  rpc WatchSandbox(WatchSandboxRequest) returns (stream WatchSandboxResponse);
+}
+
+service DashboardService {
+  rpc GetDashboardOverview(GetDashboardOverviewRequest) returns (GetDashboardOverviewResponse);
+  rpc WatchDashboardOverview(WatchDashboardOverviewRequest) returns (stream WatchDashboardOverviewResponse);
+}
+
+service SettingsService {
+  rpc GetGlobalEnv(GetGlobalEnvRequest) returns (GetGlobalEnvResponse);
+  rpc UpdateGlobalEnv(UpdateGlobalEnvRequest) returns (UpdateGlobalEnvResponse);
+  rpc GetCapabilityGatewayConfig(GetCapabilityGatewayConfigRequest) returns (GetCapabilityGatewayConfigResponse);
+  rpc UpdateCapabilityGatewayConfig(UpdateCapabilityGatewayConfigRequest) returns (UpdateCapabilityGatewayConfigResponse);
+  rpc ListWorkspacePresets(ListWorkspacePresetsRequest) returns (ListWorkspacePresetsResponse);
+  rpc CreateWorkspacePreset(CreateWorkspacePresetRequest) returns (WorkspacePresetResponse);
+  rpc UpdateWorkspacePreset(UpdateWorkspacePresetRequest) returns (WorkspacePresetResponse);
+  rpc DeleteWorkspacePreset(DeleteWorkspacePresetRequest) returns (DeleteWorkspacePresetResponse);
+}
+
+service CapabilityService {
+  rpc GetCapabilityStatus(GetCapabilityStatusRequest) returns (CapabilityStatusResponse);
+  rpc ListCapabilitySets(ListCapabilitySetsRequest) returns (ListCapabilitySetsResponse);
+  rpc GetCapabilityCatalog(GetCapabilityCatalogRequest) returns (GetCapabilityCatalogResponse);
+}
+
+enum ProjectValidationSeverity {
+  PROJECT_VALIDATION_SEVERITY_UNSPECIFIED = 0;
+  PROJECT_VALIDATION_SEVERITY_WARNING = 1;
+  PROJECT_VALIDATION_SEVERITY_ERROR = 2;
+}
+
+enum ProjectChangeAction {
+  PROJECT_CHANGE_ACTION_UNSPECIFIED = 0;
+  PROJECT_CHANGE_ACTION_CREATED = 1;
+  PROJECT_CHANGE_ACTION_UPDATED = 2;
+  PROJECT_CHANGE_ACTION_REMOVED = 3;
+  PROJECT_CHANGE_ACTION_UNCHANGED = 4;
+}
+
+enum ProjectWatchEventType {
+  PROJECT_WATCH_EVENT_TYPE_UNSPECIFIED = 0;
+  PROJECT_WATCH_EVENT_TYPE_APPLIED = 1;
+  PROJECT_WATCH_EVENT_TYPE_REMOVED = 2;
+  PROJECT_WATCH_EVENT_TYPE_CHANGED = 3;
+}
+
+enum RunStatus {
+  RUN_STATUS_UNSPECIFIED = 0;
+  RUN_STATUS_PENDING = 1;
+  RUN_STATUS_RUNNING = 2;
+  RUN_STATUS_SUCCEEDED = 3;
+  RUN_STATUS_FAILED = 4;
+  RUN_STATUS_CANCELED = 5;
+}
+
+enum RunSource {
+  RUN_SOURCE_UNSPECIFIED = 0;
+  RUN_SOURCE_MANUAL = 1;
+  RUN_SOURCE_SCHEDULER = 2;
+  RUN_SOURCE_API = 3;
+}
+
+enum SchedulerRunStatus {
+  SCHEDULER_RUN_STATUS_UNSPECIFIED = 0;
+  SCHEDULER_RUN_STATUS_RUNNING = 1;
+  SCHEDULER_RUN_STATUS_SUCCEEDED = 2;
+  SCHEDULER_RUN_STATUS_FAILED = 3;
+  SCHEDULER_RUN_STATUS_CANCELED = 4;
+  SCHEDULER_RUN_STATUS_SKIPPED = 5;
+}
+
+enum AgentStatus {
+  AGENT_STATUS_UNSPECIFIED = 0;
+  AGENT_STATUS_ENABLED = 1;
+  AGENT_STATUS_DISABLED = 2;
+}
+
+enum ProjectAgentAvailability {
+  PROJECT_AGENT_AVAILABILITY_UNSPECIFIED = 0;
+  PROJECT_AGENT_AVAILABILITY_AVAILABLE = 1;
+  PROJECT_AGENT_AVAILABILITY_UNAVAILABLE = 2;
+  PROJECT_AGENT_AVAILABILITY_VALIDATION_FAILED = 3;
+}
+
+enum ProjectAgentHealth {
+  PROJECT_AGENT_HEALTH_UNSPECIFIED = 0;
+  PROJECT_AGENT_HEALTH_HEALTHY = 1;
+  PROJECT_AGENT_HEALTH_AT_RISK = 2;
+}
+
+enum RunEventKind {
+  RUN_EVENT_KIND_UNSPECIFIED = 0;
+  RUN_EVENT_KIND_USER_MESSAGE = 1;
+  RUN_EVENT_KIND_AGENT_MESSAGE = 2;
+  RUN_EVENT_KIND_AGENT_ACTIVITY = 3;
+  RUN_EVENT_KIND_STATUS = 4;
+}
+
+enum RunAgentStreamEventType {
+  RUN_AGENT_STREAM_EVENT_TYPE_UNSPECIFIED = 0;
+  RUN_AGENT_STREAM_EVENT_TYPE_STARTED = 1;
+  RUN_AGENT_STREAM_EVENT_TYPE_OUTPUT = 2;
+  RUN_AGENT_STREAM_EVENT_TYPE_STATUS = 3;
+  RUN_AGENT_STREAM_EVENT_TYPE_COMPLETED = 4;
+}
+
+enum RunSandboxCleanupPolicy {
+  reserved "RUN_SESSION_CLEANUP_POLICY_UNSPECIFIED";
+  reserved "RUN_SESSION_CLEANUP_POLICY_STOP_ON_COMPLETION";
+  reserved "RUN_SESSION_CLEANUP_POLICY_KEEP_RUNNING";
+  reserved "RUN_SESSION_CLEANUP_POLICY_REMOVE_ON_COMPLETION";
+
+  RUN_SANDBOX_CLEANUP_POLICY_UNSPECIFIED = 0;
+  RUN_SANDBOX_CLEANUP_POLICY_STOP_ON_COMPLETION = 1;
+  RUN_SANDBOX_CLEANUP_POLICY_KEEP_RUNNING = 2;
+  RUN_SANDBOX_CLEANUP_POLICY_REMOVE_ON_COMPLETION = 3;
+}
+
+enum ExecStreamEventType {
+  EXEC_STREAM_EVENT_TYPE_UNSPECIFIED = 0;
+  EXEC_STREAM_EVENT_TYPE_STARTED = 1;
+  EXEC_STREAM_EVENT_TYPE_OUTPUT = 2;
+  EXEC_STREAM_EVENT_TYPE_COMPLETED = 3;
+}
+
+enum AttachRunMode {
+  ATTACH_RUN_MODE_UNSPECIFIED = 0;
+  ATTACH_RUN_MODE_COMMAND = 1;
+  ATTACH_RUN_MODE_PROMPT = 2;
+}
+
+enum StdioStream {
+  STDIO_STREAM_UNSPECIFIED = 0;
+  STDIO_STREAM_STDOUT = 1;
+  STDIO_STREAM_STDERR = 2;
+}
+
+enum ImageStoreKind {
+  IMAGE_STORE_KIND_UNSPECIFIED = 0;
+  IMAGE_STORE_KIND_DOCKER_DAEMON = 1;
+  IMAGE_STORE_KIND_OCI_CACHE = 2;
+}
+
+enum ImageAvailabilityStatus {
+  IMAGE_AVAILABILITY_STATUS_UNSPECIFIED = 0;
+  IMAGE_AVAILABILITY_STATUS_AVAILABLE = 1;
+  IMAGE_AVAILABILITY_STATUS_MISSING = 2;
+  IMAGE_AVAILABILITY_STATUS_ERROR = 3;
+}
+
+enum ImageOperationStatus {
+  IMAGE_OPERATION_STATUS_UNSPECIFIED = 0;
+  IMAGE_OPERATION_STATUS_SUCCEEDED = 1;
+  IMAGE_OPERATION_STATUS_FAILED = 2;
+  IMAGE_OPERATION_STATUS_RUNNING = 3;
+}
+
+enum MetricStatus {
+  METRIC_STATUS_UNSPECIFIED = 0;
+  METRIC_STATUS_OK = 1;
+  METRIC_STATUS_UNKNOWN = 2;
+  METRIC_STATUS_UNAVAILABLE = 3;
+}
+
+enum CacheDomain {
+  reserved "CACHE_DOMAIN_SESSION_EPHEMERAL_STATE";
+
+  CACHE_DOMAIN_UNSPECIFIED = 0;
+  CACHE_DOMAIN_OCI_IMAGE_STORE = 1;
+  CACHE_DOMAIN_MATERIALIZED_IMAGE_CACHE = 2;
+  CACHE_DOMAIN_RUNTIME_DERIVED_CACHE = 3;
+  CACHE_DOMAIN_SANDBOX_EPHEMERAL_STATE = 4;
+}
+
+enum CacheStatus {
+  CACHE_STATUS_UNSPECIFIED = 0;
+  CACHE_STATUS_ACTIVE = 1;
+  CACHE_STATUS_REFERENCED = 2;
+  CACHE_STATUS_UNUSED = 3;
+  CACHE_STATUS_EXPIRED = 4;
+  CACHE_STATUS_ORPHANED = 5;
+  CACHE_STATUS_UNKNOWN = 6;
+}
+
+message ValidateProjectRequest {
+  ProjectSpec spec = 1;
+  ProjectSource source = 2;
+  string expected_spec_hash = 3;
+}
+
+message ValidateProjectResponse {
+  bool valid = 1;
+  repeated ProjectValidationIssue issues = 2;
+  string spec_hash = 3;
+}
+
+message ApplyProjectRequest {
+  ProjectSpec spec = 1;
+  ProjectSource source = 2;
+  string expected_spec_hash = 3;
+  bool dry_run = 4;
+}
+
+message ApplyProjectResponse {
+  Project project = 1;
+  ProjectRevision revision = 2;
+  repeated ProjectChange changes = 3;
+  repeated ProjectValidationIssue issues = 4;
+  bool applied = 5;
+  bool unchanged = 6;
+}
+
+message GetProjectRequest {
+  ProjectRef project = 1;
+  bool include_spec = 2;
+}
+
+message GetProjectResponse {
+  Project project = 1;
+}
+
+message ListProjectsRequest {
+  string query = 1;
+  bool include_removed = 2;
+  uint32 offset = 3;
+  uint32 limit = 4;
+}
+
+message ListProjectsResponse {
+  repeated ProjectSummary projects = 1;
+  uint32 total_count = 2;
+  bool has_more = 3;
+  uint32 next_offset = 4;
+}
+
+message RemoveProjectRequest {
+  reserved "stop_running_sessions";
+
+  ProjectRef project = 1;
+  bool remove_history = 2;
+  bool stop_running_sandboxes = 3;
+}
+
+message RemoveProjectResponse {
+  Project project = 1;
+  repeated ProjectChange changes = 2;
+}
+
+message WatchProjectRequest {
+  ProjectRef project = 1;
+}
+
+message WatchProjectResponse {
+  ProjectWatchEventType type = 1;
+  Project project = 2;
+  ProjectRevision revision = 3;
+  repeated ProjectChange changes = 4;
+}
+
+message ProjectRef {
+  string project_id = 1;
+  string name = 2;
+  string source_path = 3;
+}
+
+message ProjectSource {
+  string compose_path = 1;
+  string project_dir = 2;
+}
+
+message Project {
+  ProjectSummary summary = 1;
+  ProjectSpec spec = 2;
+  repeated ProjectAgent agents = 3;
+  repeated ProjectScheduler schedulers = 4;
+}
+
+message ProjectSummary {
+  string project_id = 1;
+  string name = 2;
+  string source_path = 3;
+  uint64 current_revision = 4;
+  string spec_hash = 5;
+  uint32 agent_count = 6;
+  uint32 scheduler_count = 7;
+  uint32 running_run_count = 8;
+  string latest_run_id = 9;
+  string created_at = 10;
+  string updated_at = 11;
+  string removed_at = 12;
+}
+
+message ProjectRevision {
+  string project_id = 1;
+  uint64 revision = 2;
+  string spec_hash = 3;
+  ProjectSpec spec = 4;
+  string created_at = 5;
+}
+
+message ProjectAgent {
+  string project_id = 1;
+  string agent_name = 2;
+  string managed_agent_id = 3;
+  string provider = 4;
+  string model = 5;
+  string image = 6;
+  string driver = 7;
+  bool scheduler_enabled = 8;
+  bool enabled = 9;
+  ProjectAgentAvailability availability = 10;
+  ProjectAgentHealth health = 11;
+  ProjectAgentCurrentRun current_run = 12;
+  ProjectAgentLatestRun latest_run = 13;
+}
+
+message ProjectAgentCurrentRun {
+  string text = 1;
+  uint32 running_run_count = 2;
+  uint32 running_scheduler_run_count = 3;
+}
+
+message ProjectAgentLatestRun {
+  string run_id = 1;
+  RunStatus status = 2;
+  RunSource source = 3;
+  google.protobuf.Timestamp at = 4;
+}
+
+message ProjectScheduler {
+  reserved 4;
+  reserved "managed_loader_id";
+
+  string project_id = 1;
+  string agent_name = 2;
+  string scheduler_id = 3;
+  bool enabled = 5;
+  uint32 trigger_count = 6;
+}
+
+message GetSchedulerRequest {
+  ProjectRef project = 1;
+  string agent_name = 2;
+}
+
+message GetSchedulerResponse {
+  ProjectScheduler scheduler = 1;
+  SchedulerSpec spec = 2;
+  repeated ResolvedTrigger triggers = 3;
+  bool overridden = 4;
+}
+
+message ResolvedTrigger {
+  TriggerSpec spec = 1;
+  string trigger_id = 2;
+  bool enabled = 3;
+  bool overridden = 4;
+  google.protobuf.Timestamp next_fire_at = 5;
+  google.protobuf.Timestamp last_fired_at = 6;
+}
+
+message ListSchedulersRequest {
+  string query = 1;
+  uint32 limit = 2;
+  string cursor = 3;
+}
+
+message SchedulerSummary {
+  string project_id = 1;
+  string agent_name = 2;
+  string scheduler_id = 3;
+  bool enabled = 4;
+  uint32 trigger_count = 5;
+  uint32 run_count = 6;
+  google.protobuf.Timestamp latest_run_at = 7;
+  string last_error = 8;
+}
+
+message ListSchedulersResponse {
+  repeated SchedulerSummary schedulers = 1;
+  string next_cursor = 2;
+}
+
+message ListSchedulerEventsRequest {
+  ProjectRef project = 1;
+  string agent_name = 2;
+  uint32 limit = 3;
+  string cursor = 4;
+}
+
+message SchedulerEvent {
+  string id = 1;
+  string type = 2;
+  string level = 3;
+  string message = 4;
+  string payload_json = 5;
+  string run_id = 6;
+  string trigger_id = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message ListSchedulerEventsResponse {
+  repeated SchedulerEvent events = 1;
+  string next_cursor = 2;
+}
+
+message RunSchedulerRequest {
+  ProjectRef project = 1;
+  string agent_name = 2;
+  string trigger_id = 3;
+  string payload_json = 4;
+}
+
+message RunSchedulerResponse {
+  SchedulerRun run = 1;
+}
+
+message StartSchedulerRunRequest {
+  ProjectRef project = 1;
+  string agent_name = 2;
+  string trigger_id = 3;
+  string payload_json = 4;
+}
+
+message StartSchedulerRunResponse {
+  SchedulerRun run = 1;
+}
+
+message GetSchedulerRunRequest {
+  ProjectRef project = 1;
+  string run_id = 2;
+}
+
+message GetSchedulerRunResponse {
+  SchedulerRun run = 1;
+}
+
+message ListSchedulerRunsRequest {
+  ProjectRef project = 1;
+  string agent_name = 2;
+  uint32 limit = 3;
+  string cursor = 4;
+}
+
+message ListSchedulerRunsResponse {
+  repeated SchedulerRun runs = 1;
+  string next_cursor = 2;
+}
+
+message StopSchedulerRunRequest {
+  ProjectRef project = 1;
+  string run_id = 2;
+  string reason = 3;
+}
+
+message StopSchedulerRunResponse {
+  SchedulerRun run = 1;
+  bool stop_requested = 2;
+}
+
+message SchedulerRun {
+  string run_id = 1;
+  string project_id = 2;
+  string agent_name = 3;
+  string scheduler_id = 4;
+  string trigger_id = 5;
+  string trigger_kind = 6;
+  string trigger_source = 7;
+  SchedulerRunStatus status = 8;
+  google.protobuf.Timestamp started_at = 9;
+  google.protobuf.Timestamp completed_at = 10;
+  int64 duration_ms = 11;
+  string error = 12;
+  string result_json = 13;
+  string payload_json = 14;
+  string source_script_sha256 = 15;
+  string artifacts_dir = 16;
+}
+
+message SetSchedulerEnabledRequest {
+  ProjectRef project = 1;
+  string agent_name = 2;
+  bool enabled = 3;
+}
+
+message SetSchedulerEnabledResponse {
+  ProjectScheduler scheduler = 1;
+  bool overridden = 2;
+}
+
+message SetSchedulerTriggerEnabledRequest {
+  ProjectRef project = 1;
+  string agent_name = 2;
+  string trigger_id = 3;
+  bool enabled = 4;
+}
+
+message SetSchedulerTriggerEnabledResponse {
+  ResolvedTrigger trigger = 1;
+}
+
+message ProjectValidationIssue {
+  ProjectValidationSeverity severity = 1;
+  string path = 2;
+  string message = 3;
+}
+
+message ProjectChange {
+  ProjectChangeAction action = 1;
+  string resource_type = 2;
+  string resource_id = 3;
+  string name = 4;
+  string message = 5;
+}
+
+message ProjectSpec {
+  string name = 1;
+  repeated EnvVarSpec variables = 2;
+  reserved 3;
+  reserved "workspace";
+  repeated AgentSpec agents = 4;
+  NetworkSpec network = 5;
+  repeated ProjectVolumeSpec volumes = 6;
+  repeated NamedWorkspaceSpec workspaces = 7;
+  repeated MCPServerSpec mcps = 8;
+}
+
+message NamedWorkspaceSpec {
+  string name = 1;
+  WorkspaceSpec workspace = 2;
+}
+
+message AgentSpec {
+  string name = 1;
+  string provider = 2;
+  string model = 3;
+  string system_prompt = 4;
+  string image = 5;
+  DriverSpec driver = 6;
+  repeated EnvVarSpec env = 7;
+  WorkspaceSpec workspace = 8;
+  SchedulerSpec scheduler = 9;
+  repeated string capset_ids = 10;
+  JupyterSpec jupyter = 11;
+  BuildSpec build = 12;
+  repeated VolumeMountSpec volumes = 13;
+  repeated MCPServerSpec mcps = 14;
+  repeated SkillSpec skills = 15;
+  AgentStatus status = 16;
+}
+
+message MCPServerSpec {
+  string name = 1;
+  string type = 2;
+  string transport = 3;
+  string command = 4;
+  repeated string args = 5;
+  repeated EnvVarSpec env = 6;
+  string url = 7;
+  repeated EnvVarSpec headers = 8;
+}
+
+message ProjectVolumeSpec {
+  string key = 1;
+  string name = 2;
+  string driver = 3;
+  bool external = 4;
+  map<string, string> labels = 5;
+  map<string, string> options = 6;
+}
+
+message VolumeMountSpec {
+  string type = 1;
+  string source = 2;
+  string target = 3;
+  bool read_only = 4;
+}
+
+message BuildSpec {
+  string context = 1;
+  string dockerfile = 2;
+  string target = 3;
+  map<string, string> args = 4;
+  repeated string platforms = 5;
+  repeated string tags = 6;
+  bool no_cache = 7;
+  bool pull = 8;
+}
+
+message EnvVarSpec {
+  string name = 1;
+  string value = 2;
+  bool secret = 3;
+}
+
+message EnvVarUpdateSpec {
+  string name = 1;
+  optional string value = 2;
+  bool secret = 3;
+}
+
+message WorkspaceSpec {
+  string provider = 1;
+  string url = 2;
+  string branch = 3;
+  string path = 4;
+  string name = 5;
+}
+
+message NetworkSpec {
+  string mode = 1;
+}
+
+message SchedulerSpec {
+  bool enabled = 1;
+  repeated TriggerSpec triggers = 2;
+  string script = 3;
+  string sandbox_policy = 4;
+}
+
+message TriggerSpec {
+  string name = 1;
+  string kind = 2;
+  string cron = 3;
+  string interval = 4;
+  string timeout = 5;
+  EventTriggerSpec event = 6;
+  string prompt = 7;
+  string sandbox_policy = 8;
+}
+
+message EventTriggerSpec {
+  string topic = 1;
+}
+
+message DriverSpec {
+  string name = 1;
+  BoxliteDriverSpec boxlite = 2;
+  DockerDriverSpec docker = 3;
+  MicrosandboxDriverSpec microsandbox = 4;
+}
+
+message BoxliteDriverSpec {
+  string kernel = 1;
+  string rootfs = 2;
+}
+
+message DockerDriverSpec {
+  string host = 1;
+}
+
+message MicrosandboxDriverSpec {
+  string profile = 1;
+}
+
+message RunAgentRequest {
+  reserved 5;
+  reserved "session_id";
+
+  string project_id = 1;
+  string agent_name = 2;
+  string prompt = 3;
+  RunSource source = 4;
+  repeated EnvVarSpec env = 6;
+  RunSandboxCleanupPolicy cleanup_policy = 7;
+  string scheduler_id = 8;
+  string trigger_id = 9;
+  string output_schema_json = 10;
+  string client_request_id = 11;
+  string command = 12;
+  RunJupyterSpec jupyter = 13;
+  string driver = 14;
+  string sandbox_id = 15;
+  repeated VolumeMountSpec volumes = 16;
+  string payload_json = 17;
+}
+
+message RunAgentResponse {
+  RunDetail run = 1;
+  repeated string warnings = 2;
+}
+
+message RunAgentStreamResponse {
+  RunAgentStreamEventType event_type = 1;
+  RunSummary run = 2;
+  string run_id = 3;
+  string chunk = 4;
+  StdioStream stream = 5;
+  string created_at = 6;
+  repeated string warnings = 7;
+  TranscriptEvent transcript = 8;
+}
+
+message RunAttachRequest {
+  string client_frame_id = 15;
+
+  oneof frame {
+    RunAttachStart start = 1;
+    AttachStdin stdin = 2;
+    AttachStdinEOF stdin_eof = 3;
+    AttachResize resize = 4;
+    AttachSignal signal = 5;
+    AttachHumanMessage human_message = 6;
+    AttachCancel cancel = 7;
+  }
+}
+
+message RunAttachResponse {
+  string server_frame_id = 15;
+  string created_at = 16;
+
+  oneof frame {
+    AttachStarted started = 1;
+    AttachOutput output = 2;
+    AttachAgentEvent agent_event = 3;
+    AttachAgentTurnCompleted agent_turn_completed = 4;
+    AttachResult result = 5;
+    AttachError error = 6;
+  }
+}
+
+message RunAttachStart {
+  RunAgentRequest request = 1;
+  AttachRunMode mode = 2;
+  bool attach_stdin = 3;
+  bool tty = 4;
+  AttachTerminalSize terminal_size = 5;
+}
+
+message TranscriptEvent {
+  StdioStream stream = 1;
+  string text = 2;
+  string name = 4;
+  string payload_json = 5;
+  string created_at = 6;
+}
+
+message GetRunRequest {
+  string run_id = 1;
+  string project_id = 2;
+}
+
+message GetRunResponse {
+  RunDetail run = 1;
+}
+
+message ListRunsRequest {
+  reserved 3;
+  reserved "session_id";
+
+  string project_id = 1;
+  string agent_name = 2;
+  string scheduler_id = 4;
+  RunStatus status = 5;
+  RunSource source = 6;
+  string started_from = 7;
+  string started_to = 8;
+  uint32 offset = 9;
+  uint32 limit = 10;
+  string sandbox_id = 11;
+}
+
+message ListRunsResponse {
+  repeated RunSummary runs = 1;
+}
+
+message FollowRunLogsRequest {
+  string project_id = 1;
+  string run_id = 2;
+  uint32 tail_lines = 3;
+  uint64 start_offset = 4;
+  bool follow = 5;
+}
+
+message RunLogChunk {
+  string data = 1;
+  uint64 offset = 2;
+  bool is_final = 3;
+  RunStatus run_status = 4;
+  string created_at = 5;
+}
+
+message StopRunRequest {
+  string run_id = 1;
+  string reason = 2;
+}
+
+message StopRunResponse {
+  RunDetail run = 1;
+  bool stop_requested = 2;
+}
+
+message ListRunEventsRequest {
+  string run_id = 1;
+  uint32 limit = 2;
+  string cursor = 3;
+}
+
+message RunEvent {
+  string id = 1;
+  string run_id = 2;
+  uint64 seq = 3;
+  RunEventKind kind = 4;
+  string text = 5;
+  string agent = 6;
+  string name = 7;
+  string payload_json = 8;
+  bool success = 9;
+  int32 exit_code = 10;
+  string stop_reason = 11;
+  google.protobuf.Timestamp created_at = 12;
+}
+
+message ListRunEventsResponse {
+  repeated RunEvent events = 1;
+  string next_cursor = 2;
+  bool history_available = 3;
+}
+
+message ListSandboxRunEventsRequest {
+  string sandbox_id = 1;
+  uint32 limit = 2;
+  string cursor = 3;
+}
+
+message ListSandboxRunEventsResponse {
+  repeated RunEvent events = 1;
+  string next_cursor = 2;
+  repeated string history_available_run_ids = 3;
+}
+
+message RemoveSandboxRequest {
+  string sandbox_id = 1;
+  bool force = 2;
+}
+
+message RemoveSandboxResponse {
+  string sandbox_id = 1;
+  bool stopped = 2;
+  bool removed = 3;
+}
+
+message GetSandboxStatsRequest {
+  string sandbox_id = 1;
+}
+
+message GetSandboxStatsResponse {
+  SandboxStats stats = 1;
+}
+
+message GetSandboxRequest {
+  string sandbox_id = 1;
+}
+
+message Sandbox {
+  string sandbox_id = 1;
+  string status = 2;
+  string driver = 3;
+  string project_id = 4;
+  string agent_name = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+  string image = 8;
+  string workspace_path = 9;
+  repeated SandboxTag tags = 10;
+  string title = 11;
+  string proxy_path = 12;
+  string trigger_source = 13;
+  uint32 cell_count = 14;
+  uint32 event_count = 15;
+  string notebook_url = 16;
+}
+
+message SandboxTag {
+  string name = 1;
+  string value = 2;
+}
+
+message ListSandboxesRequest {
+  uint32 limit = 1;
+  string cursor = 2;
+}
+
+message ListSandboxesResponse {
+  repeated Sandbox sandboxes = 1;
+  string next_cursor = 2;
+}
+
+message GetSandboxResponse {
+  Sandbox sandbox = 1;
+}
+
+message StopSandboxRequest {
+  string sandbox_id = 1;
+}
+
+message StopSandboxResponse {
+  Sandbox sandbox = 1;
+}
+
+message ResumeSandboxRequest {
+  string sandbox_id = 1;
+}
+
+message ResumeSandboxResponse {
+  Sandbox sandbox = 1;
+}
+
+message MetricValue {
+  optional double value = 1;
+  string unit = 2;
+  MetricStatus status = 3;
+  string message = 4;
+}
+
+message SandboxStats {
+  string sandbox_id = 1;
+  string driver = 2;
+  string sampled_at = 3;
+  MetricValue cpu_percent = 4;
+  MetricValue memory_usage_bytes = 5;
+  MetricValue memory_limit_bytes = 6;
+  MetricValue memory_percent = 7;
+  MetricValue network_rx_bytes = 8;
+  MetricValue network_tx_bytes = 9;
+  MetricValue block_read_bytes = 10;
+  MetricValue block_write_bytes = 11;
+  MetricValue uptime_seconds = 12;
+}
+
+message RunSummary {
+  reserved 11;
+  reserved "session_id";
+
+  string run_id = 1;
+  string project_id = 2;
+  string project_name = 3;
+  uint64 project_revision = 4;
+  string agent_id = 5;
+  string agent_name = 6;
+  RunSource source = 7;
+  string scheduler_id = 8;
+  string trigger_id = 9;
+  RunStatus status = 10;
+  int32 exit_code = 12;
+  string error = 13;
+  string started_at = 14;
+  string completed_at = 15;
+  int64 duration_ms = 16;
+  string created_at = 17;
+  string updated_at = 18;
+  repeated string warnings = 19;
+  string sandbox_id = 20;
+  string run_short_id = 21;
+  string sandbox_short_id = 22;
+}
+
+message RunDetail {
+  RunSummary summary = 1;
+  string prompt = 2;
+  string output = 3;
+  string result_json = 4;
+  string logs_path = 5;
+  string artifacts_dir = 6;
+  string cleanup_error = 7;
+  string driver = 8;
+  string image_ref = 9;
+  repeated string warnings = 10;
+}
+
+message ExecRequest {
+  reserved "session_id";
+
+  oneof target {
+    string sandbox_id = 1;
+    string run_id = 2;
+    ExecSandboxSelector selector = 3;
+  }
+  ExecCommand command = 4;
+  string cwd = 5;
+  repeated EnvVarSpec env = 6;
+  uint32 timeout_ms = 7;
+  uint32 max_output_bytes = 8;
+}
+
+message ExecSandboxSelector {
+  string project_id = 1;
+  string project_name = 2;
+  string agent_name = 3;
+}
+
+message ExecCommand {
+  string command = 1;
+  repeated string args = 2;
+}
+
+message ExecResponse {
+  ExecResult result = 1;
+}
+
+message ExecStreamResponse {
+  reserved "session_id";
+
+  ExecStreamEventType event_type = 1;
+  string exec_id = 2;
+  string sandbox_id = 3;
+  string run_id = 4;
+  string chunk = 5;
+  StdioStream stream = 6;
+  ExecResult result = 7;
+  TranscriptEvent transcript = 8;
+}
+
+message ExecAttachRequest {
+  string client_frame_id = 15;
+
+  oneof frame {
+    ExecAttachStart start = 1;
+    AttachStdin stdin = 2;
+    AttachStdinEOF stdin_eof = 3;
+    AttachResize resize = 4;
+    AttachSignal signal = 5;
+    AttachCancel cancel = 6;
+    AttachHumanMessage human_message = 7;
+  }
+}
+
+message ExecAttachResponse {
+  string server_frame_id = 15;
+  string created_at = 16;
+
+  oneof frame {
+    AttachStarted started = 1;
+    AttachOutput output = 2;
+    AttachResult result = 3;
+    AttachError error = 4;
+    AttachAgentEvent agent_event = 5;
+    AttachAgentTurnCompleted agent_turn_completed = 6;
+  }
+}
+
+message ExecAttachStart {
+  ExecRequest request = 1;
+  bool attach_stdin = 2;
+  bool tty = 3;
+  AttachTerminalSize terminal_size = 4;
+  AttachRunMode mode = 5;
+  string prompt = 6;
+}
+
+message AttachTerminalSize {
+  uint32 rows = 1;
+  uint32 cols = 2;
+}
+
+message AttachStdin {
+  bytes data = 1;
+}
+
+message AttachStdinEOF {
+}
+
+message AttachResize {
+  AttachTerminalSize terminal_size = 1;
+}
+
+message AttachSignal {
+  string signal = 1;
+}
+
+message AttachHumanMessage {
+  string text = 1;
+  map<string, string> metadata = 2;
+}
+
+message AttachCancel {
+  string reason = 1;
+}
+
+message AttachStarted {
+  string operation_id = 1;
+  string exec_id = 2;
+  string run_id = 3;
+  string sandbox_id = 4;
+  RunSummary run = 5;
+  repeated string warnings = 6;
+}
+
+message AttachOutput {
+  bytes data = 1;
+  StdioStream stream = 2;
+  bool tty = 3;
+  TranscriptEvent transcript = 4;
+}
+
+message AttachAgentEvent {
+  string name = 1;
+  string text = 2;
+  string payload_json = 3;
+  string created_at = 4;
+}
+
+message AttachAgentTurnCompleted {
+  string run_id = 1;
+  string result_json = 2;
+  repeated string warnings = 3;
+}
+
+message AttachResult {
+  int32 exit_code = 1;
+  bool success = 2;
+  ExecResult exec_result = 3;
+  RunSummary run = 4;
+  string output = 5;
+  string result_json = 6;
+  string error = 7;
+}
+
+message AttachError {
+  string code = 1;
+  string message = 2;
+  bool terminal = 3;
+  map<string, string> details = 4;
+}
+
+message ExecResult {
+  reserved "session_id";
+
+  string exec_id = 1;
+  string sandbox_id = 2;
+  string run_id = 3;
+  ExecCommand command = 4;
+  string cwd = 5;
+  int32 exit_code = 6;
+  bool success = 7;
+  string stdout = 8;
+  string stderr = 9;
+  string output = 10;
+  bool stdout_truncated = 11;
+  bool stderr_truncated = 12;
+  bool output_truncated = 13;
+  string error = 14;
+}
+
+message ListImagesRequest {
+  ImageStoreKind store = 1;
+  string query = 2;
+  bool all = 3;
+  bool include_cache_status = 4;
+  uint32 offset = 5;
+  uint32 limit = 6;
+}
+
+message ListImagesResponse {
+  repeated Image images = 1;
+  uint32 total_count = 2;
+  bool has_more = 3;
+  uint32 next_offset = 4;
+  ImageStoreStatus store_status = 5;
+}
+
+message PullImageRequest {
+  string image_ref = 1;
+  ImageStoreKind store = 2;
+  ImagePlatform platform = 3;
+}
+
+message PullImageResponse {
+  Image image = 1;
+  ImageOperationStatus status = 2;
+  string resolved_ref = 3;
+  repeated ImagePullProgress progress = 4;
+  repeated string warnings = 5;
+}
+
+message InspectImageRequest {
+  string image_ref = 1;
+  ImageStoreKind store = 2;
+  bool include_cache_status = 3;
+}
+
+message InspectImageResponse {
+  Image image = 1;
+  ImageStoreStatus store_status = 2;
+}
+
+message RemoveImageRequest {
+  string image_ref = 1;
+  ImageStoreKind store = 2;
+  bool force = 3;
+  bool prune_children = 4;
+}
+
+message RemoveImageResponse {
+  string image_ref = 1;
+  repeated string untagged_refs = 2;
+  repeated string deleted_ids = 3;
+  repeated string warnings = 4;
+}
+
+message BuildImageRequest {
+  string context_dir = 1;
+  string dockerfile = 2;
+  repeated string tags = 3;
+  map<string, string> build_args = 4;
+  string target = 5;
+  ImageStoreKind store = 6;
+  ImagePlatform platform = 7;
+  bool no_cache = 8;
+  bool pull = 9;
+}
+
+message BuildImageEvent {
+  ImageOperationStatus status = 1;
+  string stage = 2;
+  string message = 3;
+  Image image = 4;
+  string image_ref = 5;
+  string resolved_ref = 6;
+  repeated string warnings = 7;
+}
+
+message CacheFilter {
+  string driver = 1;
+  CacheDomain domain = 2;
+  string type = 3;
+  CacheStatus status = 4;
+  uint64 older_than_seconds = 5;
+  string cache_id = 6;
+}
+
+message ListCachesRequest {
+  CacheFilter filter = 1;
+}
+
+message ListCachesResponse {
+  repeated CacheItem caches = 1;
+  repeated string warnings = 2;
+}
+
+message InspectCacheRequest {
+  string cache_id = 1;
+}
+
+message InspectCacheResponse {
+  CacheItem cache = 1;
+  repeated string warnings = 2;
+}
+
+message PruneCachesRequest {
+  CacheFilter filter = 1;
+  bool include_referenced = 2;
+  bool force = 3;
+}
+
+message PruneCachesResponse {
+  bool dry_run = 1;
+  repeated CacheItem matched = 2;
+  repeated string removed = 3;
+  repeated CacheItem skipped = 4;
+  repeated string warnings = 5;
+}
+
+message RemoveCacheRequest {
+  string cache_id = 1;
+  bool force = 2;
+}
+
+message RemoveCacheResponse {
+  bool dry_run = 1;
+  repeated CacheItem matched = 2;
+  repeated string removed = 3;
+  repeated CacheItem skipped = 4;
+  repeated string warnings = 5;
+}
+
+message CacheItem {
+  reserved 10;
+  reserved "session_id";
+
+  string cache_id = 1;
+  CacheDomain domain = 2;
+  string driver = 3;
+  string kind = 4;
+  string path = 5;
+  uint64 size_bytes = 6;
+  string image_id = 7;
+  string image_ref = 8;
+  string resolved_ref = 9;
+  string sandbox_id = 11;
+  CacheStatus status = 12;
+  bool removable = 13;
+  repeated string blocked_reasons = 14;
+  string last_used_at = 15;
+  string last_used_source = 16;
+  repeated CacheReference references = 17;
+  repeated string warnings = 18;
+}
+
+message CacheReference {
+  string type = 1;
+  string id = 2;
+  string name = 3;
+  string path = 4;
+  string status = 5;
+  string description = 6;
+}
+
+message ListVolumesRequest {
+  string query = 1;
+  string driver = 2;
+  string project_id = 3;
+}
+
+message ListVolumesResponse {
+  repeated Volume volumes = 1;
+}
+
+message CreateVolumeRequest {
+  string name = 1;
+  string driver = 2;
+  map<string, string> labels = 3;
+  map<string, string> options = 4;
+}
+
+message CreateVolumeResponse {
+  Volume volume = 1;
+  bool created = 2;
+}
+
+message InspectVolumeRequest {
+  string name = 1;
+}
+
+message InspectVolumeResponse {
+  Volume volume = 1;
+}
+
+message RemoveVolumeRequest {
+  string name = 1;
+  bool force = 2;
+}
+
+message RemoveVolumeResponse {
+  string name = 1;
+  bool removed = 2;
+}
+
+message PruneVolumesRequest {
+  string query = 1;
+  string driver = 2;
+  string project_id = 3;
+  bool force = 4;
+}
+
+message PruneVolumesResponse {
+  bool dry_run = 1;
+  repeated Volume matched = 2;
+  repeated Volume removed = 3;
+  repeated Volume skipped = 4;
+}
+
+message Volume {
+  string name = 1;
+  string driver = 2;
+  string path = 3;
+  map<string, string> labels = 4;
+  map<string, string> options = 5;
+  string project_id = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message Image {
+  string image_id = 1;
+  string image_ref = 2;
+  string resolved_ref = 3;
+  repeated string repo_tags = 4;
+  repeated string repo_digests = 5;
+  ImageStoreKind store = 6;
+  ImageAvailabilityStatus availability_status = 7;
+  ImagePlatform platform = 8;
+  uint64 size_bytes = 9;
+  uint64 virtual_size_bytes = 10;
+  string created_at = 11;
+  string inspected_at = 12;
+  bool dangling = 13;
+  uint64 container_count = 14;
+  DockerImageStatus docker = 15;
+  OCIImageStatus oci = 16;
+  map<string, string> labels = 17;
+}
+
+message ImagePlatform {
+  string os = 1;
+  string architecture = 2;
+  string variant = 3;
+  string os_version = 4;
+}
+
+message ImageStoreStatus {
+  ImageStoreKind store = 1;
+  bool available = 2;
+  string endpoint = 3;
+  string error = 4;
+}
+
+message DockerImageStatus {
+  bool local = 1;
+  string parent_id = 2;
+  int64 shared_size_bytes = 3;
+}
+
+message OCIImageStatus {
+  bool layout_cached = 1;
+  bool rootfs_cached = 2;
+  string cache_key = 3;
+  string manifest_digest = 4;
+  string config_digest = 5;
+  string media_type = 6;
+}
+
+message ImagePullProgress {
+  string id = 1;
+  string status = 2;
+  string progress = 3;
+  uint64 current_bytes = 4;
+  uint64 total_bytes = 5;
+}
+
+message JupyterSpec {
+  bool enabled = 1;
+  uint32 guest_port = 2;
+}
+
+message RunJupyterSpec {
+  bool enabled = 1;
+  uint32 guest_port = 2;
+  bool expose = 3;
+}
+
+message StartRunRequest {
+  RunAgentRequest run = 1;
+}
+
+message StartRunResponse {
+  RunSummary run = 1;
+  repeated string warnings = 2;
+  bool started = 3;
+}
+
+message SkillSpec {
+  string name = 1;
+  string source = 2;
+  string url = 3;
+  string path = 4;
+  string ref = 5;
+  string username = 6;
+  string password = 7;
+  string token = 8;
+}
+
+message GetDashboardOverviewRequest {}
+message WatchDashboardOverviewRequest {}
+
+message RunOverview {
+  uint32 running_count = 1;
+  uint32 recent_count = 2;
+  uint32 attention_count = 3;
+}
+
+message DashboardOverview {
+  RunOverview runs = 1;
+  google.protobuf.Timestamp updated_at = 2;
+}
+
+message GetDashboardOverviewResponse { DashboardOverview overview = 1; }
+message WatchDashboardOverviewResponse {
+  DashboardOverview overview = 1;
+  string reason = 2;
+}
+
+message GetGlobalEnvRequest {}
+message GetGlobalEnvResponse { repeated EnvVarSpec env = 1; }
+message UpdateGlobalEnvRequest { repeated EnvVarUpdateSpec env = 1; }
+message UpdateGlobalEnvResponse { repeated EnvVarSpec env = 1; }
+
+message GetCapabilityGatewayConfigRequest {}
+message CapabilityGatewayConfig {
+  string addr = 1;
+  bool token_set = 2;
+}
+message GetCapabilityGatewayConfigResponse { CapabilityGatewayConfig config = 1; }
+message UpdateCapabilityGatewayConfigRequest {
+  optional string addr = 1;
+  optional string token = 2;
+}
+message UpdateCapabilityGatewayConfigResponse { CapabilityGatewayConfig config = 1; }
+
+message WorkspacePreset {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  string config_json = 4;
+  string comment = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+message ListWorkspacePresetsRequest {}
+message ListWorkspacePresetsResponse { repeated WorkspacePreset presets = 1; }
+message CreateWorkspacePresetRequest {
+  string name = 1;
+  string type = 2;
+  string config_json = 3;
+  string comment = 4;
+}
+message UpdateWorkspacePresetRequest {
+  string preset_id = 1;
+  string name = 2;
+  string type = 3;
+  string config_json = 4;
+  string comment = 5;
+}
+message DeleteWorkspacePresetRequest { string preset_id = 1; }
+message DeleteWorkspacePresetResponse {}
+message WorkspacePresetResponse { WorkspacePreset preset = 1; }
+
+message GetCapabilityStatusRequest {}
+message CapabilityStatusResponse {
+  bool configured = 1;
+  bool ok = 2;
+  string status = 3;
+  uint32 service_count = 4;
+  string error = 5;
+  bool runtime_configured = 6;
+  bool proxy_listen_configured = 7;
+  bool proxy_target_configured = 8;
+}
+message ListCapabilitySetsRequest {}
+message CapabilitySet {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  bool enabled = 4;
+}
+message ListCapabilitySetsResponse { repeated CapabilitySet capsets = 1; }
+message GetCapabilityCatalogRequest { string capset_id = 1; }
+message CapabilityEndpoint {
+  string protocol = 1;
+  string endpoint = 2;
+  string method_path = 3;
+  map<string, string> metadata = 4;
+  string tool_name = 5;
+  string procedure = 6;
+  string http_method = 7;
+  repeated string content_types = 8;
+}
+message CapabilityMethod {
+  string service_id = 1;
+  string instance_id = 2;
+  string runtime_mode = 3;
+  string method_full_name = 4;
+  string request_message_full_name = 5;
+  string response_message_full_name = 6;
+  string backend_instance_status = 7;
+  repeated CapabilityEndpoint endpoints = 8;
+}
+message GetCapabilityCatalogResponse {
+  string capset_id = 1;
+  string name = 2;
+  string description = 3;
+  repeated CapabilityMethod methods = 4;
+}
+
+message ListSandboxHistoryRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxHistoryCell {
+  string id = 1;
+  string type = 2;
+  string source = 3;
+  string stdout = 4;
+  string stderr = 5;
+  string output = 6;
+  int32 exit_code = 7;
+  bool success = 8;
+  bool running = 9;
+  google.protobuf.Timestamp created_at = 10;
+  string agent = 11;
+  string agent_thread_id = 12;
+  string stop_reason = 13;
+}
+
+message SandboxHistoryEvent {
+  string id = 1;
+  string type = 2;
+  string level = 3;
+  string message = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message ListSandboxHistoryResponse {
+  repeated SandboxHistoryCell cells = 1;
+  repeated SandboxHistoryEvent events = 2;
+  bool legacy_history = 3;
+}
+
+message WatchSandboxRequest {
+  string sandbox_id = 1;
+}
+
+enum SandboxWatchEventType {
+  SANDBOX_WATCH_EVENT_TYPE_UNSPECIFIED = 0;
+  SANDBOX_WATCH_EVENT_TYPE_SANDBOX_UPDATED = 1;
+  SANDBOX_WATCH_EVENT_TYPE_CELL_STARTED = 2;
+  SANDBOX_WATCH_EVENT_TYPE_CELL_OUTPUT = 3;
+  SANDBOX_WATCH_EVENT_TYPE_CELL_COMPLETED = 4;
+  SANDBOX_WATCH_EVENT_TYPE_EVENT_ADDED = 5;
+}
+
+message WatchSandboxResponse {
+  SandboxWatchEventType event_type = 1;
+  Sandbox sandbox = 2;
+  SandboxHistoryCell cell = 3;
+  SandboxHistoryEvent event = 4;
+  string cell_id = 5;
+  string chunk = 6;
+  StdioStream stream = 7;
+}

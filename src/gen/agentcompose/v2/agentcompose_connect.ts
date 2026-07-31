@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { ApplyProjectRequest, ApplyProjectResponse, BuildImageEvent, BuildImageRequest, CapabilityStatusResponse, CreateVolumeRequest, CreateVolumeResponse, CreateWorkspacePresetRequest, DeleteWorkspacePresetRequest, DeleteWorkspacePresetResponse, ExecAttachRequest, ExecAttachResponse, ExecRequest, ExecResponse, ExecStreamResponse, FollowRunLogsRequest, GenerateLLMRequest, GenerateLLMResponse, GetCapabilityCatalogRequest, GetCapabilityCatalogResponse, GetCapabilityGatewayConfigRequest, GetCapabilityGatewayConfigResponse, GetCapabilityStatusRequest, GetDashboardOverviewRequest, GetDashboardOverviewResponse, GetGlobalEnvRequest, GetGlobalEnvResponse, GetProjectRequest, GetProjectResponse, GetRunRequest, GetRunResponse, GetSandboxRequest, GetSandboxResponse, GetSandboxStatsRequest, GetSandboxStatsResponse, GetSchedulerRequest, GetSchedulerResponse, GetSchedulerRunRequest, GetSchedulerRunResponse, InspectCacheRequest, InspectCacheResponse, InspectImageRequest, InspectImageResponse, InspectVolumeRequest, InspectVolumeResponse, ListCachesRequest, ListCachesResponse, ListCapabilitySetsRequest, ListCapabilitySetsResponse, ListImagesRequest, ListImagesResponse, ListProjectsRequest, ListProjectsResponse, ListRunEventsRequest, ListRunEventsResponse, ListRunsRequest, ListRunsResponse, ListSandboxesRequest, ListSandboxesResponse, ListSandboxHistoryRequest, ListSandboxHistoryResponse, ListSandboxRunEventsRequest, ListSandboxRunEventsResponse, ListSchedulerEventsRequest, ListSchedulerEventsResponse, ListSchedulerRunsRequest, ListSchedulerRunsResponse, ListSchedulersRequest, ListSchedulersResponse, ListVolumesRequest, ListVolumesResponse, ListWorkspacePresetsRequest, ListWorkspacePresetsResponse, PruneCachesRequest, PruneCachesResponse, PruneSandboxesRequest, PruneSandboxesResponse, PruneVolumesRequest, PruneVolumesResponse, PullImageRequest, PullImageResponse, RemoveCacheRequest, RemoveCacheResponse, RemoveImageRequest, RemoveImageResponse, RemoveProjectRequest, RemoveProjectResponse, RemoveSandboxRequest, RemoveSandboxResponse, RemoveVolumeRequest, RemoveVolumeResponse, ResolveResourceIDRequest, ResolveResourceIDResponse, ResumeSandboxRequest, ResumeSandboxResponse, RunAgentRequest, RunAgentResponse, RunAgentStreamResponse, RunAttachRequest, RunAttachResponse, RunLogChunk, RunSchedulerRequest, RunSchedulerResponse, SetSchedulerEnabledRequest, SetSchedulerEnabledResponse, SetSchedulerTriggerEnabledRequest, SetSchedulerTriggerEnabledResponse, StartRunRequest, StartRunResponse, StartSchedulerRunRequest, StartSchedulerRunResponse, StopRunRequest, StopRunResponse, StopSandboxRequest, StopSandboxResponse, StopSchedulerRunRequest, StopSchedulerRunResponse, UpdateCapabilityGatewayConfigRequest, UpdateCapabilityGatewayConfigResponse, UpdateGlobalEnvRequest, UpdateGlobalEnvResponse, UpdateWorkspacePresetRequest, ValidateProjectRequest, ValidateProjectResponse, WatchDashboardOverviewRequest, WatchDashboardOverviewResponse, WatchProjectRequest, WatchProjectResponse, WatchSandboxRequest, WatchSandboxResponse, WorkspacePresetResponse } from "./agentcompose_pb.js";
+import { ApplyProjectRequest, ApplyProjectResponse, BuildImageEvent, BuildImageRequest, CapabilityStatusResponse, CreateVolumeRequest, CreateVolumeResponse, CreateWorkspacePresetRequest, DeleteWorkspacePresetRequest, DeleteWorkspacePresetResponse, ExecAttachRequest, ExecAttachResponse, ExecRequest, ExecResponse, ExecStreamResponse, FollowRunLogsRequest, GetCapabilityCatalogRequest, GetCapabilityCatalogResponse, GetCapabilityGatewayConfigRequest, GetCapabilityGatewayConfigResponse, GetCapabilityStatusRequest, GetDashboardOverviewRequest, GetDashboardOverviewResponse, GetGlobalEnvRequest, GetGlobalEnvResponse, GetProjectRequest, GetProjectResponse, GetRunRequest, GetRunResponse, GetSandboxRequest, GetSandboxResponse, GetSandboxStatsRequest, GetSandboxStatsResponse, GetSchedulerRequest, GetSchedulerResponse, GetSchedulerRunRequest, GetSchedulerRunResponse, InspectCacheRequest, InspectCacheResponse, InspectImageRequest, InspectImageResponse, InspectVolumeRequest, InspectVolumeResponse, ListCachesRequest, ListCachesResponse, ListCapabilitySetsRequest, ListCapabilitySetsResponse, ListImagesRequest, ListImagesResponse, ListProjectsRequest, ListProjectsResponse, ListRunEventsRequest, ListRunEventsResponse, ListRunsRequest, ListRunsResponse, ListSandboxesRequest, ListSandboxesResponse, ListSandboxHistoryRequest, ListSandboxHistoryResponse, ListSandboxRunEventsRequest, ListSandboxRunEventsResponse, ListSchedulerEventsRequest, ListSchedulerEventsResponse, ListSchedulerRunsRequest, ListSchedulerRunsResponse, ListSchedulersRequest, ListSchedulersResponse, ListVolumesRequest, ListVolumesResponse, ListWorkspacePresetsRequest, ListWorkspacePresetsResponse, PruneCachesRequest, PruneCachesResponse, PruneVolumesRequest, PruneVolumesResponse, PullImageRequest, PullImageResponse, RemoveCacheRequest, RemoveCacheResponse, RemoveImageRequest, RemoveImageResponse, RemoveProjectRequest, RemoveProjectResponse, RemoveSandboxRequest, RemoveSandboxResponse, RemoveVolumeRequest, RemoveVolumeResponse, ResumeSandboxRequest, ResumeSandboxResponse, RunAgentRequest, RunAgentResponse, RunAgentStreamResponse, RunAttachRequest, RunAttachResponse, RunLogChunk, RunSchedulerRequest, RunSchedulerResponse, SetSchedulerEnabledRequest, SetSchedulerEnabledResponse, SetSchedulerTriggerEnabledRequest, SetSchedulerTriggerEnabledResponse, StartRunRequest, StartRunResponse, StartSchedulerRunRequest, StartSchedulerRunResponse, StopRunRequest, StopRunResponse, StopSandboxRequest, StopSandboxResponse, StopSchedulerRunRequest, StopSchedulerRunResponse, UpdateCapabilityGatewayConfigRequest, UpdateCapabilityGatewayConfigResponse, UpdateGlobalEnvRequest, UpdateGlobalEnvResponse, UpdateWorkspacePresetRequest, ValidateProjectRequest, ValidateProjectResponse, WatchDashboardOverviewRequest, WatchDashboardOverviewResponse, WatchProjectRequest, WatchProjectResponse, WatchSandboxRequest, WatchSandboxResponse, WorkspacePresetResponse } from "./agentcompose_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -471,15 +471,6 @@ export const SandboxService = {
       kind: MethodKind.Unary,
     },
     /**
-     * @generated from rpc agentcompose.v2.SandboxService.PruneSandboxes
-     */
-    pruneSandboxes: {
-      name: "PruneSandboxes",
-      I: PruneSandboxesRequest,
-      O: PruneSandboxesResponse,
-      kind: MethodKind.Unary,
-    },
-    /**
      * @generated from rpc agentcompose.v2.SandboxService.GetSandboxStats
      */
     getSandboxStats: {
@@ -689,38 +680,3 @@ export const CapabilityService = {
   }
 } as const;
 
-/**
- * @generated from service agentcompose.v2.LLMService
- */
-export const LLMService = {
-  typeName: "agentcompose.v2.LLMService",
-  methods: {
-    /**
-     * @generated from rpc agentcompose.v2.LLMService.Generate
-     */
-    generate: {
-      name: "Generate",
-      I: GenerateLLMRequest,
-      O: GenerateLLMResponse,
-      kind: MethodKind.Unary,
-    },
-  }
-} as const;
-
-/**
- * @generated from service agentcompose.v2.ResourceService
- */
-export const ResourceService = {
-  typeName: "agentcompose.v2.ResourceService",
-  methods: {
-    /**
-     * @generated from rpc agentcompose.v2.ResourceService.ResolveID
-     */
-    resolveID: {
-      name: "ResolveID",
-      I: ResolveResourceIDRequest,
-      O: ResolveResourceIDResponse,
-      kind: MethodKind.Unary,
-    },
-  }
-} as const;

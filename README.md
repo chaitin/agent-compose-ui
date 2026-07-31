@@ -1,93 +1,253 @@
-# agent-compose-ui
+# Agent Compose Web
 
-Web UI for [agent-compose](https://github.com/chaitin/agent-compose) — a Svelte + Vite single-page app that talks to the agent-compose daemon over ConnectRPC.
+Agent Compose Web 是 Agent Compose 的浏览器管理界面，用于编辑和启用智能体应用、观察运行状态，并管理运行时与系统资源。前端直接使用 Agent Compose V2 Connect RPC，与本地脚本服务配合保存 YAML 中引用的脚本文件。
 
-The backend repository's protobuf definitions are the API source of truth. This
-repository directly tracks the generated `agentcompose/v2` and `health/v1`
-TypeScript clients under `src/gen/`.
+## 文档导航
 
-## Develop
+- [主要功能](#主要功能)
+- [技术栈](#技术栈)
+- [快速开始](#快速开始)
+- [常用脚本](#常用脚本)
+- [配置说明](#配置说明)
+- [项目结构](#项目结构)
+- [Protobuf 客户端生成](#protobuf-客户端生成)
+- [测试](#测试)
+- [Docker 部署说明](docker/README.md)
 
-Requires a running agent-compose daemon on `http://127.0.0.1:7410` — the Vite
-dev server proxies RPC/API/Jupyter calls to it.
+## 主要功能
+
+- 使用 Monaco Editor 编辑、校验和启用 Agent Compose YAML。
+- 在浏览器中保存、切换和删除多个未启用草稿。
+- 预览项目变更，并在启用前执行镜像与依赖检查。
+- 查看智能体、Scheduler、Run、Sandbox 及其事件和日志。
+- 手动运行智能体，跟踪批量运行和最近一次运行结果。
+- 暂停项目运行活动，停止运行，并软删除智能体应用。
+- 管理镜像、环境变量、数据卷、缓存和能力服务配置。
+- 管理 YAML 中的内联脚本与 `$ref` 脚本文件。
+- 创建、查看和撤销一次性展示的限期 API Token，并通过独立端口按角色代理 daemon API。
+
+## 技术栈
+
+| 类别 | 技术 |
+| --- | --- |
+| UI | Svelte 5、TypeScript |
+| 构建工具 | Vite 7、Bun |
+| 编辑器 | Monaco Editor |
+| 终端 | xterm.js |
+| API | Connect RPC、Protobuf、`@bufbuild/protobuf` |
+| YAML | js-yaml |
+| 组件测试 | Vitest、Testing Library、happy-dom |
+
+## 快速开始
+
+### 前置条件
+
+- **Bun** ≥ 1.3：本地开发使用 Bun 作为运行时与包管理器（`dev` 脚本依赖 `bun run`）。安装见 <https://bun.sh>。
+- **Go**：本地认证网关由 `go run` 启动。
+- **可访问的 Agent Compose daemon**，默认地址 `http://127.0.0.1:7410`。浏览器请求先经过监听 `127.0.0.1:8080` 的 UI 网关，再由网关代理到 daemon。
+- 脚本服务默认监听 `http://127.0.0.1:7420`，由 `bun run dev` 一并拉起，无需单独配置。
+- 镜像、Sandbox 和 LLM 相关功能依赖 daemon 侧对应运行时与模型配置。
+
+> 仅做生产构建或用 Docker 启动时，可用 `npm` 替代 Bun（见下文对应章节）。
+
+### 方式一：本地开发（推荐）
 
 ```bash
-npm ci
-npm run dev:ui   # listens on 0.0.0.0:5174
+# 1. 安装依赖
+bun install
+
+# 2. 启动认证网关 + 前端 + 脚本服务
+bun run dev
 ```
 
-Open `http://<host>:5174/` from another machine. The development server proxies
-v2 ConnectRPC, health, REST API, and Jupyter requests to the local daemon.
-Set `AGENT_COMPOSE_DEV_BACKEND` to use a daemon URL other than
-`http://127.0.0.1:7410`.
+启动后打开 <http://localhost:5174>。
 
-The Vite-only setup does not provide API Token management. To develop that
-feature locally, start the Go UI server and point Vite at it (the directory
-containing the database file must already exist).
+`bun run dev` 会运行 `scripts/dev.mjs`，自动生成一个随机 `SCRIPT_SERVICE_TOKEN` 并共享给网关、Vite 与脚本服务。Vite 的所有后端请求都代理到网关，不持有或注入脚本服务令牌。认证默认使用 `AUTH_MODE=disabled`；任一子进程退出时，其余进程会被一并终止。
 
-In one terminal:
+本地开发默认不设置 `TOKEN_DB_PATH`，因此 API Token 管理不可用。需要联调该功能时，先创建数据库文件所在目录，再显式指定绝对路径启动：
 
 ```bash
-TOKEN_DB_PATH=/absolute/path/to/tokens.db \
-AGENT_COMPOSE_URL=http://127.0.0.1:7410 \
-go run ./cmd/agent-compose-ui-server
+TOKEN_DB_PATH=/absolute/path/to/tokens.db bun run dev
 ```
 
-In another terminal:
+如需分别启动（例如只调试前端）：
 
 ```bash
-AGENT_COMPOSE_DEV_BACKEND=http://127.0.0.1:8080 \
-AGENT_COMPOSE_DEV_UI_SERVER=http://127.0.0.1:8080 \
-npm run dev:ui
+export SCRIPT_SERVICE_TOKEN="$(openssl rand -hex 32)"  # 三个进程共享同一个非空令牌
+bun run dev:web      # 仅前端，Vite 开发服务器，监听 0.0.0.0:5174
+bun run dev:gateway  # 仅 UI 认证网关，监听 127.0.0.1:8080
+bun run dev:scripts  # 仅脚本服务，监听 127.0.0.1:7420
 ```
 
-## Build
+在继承上述环境变量的三个终端中分别运行这些命令。
+
+### 方式二：Docker 启动
+
+`docker/` 目录提供两个 compose 文件，均可通过 `docker compose up --build` 一键构建并运行，详见 [`docker/README.md`](docker/README.md)：
+
+| 文件 | 包含服务 | 适用场景 |
+| --- | --- | --- |
+| `docker-compose.yml` | web（nginx + Go 网关 + script-service，s6-overlay 监督） | 纯前端，连接**外部**已运行的 agent-compose |
+| `docker-compose.full.yml` | web + agent-compose 后端 | 前后端一体，单栈拉起 |
 
 ```bash
-npm run build:ui   # outputs to dist/
-go test ./...
-docker build -f nginx/Dockerfile -t agent-compose-ui:local .
+cd docker
+cp .env.example .env          # 必须设置 SCRIPT_SERVICE_TOKEN（示例留空，未设置则启动失败）：openssl rand -hex 32
+
+# 纯前端（连接宿主或其他已运行的 agent-compose）
+docker compose up --build
+# 或前后端一体（在栈内拉起 agent-compose 后端）
+docker compose -f docker-compose.full.yml up --build
 ```
 
-Set `AGENT_COMPOSE_BASE` to host the app under a sub-path (default `/`).
+启动后打开 <http://localhost:8080>（端口可在 `.env` 的 `WEB_PORT` 调整）。部署侧默认将 Token RBAC API 的容器端口 `8081` 映射到宿主机 `8081`，可用 `TOKEN_RBAC_API_PORT` 调整宿主端口。该端口映射不等同于调用方可访问的 API 地址；具体 API Base URL 由部署管理员提供。
 
-## Token-protected API
+镜像自包含 nginx + Go 网关 + Bun script-service，也支持不用 compose 的 `docker run` 一条命令启动，详见 [`docker/README.md`](docker/README.md#不用-compose-docker-run-一条命令)。Docker 构建使用 `node:22-alpine` + `npm ci`（可复现，不用 Bun，原因见 docker/README.md），运行时基于 `nginx:1.27-alpine` + s6-overlay 监督三进程。
 
-The official image enables API Token management by default with
-`TOKEN_DB_PATH=/data/api/tokens.db`. Mount a persistent volume at `/data/api`
-and override `TOKEN_DB_PATH` when a different location is required. When the
-UI server binary is run outside the image, set `TOKEN_DB_PATH` explicitly to
-enable Token management in the System Settings page. The server then exposes
-a separate h2c-capable machine API listener on container port `8081`. The
-deployment may publish that port with a mapping such as
-`${TOKEN_RBAC_API_PORT:-8081}:8081`, but the mapped port is not necessarily the
-caller-facing API address. Deployers should place it behind an encrypted,
-protected entry point and provide callers with the resulting API Base URL.
+### 方式三：构建生产产物
 
-Tokens use the `admin` or `read-only-admin` role and are only shown once when
-created. Callers obtain the accessible API Base URL from their administrator
-and send `Authorization: Bearer <token>` with each request; they should not
-construct the Base URL from the container or host port alone. `admin` can call
-all APIs forwarded by the proxy, while `read-only-admin` is limited to the
-allowlisted query APIs and receives HTTP 403 for other paths. Tokens are
-sensitive credentials: use them only with the administrator-provided API Base
-URL, and never disclose or send them to another address.
+```bash
+bun install        # 或 npm install
+bun run build      # 或 npm run build，产物输出到 dist/
+```
 
-The database stores a non-recoverable digest. When `TOKEN_DB_PATH` is unset
-(for example when running the server binary directly), the browser UI remains
-available while Token management and port `8081` return HTTP 503.
+`dist/` 为纯静态文件。生产部署必须把以下路径**反向代理**到 UI 网关 `127.0.0.1:8080`，由网关执行认证、daemon 转发和脚本令牌注入：
 
-The UI server accepts `LISTEN_ADDR` to override its default browser API address
-`127.0.0.1:8080` and `AGENT_COMPOSE_URL` to override the default daemon URL
-`http://agent-compose:7410`. The Token API listener remains fixed at `8081`.
-The daemon must not use
-`AGENT_COMPOSE_AUTH_TOKEN` with this proxy: managed API Tokens are removed
-before requests are forwarded upstream.
+- `/ui-api/*`、`/agentcompose.v1.*`、`/agentcompose.v2.*`、`/health.v1.*`、`/api/*`、`/oauth/*`、`/agent-compose/session/*`、`/jupyter`、`/jupyter/*`、`/script-api/*` → UI 网关 `127.0.0.1:8080`
 
-## Deploy
+浏览器使用的 Token 管理 API（`/ui-api/*`）不经过本地 `AUTH_MODE`，部署时必须由其前置入口提供统一认证和访问控制；不能直接把该管理接口暴露给不受信任的网络。`TOKEN_DB_PATH` 未设置时管理 API 返回 503；Token RBAC API 仍监听 `:8081`，所有请求统一返回 503。官方 Compose 将数据库持久化为 `/data/api/tokens.db`。Token 明文只在创建响应中返回一次，数据库仅保存 secret 的 SHA-256 摘要。
 
-`nginx/Dockerfile` builds the Svelte UI and the Go UI server, then packages both
-into the nginx-based runtime image. nginx serves static assets and forwards
-API/RPC/OAuth/Jupyter routes to the local Go UI server, which handles browser
-auth/OAuth and proxies the daemon. CI publishes the image to
-`ghcr.io/chaitin/agent-compose-ui`.
+新 Token 创建时必须选择 1、7、30、90 或 365 天有效期，未显式指定时默认 90 天；到期后显示为“已过期”并停止鉴权，不支持延期。升级已有数据库时会自动增加过期时间字段，升级前创建的 Token 保持不过期，避免升级导致现有调用方意外中断。
+
+调用方应向部署管理员获取具体可访问的 API Base URL，不要根据容器端口或宿主机端口自行拼接地址。调用 Token RBAC API 时使用 `Authorization: Bearer <token>`。`admin` 不在 RBAC 层限制 method/path，但 daemon 自身仍可能不支持某些特殊接口；`read-only-admin` 只允许明确列出的 Connect/REST 查询接口，未知接口默认返回 403，其中包含 Run 查询、日志和事件调试接口。Token 属于敏感凭据，请仅通过管理员提供的 API Base URL 使用，切勿泄露或发送到其他地址。当前部署要求上游 daemon 不设置 `AGENT_COMPOSE_AUTH_TOKEN`；未来如需 daemon 认证，应在通用 daemon 连接层统一实现。
+
+参考实现见 `docker/nginx/default.conf.template`（nginx envsubst 模板）。
+
+## 常用脚本
+
+| 命令 | 作用 |
+| --- | --- |
+| `bun run dev` | 本地开发：同时启动认证网关、前端与脚本服务 |
+| `bun run dev:gateway` | 仅启动 UI 认证网关 |
+| `bun run dev:web` | 仅启动前端开发服务器 |
+| `bun run dev:scripts` | 仅启动脚本服务 |
+| `bun run build` | 生产构建，产物在 `dist/` |
+| `bun run check` | `svelte-check` 类型检查 |
+| `bun run gen` | 用 Buf 重新生成 Protobuf 客户端到 `src/gen` |
+| `bun run test` | 运行 `.test.js` / `.test.mjs` 单元测试 |
+| `bun run test:component` | 运行 Vitest 组件测试 |
+| `bun run test:all` | check + 单元测试 + e2e 助手测试 + 组件测试 |
+| `bun run test:e2e:real` | 端到端真实数据测试（需运行中的 daemon + 前端 + Playwright） |
+
+## 配置说明
+
+### Workspace 共享存储
+
+Go 网关通过 `PROJECT_STORAGE_ROOT` 管理项目文件，浏览器不再提交或拼接任意绝对路径。Docker 使用 `/data/work/projects`；每个草稿或项目获得稳定的随机存储键，草稿启用后继续使用同一目录。UI 网关和 Agent Compose daemon 必须把同一共享存储挂载为相同的绝对 `/data/work` 路径，否则 daemon 无法为 Run 准备本地 Workspace。
+
+本地开发未设置变量时使用 `${TMPDIR:-/tmp}/agent-compose-ui/projects`。分服务器部署必须显式设置共享的 NFS/云文件系统挂载。可选 `LEGACY_PROJECT_STORAGE_ROOT` 仅用于迁移网关仍能读取的旧目录；旧目录不可见时 UI 会要求重新上传或由管理员迁移。
+
+### 开发代理
+
+Vite 开发服务器默认使用端口 `5174`，并将浏览器请求代理到后端服务：
+
+| 请求路径 | 目标服务 |
+| --- | --- |
+| `/agentcompose.v1.*` | UI 网关 `127.0.0.1:8080` |
+| `/agentcompose.v2.*` | UI 网关 `127.0.0.1:8080` |
+| `/health.v1.*` | UI 网关 `127.0.0.1:8080` |
+| `/api/*` | UI 网关 `127.0.0.1:8080` |
+| `/oauth/*` | UI 网关 `127.0.0.1:8080` |
+| `/agent-compose/session/*` | UI 网关 `127.0.0.1:8080` |
+| `/jupyter`、`/jupyter/*` | UI 网关 `127.0.0.1:8080` |
+| `/script-api/*` | UI 网关 `127.0.0.1:8080` |
+
+`SCRIPT_SERVICE_TOKEN` 用于 UI 网关与脚本服务之间的内部认证，不会下发到浏览器。网关与脚本服务必须共享同一个令牌；本地 `bun run dev` 会自动生成并共享，Docker 模式由 `.env` 统一注入。
+
+### 服务端全局变量
+
+服务端全局变量引用需要同时设置 `AGENT_COMPOSE_DB_PATH`（daemon SQLite，只读）和 `UI_STATE_DB_PATH`（UI shadow SQLite，可写）。Docker full 模式使用以下配置，并将两个变量注入前端 Go 网关：
+
+```yaml
+environment:
+  AGENT_COMPOSE_DB_PATH: /data/agent-compose/data.db
+  UI_STATE_DB_PATH: /data/ui/project-env.db
+volumes:
+  - ${AGENT_COMPOSE_DATA_DIR:-./data}:/data/agent-compose:ro
+  - ui-state:/data/ui
+```
+
+### 能力网关运行时代理
+
+系统管理中的 Gateway 地址与 Token 只配置控制面连接。若 Sandbox 中的 Agent 需要调用能力服务，还必须在 `agent-compose` daemon 启动时配置本地 gRPC 代理：
+
+```env
+CAP_GRPC_LISTEN=0.0.0.0:9100
+CAP_GRPC_TARGET=agent-compose:9100
+```
+
+- `CAP_GRPC_LISTEN` 是 daemon 内能力代理的监听地址。
+- `CAP_GRPC_TARGET` 是注入 Sandbox 的代理地址，必须能从 Sandbox 网络访问；不能设置为 Sandbox 自身的 `127.0.0.1`。
+- bundled `docker-compose.full.yml` 中，daemon 与 Sandbox 位于 `agent-web-net`，因此可直接使用 Compose 服务名 `agent-compose:9100`，无需将 9100 端口暴露到宿主机。
+- 修改后需重启 `agent-compose`，并重新创建 Sandbox；已有 Sandbox 不会自动获得新的运行时变量。
+
+默认配置已写入 `docker/agent-compose.env.example`。首次部署时执行 `cp docker/agent-compose.env.example docker/agent-compose.env`；已有部署则将上述两项加入现有 `docker/agent-compose.env` 后重启：
+
+```bash
+cd docker
+docker compose -f docker-compose.full.yml restart agent-compose
+```
+
+两个变量必须同时配置且指向不同文件。`AGENT_COMPOSE_DB_PATH` 所在目录必须以只读方式挂载给 Go 网关，`UI_STATE_DB_PATH` 所在目录必须可写。配置后，浏览器只保存和发送 `${VAR}` 引用，网关在 Validate/Apply 时读取 daemon 的 `global_env` 并解析，再将解析后的配置转发给 agent-compose 后端；这两个数据库路径本身不会发送给后端。字面量保持不变。修改全局变量只标记相关项目待同步，绝不会自动 Apply、运行或改变调度，直到用户明确保存或启用项目。daemon 仍会保存解析后的明文，因此 daemon 数据目录仍属于敏感数据。Docker full 模式已默认按此边界配置，详情见 [`docker/README.md`](docker/README.md)。
+
+### 身份认证
+
+公司内网测试部署可使用兼容默认值 `AUTH_MODE=disabled`；此模式不显示登录页，也不限制后端操作，只适用于可信公司网络或 VPN。密码部署必须设置 `AUTH_MODE=password`、`AUTH_PASSWORD` 和持久且随机的 `AUTH_SECRET`，可选 `AUTH_USERNAME`（默认 `admin`）和 `AUTH_SESSION_TTL`（默认 `24h`），例如：
+
+```bash
+AUTH_MODE=password AUTH_USERNAME=admin AUTH_PASSWORD='strong-password' \
+  AUTH_SECRET="$(openssl rand -hex 32)" AUTH_SESSION_TTL=24h bun run dev
+```
+
+登录成功后浏览器获得 HttpOnly 签名会话 Cookie；注销会清除 Cookie，会话超过 `AUTH_SESSION_TTL` 后须重新登录。该功能只提供认证，不提供细粒度授权：所有已认证用户都拥有 UI 暴露的全部能力。认证网关完全实现在 `agent-compose-ui` 中，不修改 Agent Compose daemon 的行为。公司网络之外仍必须在入口使用 HTTPS；互联网部署还应按组织要求增加限流或 SSO。
+
+## 项目结构
+
+```text
+agent-compose-ui/
+├── README.md                 # 项目主文档
+├── docker/                   # Docker 构建与编排（纯前端 / 前后端一体），见 docker/README.md
+├── script-service/           # 本地脚本文件与 manifest 服务
+├── scripts/                  # 开发编排脚本（dev.mjs 等）
+├── src/
+│   ├── components/           # 通用 UI、Toolbar、Sidebar 和脚本组件
+│   ├── gen/                  # Protobuf 生成的 TypeScript 客户端
+│   ├── lib/                  # Store、RPC、YAML 和领域逻辑
+│   ├── modals/               # 操作弹框
+│   ├── pages/                # 系统管理页面
+│   └── views/runtime/        # Agent、Run、Scheduler、Sandbox 运行视图
+├── test/                     # 跨组件与页面测试
+├── e2e/                      # 端到端测试与真实数据夹具
+├── proto/                    # Protobuf 协议定义（供 buf 生成客户端）
+├── package.json
+└── vite.config.ts
+```
+
+`src/gen` 属于生成代码目录，不应直接手工修改。
+
+## Protobuf 客户端生成
+
+前端协议客户端由 Buf 根据 Agent Compose Protobuf 定义生成，配置入口位于 `buf.gen.yaml`。需要在协议定义更新后重新生成客户端时，在仓库根目录执行：
+
+```bash
+bun run gen
+```
+
+生成结果写入 `src/gen`。应提交协议源或生成配置对应的变更，并保持生成文件与后端协议版本一致。
+
+## 测试
+
+- **单元 / 组件测试**：`bun run test`（`.test.js`/`.test.mjs`）与 `bun run test:component`（Vitest + Testing Library），无需外部服务，可接入 CI。
+- **端到端测试**（`e2e/`）：针对**真实** agent-compose daemon 与前端运行，需先启动 daemon（`7410`）与前端（`5174`），并安装 Playwright 浏览器（`npx playwright install`）。通过 `bun run test:e2e:real` 触发，报告写入 `e2e/reports/`。属于可选的开发者测试，不在默认 `bun run test` 流程中。
+
+真实 E2E 默认从仓库相对位置查找 Agent Compose CLI；目录布局不同时，通过 `AGENT_COMPOSE_E2E_CLI` 指定可执行文件路径。
