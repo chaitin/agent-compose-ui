@@ -39,7 +39,7 @@ fallback root, and deployments that omit `LOCAL_VOLUME_ROOT` will continue retur
 `VolumeFileBrowser` will classify API failures by status/code:
 
 - `503 / unavailable`: show a Chinese message that the volume file service is not
-  configured and disable create-folder, upload, reload, and other file mutations.
+  configured and disable file mutations while retaining reload as a recovery action.
 - `404 / not_found`: show a Chinese message that the physical volume does not exist and
   instruct the administrator to apply the project first; disable file mutations.
 - Other errors: retain the returned safe error message and allow retry when appropriate.
