@@ -534,7 +534,14 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
 		storageAPIError(w, e)
 		return
 	}
-	jsonResponse(w, 201, map[string]any{"file": f})
+	jsonResponse(w, 201, map[string]any{"file": Entry{
+		Name:    path.Base(f.Path),
+		Path:    f.Path,
+		Dir:     false,
+		Size:    f.Size,
+		MTimeMS: f.MTimeMS,
+		SHA256:  f.SHA256,
+	}})
 }
 
 func storageAPIError(w http.ResponseWriter, e error) {

@@ -81,6 +81,15 @@ func TestHandlerMultipartStrictnessAndFilenameIgnored(t *testing.T) {
 	if rec.Code != 201 {
 		t.Fatalf("good = %d %s", rec.Code, rec.Body.String())
 	}
+	var uploaded struct {
+		File Entry `json:"file"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &uploaded); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+	if uploaded.File.Name != "saved.bin" || uploaded.File.Path != "saved.bin" || uploaded.File.Dir {
+		t.Fatalf("upload response file = %#v", uploaded.File)
+	}
 	if b, err := os.ReadFile(filepath.Join(root, "saved.bin")); err != nil || !bytes.Equal(b, []byte{0, 1, 2}) {
 		t.Fatalf("saved = %v %v", b, err)
 	}
