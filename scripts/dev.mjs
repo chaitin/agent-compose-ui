@@ -4,13 +4,14 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export function childSpecs({ executable, gatewayExecutable = 'go', token, authMode = 'disabled', agentComposeURL = '', scriptServiceURL = '', agentComposeDBPath = '', uiStateDBPath = '', goCache = '', goModCache = '' }) {
+export function childSpecs({ executable, gatewayExecutable = 'go', token, authMode = 'disabled', agentComposeURL = '', scriptServiceURL = '', agentComposeDBPath = '', uiStateDBPath = '', localVolumeRoot = '', goCache = '', goModCache = '' }) {
   const env = { SCRIPT_SERVICE_TOKEN: token };
   const gatewayEnv = {
     ...env,
     AUTH_MODE: authMode,
     ...(agentComposeURL ? { AGENT_COMPOSE_URL: agentComposeURL } : {}),
     ...(scriptServiceURL ? { SCRIPT_SERVICE_URL: scriptServiceURL } : {}),
+    ...(localVolumeRoot ? { LOCAL_VOLUME_ROOT: localVolumeRoot } : {}),
     ...(goCache ? { GOCACHE: goCache } : {}),
     ...(goModCache ? { GOMODCACHE: goModCache } : {}),
     ...(agentComposeDBPath && uiStateDBPath ? {
@@ -39,6 +40,7 @@ async function startDevelopment() {
     scriptServiceURL: process.env.SCRIPT_SERVICE_URL || 'http://127.0.0.1:7420',
     agentComposeDBPath: process.env.AGENT_COMPOSE_DB_PATH || path.resolve(projectRoot, '../agent-compose/.dev-data/data.db'),
     uiStateDBPath: process.env.UI_STATE_DB_PATH || path.resolve(projectRoot, '.cache/project-env.db'),
+    localVolumeRoot: process.env.LOCAL_VOLUME_ROOT || path.resolve(projectRoot, '../agent-compose/.dev-data/volumes/local'),
     goCache: process.env.GOCACHE || path.resolve(projectRoot, '.cache/go-build'),
     goModCache: process.env.GOMODCACHE || path.resolve(projectRoot, '../agent-compose/.cache/go-mod'),
   });

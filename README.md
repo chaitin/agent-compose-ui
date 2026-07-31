@@ -50,7 +50,7 @@ bun run dev
 
 启动后打开 <http://localhost:5174>。
 
-`bun run dev` 会运行 `scripts/dev.mjs`，自动生成一个随机 `SCRIPT_SERVICE_TOKEN` 并共享给网关、Vite 与脚本服务。Vite 的所有后端请求都代理到网关，不持有或注入脚本服务令牌。认证默认使用 `AUTH_MODE=disabled`；任一子进程退出时，其余进程会被一并终止。
+`bun run dev` 会运行 `scripts/dev.mjs`，自动生成一个随机 `SCRIPT_SERVICE_TOKEN` 并共享给网关、Vite 与脚本服务。Vite 的所有后端请求都代理到网关，不持有或注入脚本服务令牌。认证默认使用 `AUTH_MODE=disabled`；任一子进程退出时，其余进程会被一并终止。开发监督器只向 UI 网关传递 `LOCAL_VOLUME_ROOT`，默认指向相邻 daemon 仓库的 `../agent-compose/.dev-data/volumes/local`。如果 daemon 使用其他数据根目录，请将 `LOCAL_VOLUME_ROOT` 显式设置为其 `volumes/local` 绝对路径。
 
 本地开发默认不设置 `TOKEN_DB_PATH`，因此 API Token 管理不可用。需要联调该功能时，先创建数据库文件所在目录，再显式指定绝对路径启动：
 
@@ -63,7 +63,7 @@ TOKEN_DB_PATH=/absolute/path/to/tokens.db bun run dev
 ```bash
 export SCRIPT_SERVICE_TOKEN="$(openssl rand -hex 32)"  # 三个进程共享同一个非空令牌
 bun run dev:web      # 仅前端，Vite 开发服务器，监听 0.0.0.0:5174
-bun run dev:gateway  # 仅 UI 认证网关，监听 127.0.0.1:8080
+LOCAL_VOLUME_ROOT=/absolute/path/to/agent-compose-data/volumes/local bun run dev:gateway  # 仅 UI 认证网关，监听 127.0.0.1:8080
 bun run dev:scripts  # 仅脚本服务，监听 127.0.0.1:7420
 ```
 
