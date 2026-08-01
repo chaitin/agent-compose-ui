@@ -127,7 +127,12 @@
       legacyKey: store.browserDrafts.find((item) => item.id === store.activeDraftId)?.legacyStorageKey,
       ensureWorkspace: needsWorkspace,
     });
-    store.persistActiveDraftBinding(resolved, draftId);
+    // Preview must not persist a browser draft: doing so surfaced an extra
+    // "内容一样的草稿" in the sidebar the moment the user clicked 启用. The
+    // workspace binding is resolved in-memory only; a draft is only created if
+    // the user explicitly saves one (or opens the workspace panel). On a
+    // successful apply, removeEditorDraft(candidate.draftId) is a no-op when no
+    // draft exists.
     return resolved.sourcePath;
   }
 
@@ -358,7 +363,7 @@
     const currentProject = projects.find((project) => isSameProjectId(project.summary.projectId, currentProjectId));
     const savedSpec = currentProject
       ? (await projectService.getProject(new GetProjectRequest({
-          project: new ProjectRef({ projectId: currentProject.summary.projectId }),
+          project: new ProjectRef({ selector: { case: "projectId", value: currentProject.summary.projectId } }),
           includeSpec: true,
         }))).project?.spec
       : undefined;

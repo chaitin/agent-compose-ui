@@ -16,7 +16,7 @@ function dockerAgent(name: string, image: string) {
   return new AgentSpec({
     name,
     image,
-    driver: new DriverSpec({ docker: new DockerDriverSpec() }),
+    driver: new DriverSpec({ config: { case: 'docker', value: new DockerDriverSpec() } }),
   });
 }
 
@@ -39,7 +39,7 @@ describe('project dependency image preflight', () => {
       new AgentSpec({
         name: 'box',
         image: 'registry.example/box:v1',
-        driver: new DriverSpec({ boxlite: new BoxliteDriverSpec() }),
+        driver: new DriverSpec({ config: { case: 'boxlite', value: new BoxliteDriverSpec() } }),
       }),
       dockerAgent('default-image', ''),
     ] });

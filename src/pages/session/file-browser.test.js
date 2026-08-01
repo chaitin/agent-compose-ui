@@ -161,7 +161,7 @@ describe('v2 sandbox file browser requests', () => {
   const source = readFileSync(new URL('./FileBrowser.svelte', import.meta.url), 'utf8');
 
   test('uses bounded ExecStream requests addressed by sandbox id', () => {
-    expect(source).toContain('execService.execStream');
+    expect(source).toContain('execService.streamExec');
     expect(source).toContain("target: { case: 'sandboxId', value: sandboxId }");
     expect(source).toContain('DIRECTORY_LIST_BYTES');
     expect(source).toContain('FILE_PREVIEW_BYTES');

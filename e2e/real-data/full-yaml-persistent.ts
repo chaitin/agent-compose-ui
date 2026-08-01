@@ -49,7 +49,7 @@ if (!validation.valid) throw new Error(`validation failed: ${validation.issues.m
 const preview = await clients.project.applyProject(new ApplyProjectRequest({ spec: parsed.spec, source, dryRun: true }));
 record('dry-run preview produced revision', true, Boolean(preview.revision?.specHash), Boolean(preview.revision?.specHash));
 const applied = await clients.project.applyProject(new ApplyProjectRequest({
-  spec: parsed.spec, source, dryRun: false, expectedSpecHash: preview.revision?.specHash ?? '',
+  spec: parsed.spec, source, dryRun: false, submittedSpecHash: preview.revision?.specHash ?? '',
 }));
 const projectId = applied.project?.summary?.projectId ?? '';
 record('YAML applied and saved', true, { applied: applied.applied, unchanged: applied.unchanged, projectId }, Boolean(projectId) && (applied.applied || applied.unchanged));
@@ -89,7 +89,7 @@ try {
   await browser.close();
 }
 
-const saved = await clients.project.getProject(new GetProjectRequest({ project: new ProjectRef({ projectId }), includeSpec: true }));
+const saved = await clients.project.getProject(new GetProjectRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), includeSpec: true }));
 const savedAgents = saved.project?.spec?.agents ?? [];
 record('saved API truth retains all agents', 4, savedAgents.length, savedAgents.length === 4);
 const savedWorkspace = saved.project?.spec?.workspaces.find(item => item.name === 'fixture-workspace');
@@ -101,9 +101,9 @@ record('build retained', 'runtime', savedAgents.find(agent => agent.name === 'bu
 record('prompt retained', true, savedAgents.find(agent => agent.name === 'prompt-agent')?.systemPrompt, savedAgents.find(agent => agent.name === 'prompt-agent')?.systemPrompt.includes('exactly the marker') ?? false);
 record('script retained', true, savedAgents.find(agent => agent.name === 'script-agent')?.scheduler?.script.includes('yaml-script-main-ok'), savedAgents.find(agent => agent.name === 'script-agent')?.scheduler?.script.includes('yaml-script-main-ok') ?? false);
 
-const triggerScheduler = await clients.project.getScheduler(new GetSchedulerRequest({ project: new ProjectRef({ projectId }), agentName: 'trigger-agent' }));
+const triggerScheduler = await clients.project.getScheduler(new GetSchedulerRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName: 'trigger-agent' }));
 record('declarative triggers materialized', 4, triggerScheduler.triggers.length, triggerScheduler.triggers.length === 4);
-const scriptScheduler = await clients.project.getScheduler(new GetSchedulerRequest({ project: new ProjectRef({ projectId }), agentName: 'script-agent' }));
+const scriptScheduler = await clients.project.getScheduler(new GetSchedulerRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName: 'script-agent' }));
 record('script trigger materialized', true, scriptScheduler.triggers.map(trigger => trigger.triggerId), scriptScheduler.triggers.some(trigger => trigger.triggerId.includes('script-interval-check')));
 
 async function cliSchedulerTrigger(agent: string, trigger: string, extra: string[]): Promise<string> {

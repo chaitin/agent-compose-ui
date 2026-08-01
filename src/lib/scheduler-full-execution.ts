@@ -1,10 +1,11 @@
 import {
   FollowRunLogsRequest, GetRunRequest, GetSandboxRequest, ListRunEventsRequest,
-  ListSandboxHistoryRequest, ListSandboxRunEventsRequest, ListSchedulerEventsRequest,
+  ListSandboxHistoryRequest, ListSandboxRunEventsRequest, ListSchedulerEventsRequest, ProjectRef,
   type GetRunResponse, type GetSandboxResponse, type ListRunEventsResponse,
   type ListSandboxHistoryResponse, type ListSandboxRunEventsResponse,
   type ListSchedulerEventsResponse, type RunLogChunk,
 } from '../gen/agentcompose/v2/agentcompose_pb';
+import { timestampToIso } from './proto-helpers';
 import { Code, ConnectError } from '@connectrpc/connect';
 import { groupSchedulerExecutions, type SchedulerOwnedExecution } from './agent-owned-executions';
 import { extractSchedulerExecutionLinks, type LinkedResourceId } from './scheduler-execution-links';
@@ -73,20 +74,17 @@ function classifySourceError(error: unknown, notFoundHint: string): { state: Sou
 
 async function exhaustCursor<T>(
   source: string,
-  fetchPage: (cursor: string) => Promise<{ values: T[]; nextCursor: string; available?: boolean }>,
+  fetchPage: (offset: number) => Promise<{ values: T[]; total: number; available?: boolean }>,
 ): Promise<{ values: T[]; available: boolean }> {
   const values: T[] = [];
-  const seen = new Set<string>();
   let available = true;
-  let cursor = '';
+  let offset = 0;
   while (true) {
-    const page = await fetchPage(cursor);
+    const page = await fetchPage(offset);
     values.push(...page.values);
     available = available && page.available !== false;
-    if (!page.nextCursor) return { values, available };
-    if (seen.has(page.nextCursor)) throw new Error(`${source} returned repeated cursor`);
-    seen.add(page.nextCursor);
-    cursor = page.nextCursor;
+    if (page.values.length === 0 || values.length >= page.total) return { values, available };
+    offset += page.values.length;
   }
 }
 
@@ -118,7 +116,7 @@ export async function loadFullSchedulerExecution(
   const schedulerEvents = await loadSchedulerRunEvents(input.schedulerRunId, request => {
     checkAbort(signal);
     return dependencies.listSchedulerEvents(new ListSchedulerEventsRequest({
-      ...request, project: { projectId: input.projectId }, agentName: input.agentName,
+      ...request, project: new ProjectRef({ selector: { case: "projectId", value: input.projectId } }), agentName: input.agentName,
     }), { signal });
   });
   checkAbort(signal);
@@ -143,9 +141,9 @@ export async function loadFullSchedulerExecution(
     source: 'scheduler-link', resourceId: warning.eventId, state: 'unavailable', error: warning.message,
   });
   const runLinks = links.runs.map(link => ({ ...link, introducedBy: [...link.introducedBy] }));
-  const agentEventIds = schedulerEvents.filter(event => event.type.startsWith('loader.agent.')).map(event => event.id);
+  const agentEventIds = schedulerEvents.filter(event => event.type.startsWith('scheduler.agent.')).map(event => event.id);
   if (agentEventIds.length) {
-    const terminalAgentRunCount = schedulerEvents.filter(event => event.type === 'loader.agent.completed' || event.type === 'loader.agent.failed').length;
+    const terminalAgentRunCount = schedulerEvents.filter(event => event.type === 'scheduler.agent.completed' || event.type === 'scheduler.agent.failed').length;
     for (let sequence = 1; sequence <= Math.max(1, terminalAgentRunCount); sequence++) {
       const clientRequestId = `${input.schedulerRunId}:agent:${sequence}`;
       const stableRunId = await stableProjectRunId(input.projectId, input.agentName, 'scheduler', clientRequestId);
@@ -204,11 +202,11 @@ export async function loadFullSchedulerExecution(
     }
     try {
       const availableRunIds = new Set<string>();
-      const result = await exhaustCursor(`sandbox-run-events:${link.id}`, async cursor => {
+      const result = await exhaustCursor(`sandbox-run-events:${link.id}`, async offset => {
         checkAbort(signal);
-        const page = await dependencies.listSandboxRunEvents(new ListSandboxRunEventsRequest({ sandboxId: link.id, limit: 500, cursor }), { signal });
+        const page = await dependencies.listSandboxRunEvents(new ListSandboxRunEventsRequest({ sandboxId: link.id, limit: 500, offset }), { signal });
         for (const runId of page.historyAvailableRunIds) availableRunIds.add(runId);
-        return { values: page.events, nextCursor: page.nextCursor };
+        return { values: page.events, total: page.total };
       });
       for (const event of result.values) if (relevantRunIdSet.has(event.runId)) raw.runEvents.push({ runId: event.runId, value: event, parentSourceIds: [`sandbox:${link.id}`, `run-detail:${event.runId}`] });
       const unavailableRunIds = relevantRunIds.filter(runId => !availableRunIds.has(runId));
@@ -240,10 +238,10 @@ export async function loadFullSchedulerExecution(
       statuses.push({ source: 'run-detail', resourceId: link.id, ...classifySourceError(error, '运行记录不存在或已被清理') });
     }
     try {
-      const result = await exhaustCursor(`run-events:${link.id}`, async cursor => {
+      const result = await exhaustCursor(`run-events:${link.id}`, async offset => {
         checkAbort(signal);
-        const page = await dependencies.listRunEvents(new ListRunEventsRequest({ runId: link.id, limit: 500, cursor }), { signal });
-        return { values: page.events, nextCursor: page.nextCursor, available: page.historyAvailable };
+        const page = await dependencies.listRunEvents(new ListRunEventsRequest({ runId: link.id, limit: 500, offset }), { signal });
+        return { values: page.events, total: page.total, available: page.historyAvailable };
       });
       for (const event of result.values) if (event.runId === link.id) raw.runEvents.push({ runId: link.id, value: event, parentSourceIds: [`run-detail:${link.id}`] });
       statuses.push({ source: 'run-events', resourceId: link.id, state: result.available ? 'complete' : 'unavailable', error: result.available ? '' : 'Run event history is unavailable' });
@@ -257,7 +255,7 @@ export async function loadFullSchedulerExecution(
       const stream = dependencies.followRunLogs(new FollowRunLogsRequest({ projectId: input.projectId, runId: link.id, startOffset: 0n, follow: false }), { signal });
       for await (const chunk of stream) {
         checkAbort(signal);
-        raw.runLogs.push({ runId: link.id, offset: chunk.offset, data: chunk.data, createdAt: chunk.createdAt, parentSourceIds: [`run-detail:${link.id}`] });
+        raw.runLogs.push({ runId: link.id, offset: chunk.offset, data: chunk.data, createdAt: timestampToIso(chunk.createdAt), parentSourceIds: [`run-detail:${link.id}`] });
         if (chunk.isFinal) { final = true; break; }
       }
       statuses.push({ source: 'run-log', resourceId: link.id, state: final ? 'complete' : 'unavailable', error: final ? '' : 'Run log stream ended before a final chunk' });

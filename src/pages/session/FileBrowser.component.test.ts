@@ -1,15 +1,15 @@
 import { render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, expect, test, vi } from 'vitest';
 import {
-  ExecStreamEventType,
-  ExecStreamResponse,
+  StreamExecEventType,
+  StreamExecResponse,
   StdioStream,
   type ExecRequest,
 } from '../../gen/agentcompose/v2/agentcompose_pb';
 import FileBrowser from './FileBrowser.svelte';
 
 const mocks = vi.hoisted(() => ({
-  execService: { execStream: vi.fn() },
+  execService: { streamExec: vi.fn() },
 }));
 
 vi.mock('../../lib/rpc', () => mocks);
@@ -26,17 +26,17 @@ function deferred() {
 
 test('lists the parent directory and previews an initial workspace file', async () => {
   const execRequests: ExecRequest[] = [];
-  mocks.execService.execStream.mockImplementation(async function* (request: ExecRequest) {
+  mocks.execService.streamExec.mockImplementation(async function* (request: ExecRequest) {
     execRequests.push(request);
     const chunk = execRequests.length === 1 ? 'f\treport.md\n' : 'runtime-prefix__AC_FILE_B';
-    yield new ExecStreamResponse({
-      eventType: ExecStreamEventType.OUTPUT,
+    yield new StreamExecResponse({
+      eventType: StreamExecEventType.OUTPUT,
       stream: StdioStream.STDOUT,
       chunk,
     });
     if (execRequests.length === 2) {
-      yield new ExecStreamResponse({
-        eventType: ExecStreamEventType.OUTPUT,
+      yield new StreamExecResponse({
+        eventType: StreamExecEventType.OUTPUT,
         stream: StdioStream.STDOUT,
         chunk: 'EGIN__cmVwb3J0IGJvZHk=__AC_FILE_END__runtime-result',
       });
@@ -61,7 +61,7 @@ test('lists the parent directory and previews an initial workspace file', async 
 test('does not preview the initial file after unmounting during its directory listing', async () => {
   const listing = deferred();
   const execRequests: ExecRequest[] = [];
-  mocks.execService.execStream.mockImplementation(async function* (request: ExecRequest) {
+  mocks.execService.streamExec.mockImplementation(async function* (request: ExecRequest) {
     execRequests.push(request);
     if (execRequests.length === 1) await listing.promise;
   });

@@ -1,16 +1,17 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { Code, ConnectError } from '@connectrpc/connect';
+import { Timestamp } from '@bufbuild/protobuf';
 import SandboxDetailView from './SandboxDetailView.svelte';
 import componentSource from './SandboxDetailView.svelte?raw';
 import {
-  MetricStatus, MetricValue, RunAgentRequest, RunDetail, RunEvent, RunEventKind, RunSandboxCleanupPolicy, RunSource, RunStatus, RunSummary, Sandbox, SandboxHistoryCell, SandboxHistoryEvent, SandboxStats,
+  MetricStatus, MetricValue, RunAgentRequest, RunDetail, RunEvent, RunEventKind, RunSandboxCleanupPolicy, RunSource, RunStatus, RunSummary, Sandbox, SandboxHistoryCell, SandboxHistoryEvent, SandboxStatus, SandboxStats,
 } from '../../gen/agentcompose/v2/agentcompose_pb';
 import { store } from '../../lib/stores.svelte';
 
 const mocks = vi.hoisted(() => ({
-  runService: { listRuns: vi.fn(), listSandboxRunEvents: vi.fn(), startRun: vi.fn(), runAgent: vi.fn() },
-  execService: { exec: vi.fn(), execStream: vi.fn(), execAttach: vi.fn() },
+  runService: { listRuns: vi.fn(), listSandboxRunEvents: vi.fn(), startAgentRun: vi.fn(), runAgent: vi.fn() },
+  execService: { exec: vi.fn(), streamExec: vi.fn(), attachExec: vi.fn() },
   sandboxService: {
     getSandbox: vi.fn(), listSandboxHistory: vi.fn(), watchSandbox: vi.fn(), getSandboxStats: vi.fn(),
     stopSandbox: vi.fn(), resumeSandbox: vi.fn(), removeSandbox: vi.fn(),
@@ -37,7 +38,7 @@ beforeEach(() => {
   vi.spyOn(store, 'navigateTo').mockImplementation(() => {});
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ events: [] }), { status: 200 })));
   mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: new Sandbox({
-    sandboxId: 'sandbox-1', projectId: 'project-1', agentName: 'reviewer', status: 'RUNNING', driver: 'docker', title: 'Research',
+    sandboxId: 'sandbox-1', projectId: 'project-1', agentName: 'reviewer', status: SandboxStatus.RUNNING, driver: 'docker', title: 'Research',
   }) });
   mocks.sandboxService.listSandboxHistory.mockResolvedValue({
     cells: [
@@ -47,18 +48,18 @@ beforeEach(() => {
     events: [new SandboxHistoryEvent({ id: 'history-1', type: 'ready', level: 'info', message: 'sandbox ready' })],
     legacyHistory: false,
   });
-  mocks.runService.listSandboxRunEvents.mockResolvedValue({ events: [new RunEvent({ id: 'event-1', runId: 'run-1', kind: RunEventKind.AGENT_MESSAGE, text: 'structured response' })] });
+  mocks.runService.listSandboxRunEvents.mockResolvedValue({ events: [new RunEvent({ id: 'event-1', runId: 'run-1', kind: RunEventKind.AGENT_MESSAGE, text: 'structured response' })], total: 1 });
   mocks.runService.listRuns.mockResolvedValue({ runs: [new RunSummary({ runId: 'run-1', sandboxId: 'sandbox-1', agentName: 'reviewer', status: RunStatus.SUCCEEDED })] });
   mocks.runService.runAgent.mockResolvedValue({ run: new RunDetail({
     summary: new RunSummary({ runId: 'run-agent-2', status: RunStatus.SUCCEEDED }), output: 'Agent final answer',
   }) });
   mocks.sandboxService.getSandboxStats.mockResolvedValue({ stats: new SandboxStats({ sandboxId: 'sandbox-1', driver: 'docker' }) });
   mocks.sandboxService.watchSandbox.mockImplementation(async function* () {});
-  mocks.sandboxService.stopSandbox.mockResolvedValue({ sandbox: new Sandbox({ sandboxId: 'sandbox-1', status: 'STOPPED' }) });
-  mocks.sandboxService.resumeSandbox.mockResolvedValue({ sandbox: new Sandbox({ sandboxId: 'sandbox-1', status: 'RUNNING' }) });
+  mocks.sandboxService.stopSandbox.mockResolvedValue({ sandbox: new Sandbox({ sandboxId: 'sandbox-1', status: SandboxStatus.STOPPED }) });
+  mocks.sandboxService.resumeSandbox.mockResolvedValue({ sandbox: new Sandbox({ sandboxId: 'sandbox-1', status: SandboxStatus.RUNNING }) });
   mocks.sandboxService.removeSandbox.mockResolvedValue({ removed: true });
-  mocks.execService.execStream.mockImplementation(async function* () {});
-  mocks.execService.execAttach.mockImplementation(async function* () {});
+  mocks.execService.streamExec.mockImplementation(async function* () {});
+  mocks.execService.attachExec.mockImplementation(async function* () {});
   history.replaceState(null, '', '/#/project/project-1/sandbox/sandbox-1');
   Object.defineProperty(window, 'confirm', { configurable: true, value: vi.fn(() => true) });
 });
@@ -89,7 +90,7 @@ test('does not load or render the removed related Event section', async () => {
 
 test('loads an explicit sandbox without rendering the project breadcrumb', async () => {
   mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: new Sandbox({
-    sandboxId: 'sandbox-explicit', projectId: 'project-explicit', agentName: 'reviewer', status: 'RUNNING', driver: 'docker', title: 'Explicit sandbox',
+    sandboxId: 'sandbox-explicit', projectId: 'project-explicit', agentName: 'reviewer', status: SandboxStatus.RUNNING, driver: 'docker', title: 'Explicit sandbox',
   }) });
 
   render(SandboxDetailView, { props: { projectId: 'project-explicit', sandboxId: 'sandbox-explicit', showBreadcrumb: false } });
@@ -156,7 +157,7 @@ test('keeps backend metric reasons visible and puts metrics and actions on one l
 
 test('shows only high-value supplemental resource metrics in the top status strip', async () => {
   mocks.sandboxService.getSandboxStats.mockResolvedValue({ stats: new SandboxStats({
-    sandboxId: 'sandbox-1', driver: 'docker', sampledAt: '2026-07-15T12:44:36Z',
+    sandboxId: 'sandbox-1', driver: 'docker', sampledAt: Timestamp.fromDate(new Date('2026-07-15T12:44:36Z')),
     memoryLimitBytes: new MetricValue({ value: 4096, unit: 'bytes', status: MetricStatus.OK }),
     memoryPercent: new MetricValue({ value: 25.5, unit: 'percent', status: MetricStatus.OK }),
     networkRxBytes: new MetricValue({ value: 796, unit: 'bytes', status: MetricStatus.OK }),
@@ -168,7 +169,7 @@ test('shows only high-value supplemental resource metrics in the top status stri
 
   const strip = await screen.findByRole('region', { name: 'Sandbox 状态与操作' });
   await waitFor(() => expect(strip).toHaveTextContent(/采样/));
-  expect(strip.querySelector('[title="2026-07-15T12:44:36Z"]')).toBeTruthy();
+  expect(strip.querySelector('[title="2026-07-15T12:44:36.000Z"]')).toBeTruthy();
   expect(strip).not.toHaveTextContent('上限');
   expect(strip).not.toHaveTextContent('内存占用');
   expect(strip).not.toHaveTextContent('接收');
@@ -229,7 +230,7 @@ test('hides Jupyter while keeping stop and force delete actions', async () => {
 
 test('does not expose Jupyter or mount live tools for a stopped sandbox', async () => {
   mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: new Sandbox({
-    sandboxId: 'sandbox-1', projectId: 'project-1', status: 'STOPPED', title: 'Stopped sandbox',
+    sandboxId: 'sandbox-1', projectId: 'project-1', status: SandboxStatus.STOPPED, title: 'Stopped sandbox',
   }) });
   history.replaceState(null, '', '/?sandboxTab=terminal#/project/project-1/sandbox/sandbox-1');
   render(SandboxDetailView);
@@ -245,8 +246,8 @@ test('passes sandboxPath from the URL to the running Files browser', async () =>
   render(SandboxDetailView);
 
   await screen.findByRole('tabpanel', { name: 'Files' });
-  await waitFor(() => expect(mocks.execService.execStream).toHaveBeenCalled());
-  expect(mocks.execService.execStream.mock.calls[0][0]).toMatchObject({
+  await waitFor(() => expect(mocks.execService.streamExec).toHaveBeenCalled());
+  expect(mocks.execService.streamExec.mock.calls[0][0]).toMatchObject({
     command: { command: '/usr/bin/find', args: ['/workspace/2026-07-21', '-mindepth', '1', '-maxdepth', '1', '-printf', '%y\t%f\n'] },
   });
 });
@@ -259,8 +260,8 @@ test.each([
   render(SandboxDetailView);
 
   await screen.findByRole('tabpanel', { name: 'Files' });
-  await waitFor(() => expect(mocks.execService.execStream).toHaveBeenCalled());
-  expect(mocks.execService.execStream.mock.calls.some(([request]) =>
+  await waitFor(() => expect(mocks.execService.streamExec).toHaveBeenCalled());
+  expect(mocks.execService.streamExec.mock.calls.some(([request]) =>
     request.command?.command === '/bin/cat' && request.command.args.includes('/workspace/2026-07-21/report.md'),
   )).toBe(false);
   await waitFor(() => expect(new URLSearchParams(location.search).has('sandboxPath')).toBe(false));
@@ -270,14 +271,14 @@ test.each([
 
 test('keeps Files unavailable without resuming a stopped sandbox with sandboxPath', async () => {
   mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: new Sandbox({
-    sandboxId: 'sandbox-1', projectId: 'project-1', status: 'STOPPED', title: 'Stopped sandbox',
+    sandboxId: 'sandbox-1', projectId: 'project-1', status: SandboxStatus.STOPPED, title: 'Stopped sandbox',
   }) });
   history.replaceState(null, '', '/?sandboxTab=files&sandboxPath=%2Fworkspace%2F2026-07-21%2Freport.md&sandboxPathSandboxId=sandbox-1#/project/project-1/sandbox/sandbox-1');
   render(SandboxDetailView);
 
   expect(await screen.findByText('Sandbox 未运行，Files 不可用。')).toBeTruthy();
   expect(mocks.sandboxService.resumeSandbox).not.toHaveBeenCalled();
-  expect(mocks.execService.execStream).not.toHaveBeenCalled();
+  expect(mocks.execService.streamExec).not.toHaveBeenCalled();
 });
 
 test('restores the selected tab on browser history navigation', async () => {
@@ -288,20 +289,6 @@ test('restores the selected tab on browser history navigation', async () => {
   history.replaceState(null, '', '/?sandboxTab=exec#/project/project-1/sandbox/sandbox-1');
   window.dispatchEvent(new PopStateEvent('popstate'));
   expect(await screen.findByRole('tabpanel', { name: '快速执行' })).toBeTruthy();
-});
-
-test('loads every structured run-event cursor page in server order and stops on a repeated cursor', async () => {
-  mocks.runService.listSandboxRunEvents
-    .mockResolvedValueOnce({ events: [new RunEvent({ id: 'page-1', text: 'first page' })], nextCursor: 'cursor-2' })
-    .mockResolvedValueOnce({ events: [new RunEvent({ id: 'page-2', text: 'second page' })], nextCursor: 'cursor-2' });
-
-  render(SandboxDetailView);
-
-  expect(await screen.findByText('first page')).toBeTruthy();
-  expect(screen.getByText('second page')).toBeTruthy();
-  expect(mocks.runService.listSandboxRunEvents).toHaveBeenCalledTimes(2);
-  expect(mocks.runService.listSandboxRunEvents.mock.calls[0][0]).toMatchObject({ sandboxId: 'sandbox-1', limit: 500, cursor: '' });
-  expect(mocks.runService.listSandboxRunEvents.mock.calls[1][0]).toMatchObject({ sandboxId: 'sandbox-1', limit: 500, cursor: 'cursor-2' });
 });
 
 test('renders one chronological table and keeps associated runs in its final row', async () => {
@@ -324,7 +311,7 @@ test('collapses sandbox timeline details only when content exceeds twenty lines'
   mocks.runService.listSandboxRunEvents.mockResolvedValue({ events: [
     new RunEvent({ id: 'twenty', runId: 'run-1', text: twentyLines, success: true }),
     new RunEvent({ id: 'twenty-one', runId: 'run-1', text: twentyOneLines, success: true }),
-  ] });
+  ], total: 2 });
   render(SandboxDetailView);
 
   const timeline = await screen.findByRole('region', { name: 'Sandbox 执行时间线' });
@@ -380,6 +367,7 @@ test('filters sandbox timeline rows through the compact tag bar', async () => {
 test('reveals sandbox timeline rows in pages while scrolling', async () => {
   mocks.runService.listSandboxRunEvents.mockResolvedValue({
     events: Array.from({ length: 35 }, (_, index) => new RunEvent({ id: `event-${index}`, runId: 'run-1', text: `event text ${index}` })),
+    total: 35,
   });
   render(SandboxDetailView);
 
@@ -421,19 +409,19 @@ test('uses direct lifecycle RPCs and never creates control runs', async () => {
   const view = render(SandboxDetailView);
   await fireEvent.click(await screen.findByRole('button', { name: '停止' }));
   expect(mocks.sandboxService.stopSandbox).toHaveBeenCalledWith(expect.objectContaining({ sandboxId: 'sandbox-1' }), expect.anything());
-  expect(mocks.runService.startRun).not.toHaveBeenCalled();
+  expect(mocks.runService.startAgentRun).not.toHaveBeenCalled();
 
   view.unmount();
-  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: new Sandbox({ sandboxId: 'sandbox-1', projectId: 'project-1', status: 'STOPPED' }) });
+  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: new Sandbox({ sandboxId: 'sandbox-1', projectId: 'project-1', status: SandboxStatus.STOPPED }) });
   render(SandboxDetailView);
   await fireEvent.click(await screen.findByRole('button', { name: '恢复' }));
   expect(mocks.sandboxService.resumeSandbox).toHaveBeenCalledWith(expect.objectContaining({ sandboxId: 'sandbox-1' }), expect.anything());
-  expect(mocks.runService.startRun).not.toHaveBeenCalled();
+  expect(mocks.runService.startAgentRun).not.toHaveBeenCalled();
 });
 
 test('shows a clear message when a deleted Sandbox cannot be resumed', async () => {
   mocks.sandboxService.getSandbox.mockResolvedValue({
-    sandbox: new Sandbox({ sandboxId: 'sandbox-1', projectId: 'project-1', status: 'STOPPED' }),
+    sandbox: new Sandbox({ sandboxId: 'sandbox-1', projectId: 'project-1', status: SandboxStatus.STOPPED }),
   });
   mocks.sandboxService.resumeSandbox.mockRejectedValue(new Error(
     'docker runtime state for stopped sandbox sandbox-1 is missing; refusing to recreate it during resume: only canonical legacy UUID sandboxes may be reconstructed',
@@ -452,12 +440,12 @@ test('ignores a lifecycle response after navigating to another sandbox', async (
   await fireEvent.click(await screen.findByRole('button', { name: '停止' }));
 
   mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: new Sandbox({
-    sandboxId: 'sandbox-2', projectId: 'project-1', status: 'RUNNING', title: 'Second sandbox',
+    sandboxId: 'sandbox-2', projectId: 'project-1', status: SandboxStatus.RUNNING, title: 'Second sandbox',
   }) });
   store.runtimeView = { ...store.runtimeView, sandboxId: 'sandbox-2' };
   await screen.findByRole('heading', { name: 'Second sandbox' });
 
-  pending.resolve({ sandbox: new Sandbox({ sandboxId: 'sandbox-1', status: 'STOPPED', title: 'Stale sandbox' }) });
+  pending.resolve({ sandbox: new Sandbox({ sandboxId: 'sandbox-1', status: SandboxStatus.STOPPED, title: 'Stale sandbox' }) });
   await Promise.resolve();
   await Promise.resolve();
 
@@ -477,7 +465,7 @@ test('does not read component derived state after an in-flight load is destroyed
 
   await waitFor(() => expect(mocks.sandboxService.getSandbox).toHaveBeenCalled());
   view.unmount();
-  pending.resolve({ sandbox: new Sandbox({ sandboxId: 'sandbox-1', projectId: 'project-1', status: 'STOPPED' }) });
+  pending.resolve({ sandbox: new Sandbox({ sandboxId: 'sandbox-1', projectId: 'project-1', status: SandboxStatus.STOPPED }) });
   await pending.promise;
   await Promise.resolve();
   await Promise.resolve();
@@ -541,7 +529,7 @@ test('keeps JavaScript and Python execution through ExecService', async () => {
 
 test('disables Agent execution when the sandbox has no associated agent', async () => {
   mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: new Sandbox({
-    sandboxId: 'sandbox-1', projectId: 'project-1', agentName: '', status: 'RUNNING', title: 'Unassigned',
+    sandboxId: 'sandbox-1', projectId: 'project-1', agentName: '', status: SandboxStatus.RUNNING, title: 'Unassigned',
   }) });
   mocks.runService.listRuns.mockResolvedValue({ runs: [] });
   render(SandboxDetailView);
@@ -556,7 +544,7 @@ test('disables Agent execution when the sandbox has no associated agent', async 
 
 test('recovers the Agent association from Sandbox runs when direct metadata is empty', async () => {
   mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: new Sandbox({
-    sandboxId: 'sandbox-1', projectId: '', agentName: '', status: 'RUNNING', title: 'Run-associated',
+    sandboxId: 'sandbox-1', projectId: '', agentName: '', status: SandboxStatus.RUNNING, title: 'Run-associated',
   }) });
   mocks.runService.listRuns.mockResolvedValue({ runs: [
     new RunSummary({ runId: 'run-1', sandboxId: 'sandbox-1', agentName: 'script-agent', status: RunStatus.SUCCEEDED }),
@@ -621,7 +609,7 @@ test('ignores an Agent result after navigating to another sandbox', async () => 
   await fireEvent.click(screen.getByRole('button', { name: 'Agent' }));
 
   mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: new Sandbox({
-    sandboxId: 'sandbox-2', projectId: 'project-1', agentName: 'reviewer', status: 'RUNNING', title: 'Second sandbox',
+    sandboxId: 'sandbox-2', projectId: 'project-1', agentName: 'reviewer', status: SandboxStatus.RUNNING, title: 'Second sandbox',
   }) });
   store.runtimeView = { ...store.runtimeView, sandboxId: 'sandbox-2' };
   await screen.findByRole('heading', { name: 'Second sandbox' });
@@ -642,7 +630,7 @@ test('starts a watch after the snapshot and ignores stale route events', async (
   await screen.findByText(/python output/);
   await waitFor(() => expect(mocks.sandboxService.watchSandbox).toHaveBeenCalled());
   store.runtimeView = { ...store.runtimeView, sandboxId: 'sandbox-2' };
-  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: new Sandbox({ sandboxId: 'sandbox-2', projectId: 'project-1', status: 'STOPPED' }) });
+  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: new Sandbox({ sandboxId: 'sandbox-2', projectId: 'project-1', status: SandboxStatus.STOPPED }) });
   release();
   await waitFor(() => expect(mocks.sandboxService.getSandbox).toHaveBeenCalledWith(expect.objectContaining({ sandboxId: 'sandbox-2' })));
   expect(screen.queryByText('python output stale')).toBeNull();

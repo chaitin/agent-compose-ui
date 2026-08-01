@@ -2,4 +2,5 @@
 # The stock nginx image entrypoint runs envsubst on /etc/nginx/templates/*
 # and then execs the command. We invoke it as the service's run target so
 # template rendering happens at service start, not image build time.
-exec /docker-entrypoint.sh nginx -g 'daemon off;'
+# with-contenv: envsubst needs the container env (s6-overlay v3 default is clean).
+exec with-contenv /docker-entrypoint.sh nginx -g 'daemon off;'

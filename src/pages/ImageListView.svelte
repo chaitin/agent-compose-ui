@@ -10,6 +10,7 @@
     type InspectImageResponse,
     type ImageStoreStatus,
   } from '../gen/agentcompose/v2/agentcompose_pb';
+  import { timestampToIso } from '../lib/proto-helpers';
   import { formatImageBytes, formatImagePlatform, imageAvailabilityLabel, imageStoreLabel } from '../lib/images';
   import { imageDisplayRef, imageSelectionKey, isSystemImage, type ImageRemovalResult } from '../lib/image-management';
   import PullImageModal from '../modals/PullImageModal.svelte';
@@ -68,8 +69,8 @@
         if (generation !== requestGeneration) return;
         const visiblePage = resp.images.filter(image => (includeIntermediate || !image.dangling) && !isSystemImage(image));
         receivedImages = [...receivedImages, ...visiblePage];
-        if (visiblePage.length > 0 || !resp.hasMore || resp.nextOffset <= requestOffset) break;
-        requestOffset = resp.nextOffset;
+        if (visiblePage.length > 0 || resp.images.length === 0 || requestOffset + resp.images.length >= resp.total) break;
+        requestOffset += resp.images.length;
       }
       if (generation !== requestGeneration) return;
       const nextImages = reset ? receivedImages : [...images, ...receivedImages];
@@ -80,8 +81,8 @@
         if (expandedKey && !loadedKeys.has(expandedKey)) closeDetail();
       }
       storeStatus = resp.storeStatus;
-      hasMore = resp.hasMore;
-      nextOffset = resp.nextOffset || images.length;
+      hasMore = requestOffset < resp.total;
+      nextOffset = requestOffset;
     } catch (cause: any) {
       if (generation === requestGeneration) {
         error = cause?.message || '加载镜像失败';
@@ -201,7 +202,7 @@
             <span><b class="type-pill" class:intermediate={image.dangling}>{image.dangling ? '中间层' : '成品镜像'}</b></span>
             <span>{imageStoreLabel(image.store)}</span>
             <span class:error-text={imageAvailabilityLabel(image.availabilityStatus) === '错误'}>{imageAvailabilityLabel(image.availabilityStatus)}</span>
-            <span>{formatImageBytes(image.sizeBytes)}</span><span>{formatCreated(image.createdAt)}</span>
+            <span>{formatImageBytes(image.sizeBytes)}</span><span>{formatCreated(timestampToIso(image.createdAt))}</span>
           </button>
         </div>
         {#if expandedKey === key}

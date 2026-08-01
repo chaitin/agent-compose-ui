@@ -45,10 +45,10 @@ describe('buildFullExecutionTimeline', () => {
 
   test('normalizes every source, preserves generated JSON, and classifies filters', () => {
     const entries = buildFullExecutionTimeline(fixture({
-      schedulerEvents: [new SchedulerEvent({ id: 'scheduler', type: 'loader.run.failed', level: 'error', message: 'failed', createdAt: time(1n) })],
+      schedulerEvents: [new SchedulerEvent({ id: 'scheduler', type: 'scheduler.run.failed', level: 'error', message: 'failed', createdAt: time(1n) })],
       sandboxes: [{ sandboxId: 'box', value: { id: 'box', updatedAt: '2024-01-01T00:00:02Z', state: 'running', revision: 9n }, parentSourceIds: ['scheduler-event:scheduler'] }],
       cells: [{ sandboxId: 'box', cellId: 'cell', value: new SandboxHistoryCell({ id: 'cell', source: 'prompt', stdout: 'out', stderr: 'warn', output: 'answer', createdAt: time(3n) }), parentSourceIds: ['sandbox:box'] }],
-      runDetails: [{ runId: 'run', value: new RunDetail({ summary: new RunSummary({ runId: 'run', createdAt: '2024-01-01T00:00:04Z', error: 'boom' }), prompt: 'question', output: 'answer', resultJson: '{"artifact":true}' }), parentSourceIds: ['scheduler-event:scheduler'] }],
+      runDetails: [{ runId: 'run', value: new RunDetail({ summary: new RunSummary({ runId: 'run', createdAt: Timestamp.fromDate(new Date('2024-01-01T00:00:04Z')), error: 'boom' }), prompt: 'question', output: 'answer', resultJson: '{"artifact":true}' }), parentSourceIds: ['scheduler-event:scheduler'] }],
       runEvents: [{ runId: 'run', value: new RunEvent({ id: 'event', kind: RunEventKind.AGENT_MESSAGE, seq: 5n, text: 'message', createdAt: time(5n) }), parentSourceIds: ['run-detail:run'] }],
       runLogs: [{ runId: 'run', offset: 6n, data: 'log data', createdAt: '2024-01-01T00:00:06Z', parentSourceIds: ['run-detail:run'] }],
       sourceStatuses: [{ source: 'run-log', resourceId: 'missing', state: 'failed', error: 'network problem' }],

@@ -83,8 +83,14 @@ function objectTimestamp(value: unknown): string {
   if (!value || typeof value !== 'object') return '';
   const record = value as Record<string, unknown>;
   for (const key of ['createdAt', 'startedAt', 'updatedAt', 'completedAt', 'sampledAt']) {
-    const timestamp = validTimestamp(record[key]);
-    if (timestamp) return timestamp;
+    const field = record[key];
+    if (typeof field === 'string') {
+      const ts = validTimestamp(field);
+      if (ts) return ts;
+    } else if (field && typeof field === 'object') {
+      const ts = protobufTimestamp(field as { seconds: bigint; nanos: number });
+      if (ts) return ts;
+    }
   }
   return '';
 }
@@ -154,10 +160,10 @@ export function buildFullExecutionTimeline(data: SchedulerExecutionRawData): Ful
     pending.push(makePending({
       sourceType: 'scheduler-event', sourceId: event.id, parentSourceIds: [], raw,
       timestamp: protobufTimestamp(event.createdAt),
-      kind: event.type.startsWith('loader.run.') ? 'run' : event.type.startsWith('loader.sandbox.') ? 'sandbox' : error ? 'error' : 'scheduler',
+      kind: event.type.startsWith('scheduler.run.') ? 'run' : event.type.startsWith('scheduler.sandbox.') ? 'sandbox' : error ? 'error' : 'scheduler',
       source: event.type || 'scheduler', level: levelFrom(error, warning),
       content: [event.message, event.payloadJson].filter(Boolean).join('\n') || raw,
-      filterTags: uniqueTags(event.type.startsWith('loader.') ? 'run' : 'activity', Boolean(event.payloadJson) && 'artifact', (error || warning) && 'problem'),
+      filterTags: uniqueTags(event.type.startsWith('scheduler.') ? 'run' : 'activity', Boolean(event.payloadJson) && 'artifact', (error || warning) && 'problem'),
     }));
   });
 

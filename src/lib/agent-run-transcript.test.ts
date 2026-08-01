@@ -49,12 +49,12 @@ describe('agent run transcript', () => {
 });
 
 describe('structured run events', () => {
-  it('loads every cursor page and preserves backend history availability', async () => {
-    const requests: Array<{ runId: string; cursor: string; limit: number }> = [];
+  it('loads every offset page and preserves backend history availability', async () => {
+    const requests: Array<{ runId: string; offset: number; limit: number }> = [];
     const pages = [
       new ListRunEventsResponse({
         events: [new RunEvent({ id: 'event-2', seq: 2n })],
-        nextCursor: 'page-2',
+        total: 2,
         historyAvailable: true,
       }),
       new ListRunEventsResponse({
@@ -64,13 +64,13 @@ describe('structured run events', () => {
     ];
 
     const result = await listAllRunEvents('run-1', async (request) => {
-      requests.push({ runId: request.runId, cursor: request.cursor, limit: request.limit });
+      requests.push({ runId: request.runId, offset: request.offset, limit: request.limit });
       return pages.shift()!;
     });
 
     expect(requests).toEqual([
-      { runId: 'run-1', cursor: '', limit: 100 },
-      { runId: 'run-1', cursor: 'page-2', limit: 100 },
+      { runId: 'run-1', offset: 0, limit: 100 },
+      { runId: 'run-1', offset: 1, limit: 100 },
     ]);
     expect(result.historyAvailable).toBe(true);
     expect(result.events.map((event) => event.id)).toEqual(['event-1', 'event-2']);
@@ -107,28 +107,12 @@ describe('structured run events', () => {
 
   it('reports incomplete history when any fetched page marks history unavailable', async () => {
     const pages = [
-      new ListRunEventsResponse({ nextCursor: 'page-2', historyAvailable: true }),
+      new ListRunEventsResponse({ events: [new RunEvent({ id: 'page-1', seq: 1n })], total: 2, historyAvailable: true }),
       new ListRunEventsResponse({ historyAvailable: false }),
     ];
 
     const result = await listAllRunEvents('partially-retained-run', async () => pages.shift()!);
 
-    expect(result.historyAvailable).toBe(false);
-  });
-
-  it('stops on a repeated cursor while preserving incomplete-history evidence', async () => {
-    const cursors: string[] = [];
-    const pages = [
-      new ListRunEventsResponse({ nextCursor: 'page-2', historyAvailable: true }),
-      new ListRunEventsResponse({ nextCursor: 'page-2', historyAvailable: false }),
-    ];
-
-    const result = await listAllRunEvents('looping-run', async (request) => {
-      cursors.push(request.cursor);
-      return pages.shift()!;
-    });
-
-    expect(cursors).toEqual(['', 'page-2']);
     expect(result.historyAvailable).toBe(false);
   });
 });

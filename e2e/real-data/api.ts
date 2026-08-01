@@ -45,7 +45,7 @@ import {
   RunStatus,
   type Sandbox,
   StopRunRequest,
-  StartRunRequest,
+  StartAgentRunRequest,
   ValidateProjectRequest,
 } from '../../src/gen/agentcompose/v2/agentcompose_pb';
 import type { Fixture, FixtureLedger } from './fixtures';
@@ -100,25 +100,22 @@ export function imagePlatform(image: { platform?: { os?: string; architecture?: 
 
 export function schedulerEventsRequest(projectId: string, agentName: string): ListSchedulerEventsRequest {
   return new ListSchedulerEventsRequest({
-    project: new ProjectRef({ projectId }),
+    project: new ProjectRef({ selector: { case: "projectId", value: projectId } }),
     agentName,
     limit: 100,
   });
 }
 
 export async function findTrackedSandbox(
-  fetchPage: (request: ListSandboxesRequest) => Promise<{ sandboxes: Sandbox[]; nextCursor: string }>,
+  fetchPage: (request: ListSandboxesRequest) => Promise<{ sandboxes: Sandbox[]; total: number }>,
   trackedIds: ReadonlySet<string>,
 ): Promise<Sandbox | undefined> {
-  const seen = new Set<string>();
-  let cursor = '';
+  let offset = 0;
   while (true) {
-    const page = await fetchPage(new ListSandboxesRequest({ limit: 100, cursor }));
+    const page = await fetchPage(new ListSandboxesRequest({ limit: 100, offset }));
     const tracked = page.sandboxes.find(sandbox => trackedIds.has(sandbox.sandboxId));
-    if (tracked || !page.nextCursor) return tracked;
-    if (seen.has(page.nextCursor)) throw new Error(`Sandbox pagination returned repeated cursor: ${page.nextCursor}`);
-    seen.add(page.nextCursor);
-    cursor = page.nextCursor;
+    if (tracked || page.sandboxes.length === 0 || offset + page.sandboxes.length >= page.total) return tracked;
+    offset += page.sandboxes.length;
   }
 }
 
@@ -212,7 +209,7 @@ export async function runApiCases(context: RealDataContext): Promise<void> {
     return { actual: { applied: response.applied, projectId: context.projectId, name: summary?.name, agentCount: summary?.agentCount }, assertions: [exact('applied', true, response.applied), predicate('projectId', 'non-empty', context.projectId, Boolean(context.projectId)), exact('name', fixture.projectName, summary?.name), exact('agentCount', 2, summary?.agentCount)] };
   });
   await recorder.run('get', '项目', { projectId: context.projectId }, { name: fixture.projectName, agents: ['deterministic-agent', 'llm-agent'] }, async () => {
-    const response = await clients.project.getProject(new GetProjectRequest({ project: new ProjectRef({ projectId: context.projectId }), includeSpec: true }));
+    const response = await clients.project.getProject(new GetProjectRequest({ project: new ProjectRef({ selector: { case: "projectId", value: context.projectId } }), includeSpec: true }));
     const names = response.project?.spec?.agents.map((agent) => agent.name) ?? [];
     return { actual: { name: response.project?.summary?.name, agents: names, sourcePath: response.project?.summary?.sourcePath }, assertions: [exact('name', fixture.projectName, response.project?.summary?.name), exact('agents', 'deterministic-agent,llm-agent', names.join(','))] };
   });
@@ -222,13 +219,13 @@ export async function runApiCases(context: RealDataContext): Promise<void> {
   });
 
   await recorder.run('update', '项目', { projectId: context.projectId, systemPrompt: `${fixture.batchId}-updated` }, { applied: true, specHashChanged: true, systemPrompt: `${fixture.batchId}-updated` }, async () => {
-    const before = await clients.project.getProject(new GetProjectRequest({ project: new ProjectRef({ projectId: context.projectId }), includeSpec: true }));
+    const before = await clients.project.getProject(new GetProjectRequest({ project: new ProjectRef({ selector: { case: "projectId", value: context.projectId } }), includeSpec: true }));
     const updatedSpec = before.project?.spec;
     if (!updatedSpec) throw new Error('project spec missing before update');
     updatedSpec.agents[0].systemPrompt = `${fixture.batchId}-updated`;
     const oldHash = before.project?.summary?.specHash ?? '';
     const applied = await clients.project.applyProject(new ApplyProjectRequest({ spec: updatedSpec, source: projectSource }));
-    const after = await clients.project.getProject(new GetProjectRequest({ project: new ProjectRef({ projectId: context.projectId }), includeSpec: true }));
+    const after = await clients.project.getProject(new GetProjectRequest({ project: new ProjectRef({ selector: { case: "projectId", value: context.projectId } }), includeSpec: true }));
     return { actual: { applied: applied.applied, oldHash, newHash: after.project?.summary?.specHash, systemPrompt: after.project?.spec?.agents[0]?.systemPrompt }, assertions: [exact('applied', true, applied.applied), predicate('specHashChanged', 'newHash != oldHash', after.project?.summary?.specHash, Boolean(after.project?.summary?.specHash && after.project.summary.specHash !== oldHash)), exact('systemPrompt', `${fixture.batchId}-updated`, after.project?.spec?.agents[0]?.systemPrompt)] };
   });
 
@@ -249,7 +246,7 @@ export async function runApiCases(context: RealDataContext): Promise<void> {
     return { actual: { data, final }, assertions: [exact('contains', true, data.includes(fixture.stdoutMarker)), exact('final', true, final)] };
   });
   await recorder.run('stop', '运行', { command: fixture.stopCommand }, { stopRequested: true, terminal: 'not running' }, async () => {
-    const started = await clients.run.startRun(new StartRunRequest({ run: new RunAgentRequest({ projectId: context.projectId, agentName: 'deterministic-agent', command: fixture.stopCommand, source: RunSource.API, cleanupPolicy: RunSandboxCleanupPolicy.KEEP_RUNNING, clientRequestId: `${fixture.batchId}-stop` }) }));
+    const started = await clients.run.startAgentRun(new StartAgentRunRequest({ run: new RunAgentRequest({ projectId: context.projectId, agentName: 'deterministic-agent', command: fixture.stopCommand, source: RunSource.API, cleanupPolicy: RunSandboxCleanupPolicy.KEEP_RUNNING, clientRequestId: `${fixture.batchId}-stop` }) }));
     context.stoppedRunId = started.run?.runId ?? '';
     if (context.stoppedRunId) ledger.runs.add(context.stoppedRunId);
     const stop = await clients.run.stopRun(new StopRunRequest({ projectId: context.projectId, runId: context.stoppedRunId, reason: 'real-data E2E stop assertion' }));
@@ -387,7 +384,7 @@ export async function cleanupFixture(context: RealDataContext): Promise<void> {
     try { await context.clients.sandbox.removeSandbox(new RemoveSandboxRequest({ sandboxId, force: true })); } catch {}
   }
   for (const projectId of context.ledger.projects) {
-    try { await context.clients.project.removeProject(new RemoveProjectRequest({ project: new ProjectRef({ projectId }), force: true })); } catch {}
+    try { await context.clients.project.removeProject(new RemoveProjectRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), force: true })); } catch {}
   }
   if (context.ledger.imagePulled && !context.ledger.imageWasPresent) {
     try { await context.clients.image.removeImage(new RemoveImageRequest({ imageRef: context.fixture.image, store: ImageStoreKind.DOCKER_DAEMON, force: true })); } catch {}

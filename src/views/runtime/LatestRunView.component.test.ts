@@ -40,7 +40,7 @@ test('loads and renders every Agent latest Run through the shared execution proc
   render(LatestRunView);
 
   expect((await screen.findAllByTestId('execution-process')).map(node => node.textContent)).toEqual(['writer:run-w', 'reviewer:run-r']);
-  expect(mocks.projectService.getProject).toHaveBeenCalledWith(expect.objectContaining({ project: expect.objectContaining({ projectId: 'p1' }) }), expect.anything());
+  expect(mocks.projectService.getProject).toHaveBeenCalledWith(expect.objectContaining({ project: expect.objectContaining({ selector: { case: 'projectId', value: 'p1' } }) }), expect.anything());
   expect(mocks.runService.listRuns).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'p1', agentName: 'writer', limit: 1 }), expect.anything());
   expect(mocks.runService.listRuns).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'p1', agentName: 'reviewer', limit: 1 }), expect.anything());
   expect(mocks.batches.peek).not.toHaveBeenCalled();
@@ -89,7 +89,7 @@ test('isolates one Agent query error and retries it without disturbing its sibli
 
 test('never mixes a new active project ID with an old entry Run during project switches', async () => {
   const nextProject = deferred<ReturnType<typeof project>>();
-  mocks.projectService.getProject.mockImplementation((request: { project?: { projectId?: string } }) => request.project?.projectId === 'p1'
+  mocks.projectService.getProject.mockImplementation((request: { project?: { selector?: { value?: string } } }) => request.project?.selector?.value === 'p1'
     ? Promise.resolve(project('writer'))
     : nextProject.promise);
   mocks.runService.listRuns.mockResolvedValue({ runs: [new RunSummary({ runId: 'run-w' })] });
@@ -135,8 +135,8 @@ test('keeps the newest result when repeated retries for one Agent finish out of 
 test('ignores stale project and Run responses after the active project changes', async () => {
   const oldProject = deferred<ReturnType<typeof project>>();
   const oldRun = deferred<{ runs: RunSummary[] }>();
-  mocks.projectService.getProject.mockImplementation((request: { project?: { projectId?: string } }) => {
-    return request.project?.projectId === 'p1' ? oldProject.promise : Promise.resolve(project('new-agent'));
+  mocks.projectService.getProject.mockImplementation((request: { project?: { selector?: { value?: string } } }) => {
+    return request.project?.selector?.value === 'p1' ? oldProject.promise : Promise.resolve(project('new-agent'));
   });
   mocks.runService.listRuns.mockImplementation((request: { agentName: string }) => request.agentName === 'old-agent'
     ? oldRun.promise

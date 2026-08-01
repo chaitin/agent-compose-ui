@@ -1,5 +1,6 @@
 import {
   ListSchedulerEventsRequest,
+  ProjectRef,
   type ListSchedulerEventsResponse,
   type SchedulerEvent,
 } from '../gen/agentcompose/v2/agentcompose_pb';
@@ -113,22 +114,23 @@ export async function findSchedulerRunEvidence(
   input: SchedulerRunEvidenceInput,
   fetchPage: SchedulerEventPageFetcher,
 ): Promise<SchedulerRunEvidence> {
-  const seenCursors = new Set<string>();
   const eventsByRun = new Map<string, SchedulerEvent[]>();
-  let cursor = '';
+  let offset = 0;
+  let totalCollected = 0;
   let loaderRunId = '';
 
   while (true) {
     const page = await fetchPage(new ListSchedulerEventsRequest({
-      project: { projectId: input.projectId },
+      project: new ProjectRef({ selector: { case: 'projectId', value: input.projectId } }),
       agentName: input.agentName,
       limit: 500,
-      cursor,
+      offset,
     }));
     for (const event of page.events) {
       if (!event.runId) continue;
       eventsByRun.set(event.runId, [...(eventsByRun.get(event.runId) ?? []), event]);
     }
+    totalCollected += page.events.length;
     const candidates = [...new Set([...eventsByRun.values()].flat()
       .filter(event => event.runId)
       .sort((left, right) => Number(right.triggerId === input.triggerId) - Number(left.triggerId === input.triggerId))
@@ -137,7 +139,7 @@ export async function findSchedulerRunEvidence(
     if (!loaderRunId) {
       for (const candidate of candidates) {
         const agentRunCount = (eventsByRun.get(candidate) ?? [])
-          .filter(event => event.type === 'loader.agent.completed' || event.type === 'loader.agent.failed').length + 1;
+          .filter(event => event.type === 'scheduler.agent.completed' || event.type === 'scheduler.agent.failed').length + 1;
         let matches = false;
         for (let sequence = 1; sequence <= agentRunCount; sequence++) {
           const clientRequestId = `${candidate}:agent:${sequence}`;
@@ -155,12 +157,10 @@ export async function findSchedulerRunEvidence(
 
     if (loaderRunId) {
       const collected = eventsByRun.get(loaderRunId) ?? [];
-      if (collected.some(event => event.type === 'loader.run.started')) return { loaderRunId, events: collected };
+      if (collected.some(event => event.type === 'scheduler.run.started')) return { loaderRunId, events: collected };
     }
 
-    if (!page.nextCursor) return loaderRunId ? { loaderRunId, events: eventsByRun.get(loaderRunId) ?? [] } : { loaderRunId: '', events: [] };
-    if (seenCursors.has(page.nextCursor)) throw new Error('Scheduler event pagination returned repeated cursor');
-    seenCursors.add(page.nextCursor);
-    cursor = page.nextCursor;
+    if (page.events.length === 0 || totalCollected >= page.total) return loaderRunId ? { loaderRunId, events: eventsByRun.get(loaderRunId) ?? [] } : { loaderRunId: '', events: [] };
+    offset += page.events.length;
   }
 }

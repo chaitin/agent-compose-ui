@@ -28,31 +28,31 @@ describe('stableProjectRunId', () => {
 describe('findSchedulerRunEvidence', () => {
   test('finds the exact loader run and continues through its start event', async () => {
     const projectRunId = await stableProjectRunId('project-1', 'worker', 'scheduler', 'loader-target:agent:1');
-    const cursors: string[] = [];
+    const offsets: number[] = [];
     const result = await findSchedulerRunEvidence({
       projectId: 'project-1',
       agentName: 'worker',
       triggerId: 'trigger-1',
       projectRunId,
     }, async request => {
-      cursors.push(request.cursor);
-      if (!request.cursor) return new ListSchedulerEventsResponse({
+      offsets.push(request.offset);
+      if (!request.offset) return new ListSchedulerEventsResponse({
         events: [
-          new SchedulerEvent({ id: 'other', runId: 'loader-other', triggerId: 'trigger-1', type: 'loader.run.completed' }),
-          new SchedulerEvent({ id: 'agent', runId: 'loader-target', triggerId: 'trigger-1', type: 'loader.agent.completed' }),
-          new SchedulerEvent({ id: 'done', runId: 'loader-target', triggerId: 'trigger-1', type: 'loader.run.completed' }),
+          new SchedulerEvent({ id: 'other', runId: 'loader-other', triggerId: 'trigger-1', type: 'scheduler.run.completed' }),
+          new SchedulerEvent({ id: 'agent', runId: 'loader-target', triggerId: 'trigger-1', type: 'scheduler.agent.completed' }),
+          new SchedulerEvent({ id: 'done', runId: 'loader-target', triggerId: 'trigger-1', type: 'scheduler.run.completed' }),
         ],
-        nextCursor: 'next',
+        total: 5,
       });
       return new ListSchedulerEventsResponse({
         events: [
-          new SchedulerEvent({ id: 'noise', runId: 'loader-noise', triggerId: 'trigger-2', type: 'loader.run.started' }),
-          new SchedulerEvent({ id: 'start', runId: 'loader-target', triggerId: 'trigger-1', type: 'loader.run.started' }),
+          new SchedulerEvent({ id: 'noise', runId: 'loader-noise', triggerId: 'trigger-2', type: 'scheduler.run.started' }),
+          new SchedulerEvent({ id: 'start', runId: 'loader-target', triggerId: 'trigger-1', type: 'scheduler.run.started' }),
         ],
       });
     });
 
-    expect(cursors).toEqual(['', 'next']);
+    expect(offsets).toEqual([0, 3]);
     expect(result.loaderRunId).toBe('loader-target');
     expect(result.events.map(event => event.id)).toEqual(['agent', 'done', 'start']);
   });
@@ -63,7 +63,7 @@ describe('findSchedulerRunEvidence', () => {
     const result = await findSchedulerRunEvidence({
       projectId: 'project-1', agentName: 'worker', triggerId: 'trigger-1', projectRunId,
     }, async () => new ListSchedulerEventsResponse({
-      events: [new SchedulerEvent({ id: 'start', runId: 'loader-running', triggerId: 'trigger-1', type: 'loader.run.started' })],
+      events: [new SchedulerEvent({ id: 'start', runId: 'loader-running', triggerId: 'trigger-1', type: 'scheduler.run.started' })],
     }));
 
     expect(result.loaderRunId).toBe('loader-running');
@@ -78,12 +78,5 @@ describe('findSchedulerRunEvidence', () => {
     }));
 
     expect(result).toEqual({ loaderRunId: '', events: [] });
-  });
-
-  test('rejects a repeated pagination cursor', async () => {
-    await expect(findSchedulerRunEvidence({
-      projectId: 'project-1', agentName: 'worker', triggerId: '', projectRunId: 'not-a-match',
-    }, async () => new ListSchedulerEventsResponse({ nextCursor: 'repeat' })))
-      .rejects.toThrow('repeated cursor');
   });
 });

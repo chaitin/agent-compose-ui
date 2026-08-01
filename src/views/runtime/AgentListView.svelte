@@ -2,7 +2,7 @@
   import { projectService, runService, runtimeProjectService } from '../../lib/rpc';
   import { store } from '../../lib/stores.svelte';
   import RuntimeBreadcrumb from './RuntimeBreadcrumb.svelte';
-  import { GetProjectRequest, GetSchedulerRequest, ListRunsRequest, ListSchedulerEventsRequest, type RunSummary, type SchedulerEvent } from '../../gen/agentcompose/v2/agentcompose_pb';
+  import { ProjectRef, GetProjectRequest, GetSchedulerRequest, ListRunsRequest, ListSchedulerEventsRequest, type RunSummary, type SchedulerEvent } from '../../gen/agentcompose/v2/agentcompose_pb';
   import { groupSchedulerExecutions, mergeAgentOwnedExecutions, type AgentOwnedExecution } from '../../lib/agent-owned-executions';
 
   interface AgentInfo {
@@ -41,7 +41,7 @@
       loadError = '';
       try {
         const req = new GetProjectRequest({
-          project: { projectId },
+          project: new ProjectRef({ selector: { case: "projectId", value: projectId } }),
           includeSpec: true,
         });
         const resp: any = await runtimeProjectService.getProject(req, { signal: controller.signal, timeoutMs: 30_000 });
@@ -98,18 +98,16 @@
 
   async function loadSchedulerEvents(projectId: string, agentName: string): Promise<SchedulerEvent[]> {
     const events: SchedulerEvent[] = [];
-    const seenCursors = new Set<string>();
-    let cursor = '';
-    do {
-      if (seenCursors.has(cursor)) throw new Error('Scheduler 历史返回了重复游标');
-      seenCursors.add(cursor);
+    let offset = 0;
+    while (true) {
       const resp: any = await projectService.listSchedulerEvents(new ListSchedulerEventsRequest({
-        project: { projectId }, agentName, limit: 500, cursor,
+        project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName, limit: 500, offset,
       }));
-      events.push(...(resp.events || []));
-      cursor = resp.nextCursor || '';
-    } while (cursor);
-    return events;
+      const page = resp.events || [];
+      events.push(...page);
+      if (page.length === 0 || offset + page.length >= resp.total) return events;
+      offset += page.length;
+    }
   }
 
   async function fetchOperationalStats(a: AgentInfo, projectId: string) {
@@ -129,7 +127,7 @@
     if (a.schedulerEnabled) {
       try {
         const resp: any = await projectService.getScheduler(new GetSchedulerRequest({
-          project: { projectId }, agentName: a.agentName,
+          project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName: a.agentName,
         }));
         const dates = (resp.triggers || [])
           .filter((trigger: any) => trigger.enabled !== false)

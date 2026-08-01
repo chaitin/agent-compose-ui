@@ -24,8 +24,9 @@ describe('run history windows', () => {
 
   test('builds UTC query bounds from local calendar midnights', () => {
     const range = buildRunDateRange('2026-07-01', '2026-07-15');
-    expect(range.startedFrom).toBe(new Date(2026, 6, 1, 0, 0, 0, 0).toISOString());
-    expect(range.startedTo).toBe(new Date(new Date(2026, 6, 16, 0, 0, 0, 0).getTime() - 1).toISOString());
-    expect(new Date(range.startedTo).getTime()).toBe(new Date(2026, 6, 16, 0, 0, 0, 0).getTime() - 1);
+    const fromMs = new Date(2026, 6, 1, 0, 0, 0, 0).getTime();
+    const toMs = new Date(2026, 6, 16, 0, 0, 0, 0).getTime() - 1;
+    expect(range.startedFrom).toEqual({ seconds: BigInt(Math.floor(fromMs / 1000)), nanos: (fromMs % 1000) * 1_000_000 });
+    expect(range.startedTo).toEqual({ seconds: BigInt(Math.floor(toMs / 1000)), nanos: (toMs % 1000) * 1_000_000 });
   });
 });

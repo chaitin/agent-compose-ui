@@ -1,23 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Sandbox } from '../gen/agentcompose/v2/agentcompose_pb';
+import { Sandbox, SandboxStatus } from '../gen/agentcompose/v2/agentcompose_pb';
 import { filterSandboxes, listAllSandboxes, sandboxLifecycle } from './sandbox-inventory';
 
 describe('sandbox inventory', () => {
-  it('walks every cursor page exactly once', async () => {
+  it('walks every offset page exactly once', async () => {
     const fetchPage = vi.fn()
-      .mockResolvedValueOnce({ sandboxes: [new Sandbox({ sandboxId: 'one' })], nextCursor: 'next' })
-      .mockResolvedValueOnce({ sandboxes: [new Sandbox({ sandboxId: 'two' })], nextCursor: '' });
+      .mockResolvedValueOnce({ sandboxes: [new Sandbox({ sandboxId: 'one' })], total: 2 })
+      .mockResolvedValueOnce({ sandboxes: [new Sandbox({ sandboxId: 'two' })], total: 2 });
 
     await expect(listAllSandboxes(fetchPage)).resolves.toHaveLength(2);
-    expect(fetchPage.mock.calls.map(([request]) => request.cursor)).toEqual(['', 'next']);
-  });
-
-  it('rejects a repeated cursor', async () => {
-    const fetchPage = vi.fn()
-      .mockResolvedValueOnce({ sandboxes: [], nextCursor: 'next' })
-      .mockResolvedValueOnce({ sandboxes: [], nextCursor: 'next' });
-
-    await expect(listAllSandboxes(fetchPage)).rejects.toThrow(/repeated cursor/i);
+    expect(fetchPage.mock.calls.map(([request]) => request.offset)).toEqual([0, 1]);
   });
 
   it('filters by authoritative fields and legacy tags', () => {
@@ -32,9 +24,9 @@ describe('sandbox inventory', () => {
   });
 
   it('normalizes backend lifecycle values', () => {
-    expect(sandboxLifecycle('RUNNING')).toBe('running');
-    expect(sandboxLifecycle('stopped')).toBe('stopped');
-    expect(sandboxLifecycle('REMOVED')).toBe('destroyed');
-    expect(sandboxLifecycle('pending')).toBe('unknown');
+    expect(sandboxLifecycle(SandboxStatus.RUNNING)).toBe('running');
+    expect(sandboxLifecycle(SandboxStatus.STOPPED)).toBe('stopped');
+    expect(sandboxLifecycle(SandboxStatus.DELETING)).toBe('destroyed');
+    expect(sandboxLifecycle(SandboxStatus.PENDING)).toBe('unknown');
   });
 });

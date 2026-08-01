@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { ExecStreamEventType, ExecStreamResponse, StdioStream } from '../../gen/agentcompose/v2/agentcompose_pb';
+import { StreamExecEventType, StreamExecResponse, StdioStream } from '../../gen/agentcompose/v2/agentcompose_pb';
 import SessionTerminal from './SessionTerminal.svelte';
 
 const mocks = vi.hoisted(() => ({ requests: [] as any[], onData: (_data: string) => {}, writes: [] as string[] }));
@@ -15,10 +15,10 @@ vi.mock('@xterm/xterm', () => ({ Terminal: class {
 } }));
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() {} } }));
 vi.mock('../../lib/rpc', () => ({ execService: {
-  execStream: async function* (request: any) {
+  streamExec: async function* (request: any) {
     mocks.requests.push(request);
     const isPwd = request.command?.command === '/bin/pwd';
-    yield new ExecStreamResponse({ eventType: ExecStreamEventType.OUTPUT, stream: StdioStream.STDOUT, chunk: isPwd ? '/workspace\n' : 'ok\n' });
+    yield new StreamExecResponse({ eventType: StreamExecEventType.OUTPUT, stream: StdioStream.STDOUT, chunk: isPwd ? '/workspace\n' : 'ok\n' });
   },
 } }));
 

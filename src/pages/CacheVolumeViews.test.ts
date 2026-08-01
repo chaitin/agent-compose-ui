@@ -121,44 +121,11 @@ describe('CacheListView', () => {
     expect(execute.filter.type).toBe(preview.filter.type);
   });
 
-  test('keeps referenced caches excluded by default and executes the disclosed dangerous preview snapshot', async () => {
-    rpc.cacheService.pruneCaches
-      .mockResolvedValueOnce({ dryRun: true, matched: [cache], removed: [], skipped: [], warnings: [] })
-      .mockResolvedValueOnce({ dryRun: false, matched: [cache], removed: ['cache-1'], skipped: [], warnings: [] });
-    render(CacheListView);
-    await screen.findByText('cache-1');
-    expect(screen.queryByRole('checkbox', { name: /仍被引用的缓存/ })).not.toBeInTheDocument();
-    await fireEvent.click(screen.getByRole('button', { name: '显示危险选项' }));
-    const includeReferenced = screen.getByRole('checkbox', { name: /仍被引用的缓存/ });
-    expect(includeReferenced).not.toBeChecked();
-    expect(screen.getByText(/可能破坏仍引用这些缓存的任务或沙箱/)).toBeInTheDocument();
-    await fireEvent.click(includeReferenced);
-    await fireEvent.click(screen.getByRole('button', { name: '预览清理' }));
-    await screen.findByRole('button', { name: '确认执行清理' });
-    expect(rpc.cacheService.pruneCaches.mock.calls[0][0].includeReferenced).toBe(true);
-
-    await fireEvent.click(includeReferenced);
-    await fireEvent.click(screen.getByRole('button', { name: '确认执行清理' }));
-    expect(rpc.cacheService.pruneCaches.mock.calls[1][0]).toEqual(expect.objectContaining({ includeReferenced: true, force: true }));
-  });
-
-  test('disables includeReferenced when its dangerous disclosure is hidden', async () => {
-    rpc.cacheService.pruneCaches.mockResolvedValueOnce({ dryRun: true, matched: [], removed: [], skipped: [], warnings: [] });
-    render(CacheListView);
-    await screen.findByText('cache-1');
-    await fireEvent.click(screen.getByRole('button', { name: '显示危险选项' }));
-    await fireEvent.click(screen.getByRole('checkbox', { name: /仍被引用的缓存/ }));
-    await fireEvent.click(screen.getByRole('button', { name: '隐藏危险选项' }));
-    await fireEvent.click(screen.getByRole('button', { name: '预览清理' }));
-    expect(rpc.cacheService.pruneCaches.mock.calls[0][0].includeReferenced).toBe(false);
-  });
-
-  test('hiding a dangerous referenced-cache preview revokes its confirmation authorization', async () => {
+  test('hiding a dangerous preview revokes its confirmation authorization', async () => {
     rpc.cacheService.pruneCaches.mockResolvedValueOnce({ dryRun: true, matched: [cache], removed: [], skipped: [], warnings: [] });
     render(CacheListView);
     await screen.findByText('cache-1');
     await fireEvent.click(screen.getByRole('button', { name: '显示危险选项' }));
-    await fireEvent.click(screen.getByRole('checkbox', { name: /仍被引用的缓存/ }));
     await fireEvent.click(screen.getByRole('button', { name: '预览清理' }));
     await screen.findByRole('button', { name: '确认执行清理' });
 
@@ -174,17 +141,15 @@ describe('CacheListView', () => {
     render(CacheListView);
     await screen.findByText('cache-1');
     await fireEvent.click(screen.getByRole('button', { name: '显示危险选项' }));
-    await fireEvent.click(screen.getByRole('checkbox', { name: /仍被引用的缓存/ }));
     await fireEvent.click(screen.getByRole('button', { name: '预览清理' }));
 
     const hide = screen.getByRole('button', { name: '隐藏危险选项' });
     expect(hide).toBeDisabled();
     await fireEvent.click(hide);
-    expect(screen.getByRole('checkbox', { name: /仍被引用的缓存/ })).toBeChecked();
 
     preview.resolve({ dryRun: true, matched: [cache], removed: [], skipped: [], warnings: [] });
     expect(await screen.findByRole('button', { name: '确认执行清理' })).toBeInTheDocument();
-    expect(screen.getByText(/可能破坏仍引用这些缓存/)).toBeInTheDocument();
+    expect(screen.getByText(/高风险/)).toBeInTheDocument();
   });
 
   test('revokes old cache removal confirmation when a new preview fails', async () => {

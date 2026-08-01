@@ -55,7 +55,7 @@ describe('YAML preview and Apply response matrix', () => {
       changes: Array.from({ length: 13 }, (_, index) => ({ action: ProjectChangeAction.CREATED, name: `resource-${index}` })),
     };
     const preview = await previewProject(complexYaml, { applyProject: async () => response as any }, {
-      currentProjectId: 'project-1', expectedSpecHash: 'same',
+      currentProjectId: 'project-1', submittedSpecHash: 'same',
       projects: [{ summary: { projectId: 'project-1', name: '深度测试-app', sourcePath: '/srv/deep/agent-compose.yml', specHash: 'same' } }],
     });
     expect(preview.response.unchanged).toBe(true);
@@ -71,13 +71,13 @@ describe('YAML preview and Apply response matrix', () => {
         ? { applied: false, unchanged: false, revision: { specHash: 'new' }, changes: [{ action: ProjectChangeAction.CREATED, name: 'reviewer' }] } as any
         : { applied: true, unchanged: false, project: { summary: { projectId: 'project-1' } }, changes: [] } as any;
     } }, {
-      currentProjectId: 'project-1', expectedSpecHash: 'old',
+      currentProjectId: 'project-1', submittedSpecHash: 'old',
       projects: [{ summary: { projectId: 'project-1', name: '深度测试-app', sourcePath: '/srv/deep/agent-compose.yml', specHash: 'old' } }],
     });
     expect(preview.response.unchanged).toBe(false);
     expect(preview.response.changes[0].action).toBe(ProjectChangeAction.CREATED);
     await preview.apply();
-    expect(requests.map(request => [request.dryRun, request.expectedSpecHash])).toEqual([[true, ''], [false, 'new']]);
+    expect(requests.map(request => [request.dryRun, request.submittedSpecHash])).toEqual([[true, ''], [false, 'new']]);
     expect(requests[1].spec.toJson()).toEqual(requests[0].spec.toJson());
   });
 

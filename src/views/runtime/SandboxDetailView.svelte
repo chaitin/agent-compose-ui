@@ -5,8 +5,9 @@
     ExecCommand, ExecRequest, GetSandboxRequest, GetSandboxStatsRequest, ListRunsRequest,
     ListSandboxHistoryRequest, ListSandboxHistoryResponse, ListSandboxRunEventsRequest, ListSandboxRunEventsResponse, MetricStatus, RemoveSandboxRequest,
     ResumeSandboxRequest, RunAgentRequest, RunSandboxCleanupPolicy, RunSource, RunStatus, StopSandboxRequest, WatchSandboxRequest,
-    type MetricValue, type RunSummary, type SandboxStats,
+    type MetricValue, type RunSummary, type SandboxStats, SandboxStatus,
   } from '../../gen/agentcompose/v2/agentcompose_pb';
+  import { sandboxStatusString, timestampToIso } from '../../lib/proto-helpers';
   import SessionTerminal from '../../pages/session/SessionTerminal.svelte';
   import FileBrowser from '../../pages/session/FileBrowser.svelte';
   import { buildSandboxDetailSnapshot, buildSandboxTimeline, type SandboxDetailSnapshot } from '../../lib/sandbox-detail';
@@ -103,15 +104,14 @@
   function runStatusLabel(status?: RunStatus) {
     return ({ [RunStatus.PENDING]: '等待中', [RunStatus.RUNNING]: '运行中', [RunStatus.SUCCEEDED]: '成功', [RunStatus.FAILED]: '失败', [RunStatus.CANCELED]: '已取消' } as Record<number, string>)[status ?? 0] || '未知';
   }
-  function lifecycle(status = snapshot?.sandbox.status || '') {
-    const normalized = status.toUpperCase();
-    if (normalized === 'RUNNING') return 'running';
-    if (normalized === 'STOPPED') return 'stopped';
-    if (normalized === 'REMOVED' || normalized === 'DESTROYED') return 'destroyed';
+  function lifecycle(status: SandboxStatus = snapshot?.sandbox.status ?? SandboxStatus.UNSPECIFIED) {
+    if (status === SandboxStatus.RUNNING) return 'running';
+    if (status === SandboxStatus.STOPPED) return 'stopped';
+    if (status === SandboxStatus.DELETING) return 'destroyed';
     return 'unknown';
   }
   function lifecycleLabel() {
-    return ({ running: '运行中', stopped: '已停止 · 可恢复', destroyed: '已销毁', unknown: snapshot?.sandbox.status || '状态未知' })[lifecycle()];
+    return ({ running: '运行中', stopped: '已停止 · 可恢复', destroyed: '已销毁', unknown: sandboxStatusString(snapshot?.sandbox.status) || '状态未知' })[lifecycle()];
   }
   function targetIsCurrent(projectId: string, sandboxId: string, current: number) {
     if (destroyed) return false;
@@ -137,14 +137,12 @@
 
   async function loadRunEvents(sandboxId: string) {
     const events = [];
-    const seenCursors = new Set<string>();
-    let cursor = '';
+    let offset = 0;
     while (true) {
-      const page = await runService.listSandboxRunEvents(new ListSandboxRunEventsRequest({ sandboxId, limit: 500, cursor }));
+      const page = await runService.listSandboxRunEvents(new ListSandboxRunEventsRequest({ sandboxId, limit: 500, offset }));
       events.push(...page.events);
-      if (!page.nextCursor || seenCursors.has(page.nextCursor)) break;
-      seenCursors.add(page.nextCursor);
-      cursor = page.nextCursor;
+      if (page.events.length === 0 || offset + page.events.length >= page.total) break;
+      offset += page.events.length;
     }
     return new ListSandboxRunEventsResponse({ events });
   }
@@ -452,7 +450,7 @@
           <div class="sandbox-actions">{#if lifecycle() === 'running'}<button onclick={stop} disabled={lifecycleBusy}>停止</button><button class="danger" onclick={remove} disabled={lifecycleBusy}>强制删除</button>
           {:else if lifecycle() === 'stopped'}<button onclick={resume} disabled={lifecycleBusy}>恢复</button><button class="danger" onclick={remove} disabled={lifecycleBusy}>删除 Sandbox</button>{/if}</div>
           {#if stats?.sampledAt}<div class="supplemental-metrics">
-            {#if stats?.sampledAt}<span>采样 <strong title={stats.sampledAt}>{sampledAtText(stats.sampledAt)}</strong></span>{/if}
+            {#if stats?.sampledAt}<span>采样 <strong title={timestampToIso(stats.sampledAt)}>{sampledAtText(timestampToIso(stats.sampledAt))}</strong></span>{/if}
           </div>{/if}
         </section>
         <div class="tabs" role="tablist" aria-label="Sandbox 详情">

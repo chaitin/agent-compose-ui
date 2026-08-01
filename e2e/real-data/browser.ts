@@ -97,7 +97,7 @@ export async function runBrowserCases(context: RealDataContext, reportDirectory:
     });
 
     await context.recorder.run('project-api-truth', '前端项目数据', { projectId: context.projectId }, { projectName: context.fixture.projectName, agentCount: 2 }, async () => {
-      const truth = await context.clients.project.getProject(new GetProjectRequest({ project: new ProjectRef({ projectId: context.projectId }), includeSpec: true }));
+      const truth = await context.clients.project.getProject(new GetProjectRequest({ project: new ProjectRef({ selector: { case: "projectId", value: context.projectId } }), includeSpec: true }));
       const text = await pageText(page, `${base}/#/project/${context.projectId}/agents`);
       return { actual: { apiName: truth.project?.summary?.name, apiAgentCount: truth.project?.summary?.agentCount, visibleName: text.includes(truth.project?.summary?.name ?? ''), visibleAgents: truth.project?.spec?.agents.filter((agent) => text.includes(agent.name)).length }, assertions: [exact('projectName', true, text.includes(context.fixture.projectName)), exact('agentCount', truth.project?.summary?.agentCount, truth.project?.spec?.agents.filter((agent) => text.includes(agent.name)).length)] };
     });

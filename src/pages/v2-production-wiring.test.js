@@ -8,7 +8,7 @@ test('toolbar tracks every applied YML agent through the ordinary v2 Run service
   expect(toolbar).toContain('client: runService');
   expect(toolbar).not.toContain('runProjectTriggers');
   expect(actions).toContain('for (const agent of options.agents)');
-  expect(actions).toContain('options.client.startRun(new StartRunRequest({');
+  expect(actions).toContain('options.client.startAgentRun(new StartAgentRunRequest({');
   expect(actions).toContain('run: new RunAgentRequest({');
 });
 
