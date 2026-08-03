@@ -2,12 +2,8 @@ name: Image
 
 on:
   push:
-    branches:
-      - main
-      - agent-declarative-config
     tags:
-      - '*'
-  workflow_dispatch:
+      - 'v*'
 
 permissions:
   contents: read
@@ -35,10 +31,7 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=ref,event=branch
             type=ref,event=tag
-            type=sha,prefix=sha-
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
