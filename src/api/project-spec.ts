@@ -1,16 +1,15 @@
-import { AgentSpec, DockerDriverSpec, DriverSpec, ProjectSpec } from '../gen/agentcompose/v2/agentcompose_pb.js';
+import {
+  AgentSpec,
+  DockerDriverSpec,
+  DriverSpec,
+  Project,
+  ProjectSpec,
+} from '../gen/agentcompose/v2/agentcompose_pb.js';
 import { projectClient } from './client';
-
-const redactedSecret = '********';
+import { projectById } from './project-ref';
 
 export function projectSpecForUpdate(spec: ProjectSpec | undefined): ProjectSpec {
   if (!spec) throw new Error('项目配置不存在');
-  if (spec.octobusServers.length > 0) {
-    throw new Error('该项目包含项目级 OctoBus 配置，请使用 compose 或 CLI 修改；当前页面仅管理全局能力网关');
-  }
-  if (JSON.stringify(spec.toJson()).includes(redactedSecret)) {
-    throw new Error('项目包含已脱敏凭据，无法安全更新完整配置');
-  }
   return new ProjectSpec({
     ...spec,
     agents: spec.agents.map(
@@ -23,8 +22,17 @@ export function projectSpecForUpdate(spec: ProjectSpec | undefined): ProjectSpec
   });
 }
 
-export async function applyProjectSpecUpdate(spec: ProjectSpec): Promise<void> {
-  const response = await projectClient.applyProject({ spec });
+export async function patchProjectSpecUpdate(project: Project, spec: ProjectSpec): Promise<void> {
+  const projectId = project.summary?.projectId.trim() ?? '';
+  const expectedCurrentSpecHash = project.summary?.specHash.trim() ?? '';
+  if (!projectId) throw new Error('项目 ID 不存在');
+  if (!expectedCurrentSpecHash) throw new Error('项目配置指纹不存在，请重新加载');
+
+  const response = await projectClient.patchProject({
+    project: projectById(projectId),
+    expectedCurrentSpecHash,
+    spec,
+  });
   if (response.applied || response.unchanged) return;
   const details = response.issues
     .map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message))
