@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { ApplyProjectRequest, ApplyProjectResponse, BuildImageEvent, BuildImageRequest, CapabilityStatusResponse, CreateVolumeRequest, CreateVolumeResponse, CreateWorkspacePresetRequest, DeleteWorkspacePresetRequest, DeleteWorkspacePresetResponse, ExecAttachRequest, ExecAttachResponse, ExecRequest, ExecResponse, ExecStreamResponse, FollowRunLogsRequest, GenerateLLMRequest, GenerateLLMResponse, GetCapabilityCatalogRequest, GetCapabilityCatalogResponse, GetCapabilityGatewayConfigRequest, GetCapabilityGatewayConfigResponse, GetCapabilityStatusRequest, GetDashboardOverviewRequest, GetDashboardOverviewResponse, GetGlobalEnvRequest, GetGlobalEnvResponse, GetProjectRequest, GetProjectResponse, GetRunRequest, GetRunResponse, GetSandboxRequest, GetSandboxResponse, GetSandboxStatsRequest, GetSandboxStatsResponse, GetSchedulerRequest, GetSchedulerResponse, GetSchedulerRunRequest, GetSchedulerRunResponse, InspectCacheRequest, InspectCacheResponse, InspectImageRequest, InspectImageResponse, InspectVolumeRequest, InspectVolumeResponse, ListCachesRequest, ListCachesResponse, ListCapabilitySetsRequest, ListCapabilitySetsResponse, ListImagesRequest, ListImagesResponse, ListProjectsRequest, ListProjectsResponse, ListRunEventsRequest, ListRunEventsResponse, ListRunsRequest, ListRunsResponse, ListSandboxesRequest, ListSandboxesResponse, ListSandboxHistoryRequest, ListSandboxHistoryResponse, ListSandboxRunEventsRequest, ListSandboxRunEventsResponse, ListSchedulerEventsRequest, ListSchedulerEventsResponse, ListSchedulerRunsRequest, ListSchedulerRunsResponse, ListSchedulersRequest, ListSchedulersResponse, ListVolumesRequest, ListVolumesResponse, ListWorkspacePresetsRequest, ListWorkspacePresetsResponse, PruneCachesRequest, PruneCachesResponse, PruneSandboxesRequest, PruneSandboxesResponse, PruneVolumesRequest, PruneVolumesResponse, PullImageRequest, PullImageResponse, RemoveCacheRequest, RemoveCacheResponse, RemoveImageRequest, RemoveImageResponse, RemoveProjectRequest, RemoveProjectResponse, RemoveSandboxRequest, RemoveSandboxResponse, RemoveVolumeRequest, RemoveVolumeResponse, ResolveResourceIDRequest, ResolveResourceIDResponse, ResumeSandboxRequest, ResumeSandboxResponse, RunAgentRequest, RunAgentResponse, RunAgentStreamResponse, RunAttachRequest, RunAttachResponse, RunLogChunk, RunSchedulerRequest, RunSchedulerResponse, SetSchedulerEnabledRequest, SetSchedulerEnabledResponse, SetSchedulerTriggerEnabledRequest, SetSchedulerTriggerEnabledResponse, StartRunRequest, StartRunResponse, StartSchedulerRunRequest, StartSchedulerRunResponse, StopRunRequest, StopRunResponse, StopSandboxRequest, StopSandboxResponse, StopSchedulerRunRequest, StopSchedulerRunResponse, UpdateCapabilityGatewayConfigRequest, UpdateCapabilityGatewayConfigResponse, UpdateGlobalEnvRequest, UpdateGlobalEnvResponse, UpdateWorkspacePresetRequest, ValidateProjectRequest, ValidateProjectResponse, WatchDashboardOverviewRequest, WatchDashboardOverviewResponse, WatchProjectRequest, WatchProjectResponse, WatchSandboxRequest, WatchSandboxResponse, WorkspacePresetResponse } from "./agentcompose_pb.js";
+import { ApplyProjectRequest, ApplyProjectResponse, AttachAgentRunRequest, AttachAgentRunResponse, AttachExecRequest, AttachExecResponse, BatchGetLatestSchedulerRunsRequest, BatchGetLatestSchedulerRunsResponse, BuildImageEvent, BuildImageRequest, CapabilityStatusResponse, CreateVolumeRequest, CreateVolumeResponse, CreateWorkspacePresetRequest, DeleteWorkspacePresetRequest, DeleteWorkspacePresetResponse, ExecRequest, ExecResponse, FollowRunLogsRequest, GenerateLLMRequest, GenerateLLMResponse, GetCapabilityCatalogRequest, GetCapabilityCatalogResponse, GetCapabilityGatewayConfigRequest, GetCapabilityGatewayConfigResponse, GetCapabilityStatusRequest, GetDashboardOverviewRequest, GetDashboardOverviewResponse, GetGlobalEnvRequest, GetGlobalEnvResponse, GetProjectRequest, GetProjectResponse, GetRunRequest, GetRunResponse, GetSandboxRequest, GetSandboxResponse, GetSandboxStatsRequest, GetSandboxStatsResponse, GetSchedulerRequest, GetSchedulerResponse, GetSchedulerRunRequest, GetSchedulerRunResponse, InspectCacheRequest, InspectCacheResponse, InspectImageRequest, InspectImageResponse, InspectVolumeRequest, InspectVolumeResponse, InvokeSchedulerRequest, InvokeSchedulerResponse, ListCachesRequest, ListCachesResponse, ListCapabilitySetsRequest, ListCapabilitySetsResponse, ListImagesRequest, ListImagesResponse, ListProjectSchedulerEventsRequest, ListProjectSchedulerEventsResponse, ListProjectsRequest, ListProjectsResponse, ListRunEventsRequest, ListRunEventsResponse, ListRunsRequest, ListRunsResponse, ListSandboxesRequest, ListSandboxesResponse, ListSandboxHistoryRequest, ListSandboxHistoryResponse, ListSandboxRunEventsRequest, ListSandboxRunEventsResponse, ListSchedulerEventsRequest, ListSchedulerEventsResponse, ListSchedulerRunsRequest, ListSchedulerRunsResponse, ListSchedulersRequest, ListSchedulersResponse, ListVolumesRequest, ListVolumesResponse, ListWorkspacePresetsRequest, ListWorkspacePresetsResponse, PruneCachesRequest, PruneCachesResponse, PruneSandboxesRequest, PruneSandboxesResponse, PruneSchedulerRunsRequest, PruneSchedulerRunsResponse, PruneVolumesRequest, PruneVolumesResponse, PullImageRequest, PullImageResponse, RemoveCacheRequest, RemoveCacheResponse, RemoveImageRequest, RemoveImageResponse, RemoveProjectRequest, RemoveProjectResponse, RemoveSandboxRequest, RemoveSandboxResponse, RemoveVolumeRequest, RemoveVolumeResponse, ResolveResourceIDRequest, ResolveResourceIDResponse, ResumeSandboxRequest, ResumeSandboxResponse, RunAgentRequest, RunAgentResponse, RunLogChunk, RunSchedulerRequest, RunSchedulerResponse, SetSchedulerEnabledRequest, SetSchedulerEnabledResponse, SetSchedulerTriggerEnabledRequest, SetSchedulerTriggerEnabledResponse, StartAgentRunRequest, StartAgentRunResponse, StartSchedulerRunRequest, StartSchedulerRunResponse, StopRunRequest, StopRunResponse, StopSandboxRequest, StopSandboxResponse, StopSchedulerRunRequest, StopSchedulerRunResponse, StreamAgentRunResponse, StreamExecResponse, StreamProjectSchedulerEventsRequest, StreamProjectSchedulerEventsResponse, StreamSchedulerRunsRequest, StreamSchedulerRunsResponse, UpdateCapabilityGatewayConfigRequest, UpdateCapabilityGatewayConfigResponse, UpdateGlobalEnvRequest, UpdateGlobalEnvResponse, UpdateWorkspacePresetRequest, ValidateProjectRequest, ValidateProjectResponse, WatchDashboardOverviewRequest, WatchDashboardOverviewResponse, WatchProjectRequest, WatchProjectResponse, WatchSandboxRequest, WatchSandboxResponse, WorkspacePresetResponse } from "./agentcompose_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -94,6 +94,40 @@ export const ProjectService = {
       kind: MethodKind.Unary,
     },
     /**
+     * @generated from rpc agentcompose.v2.ProjectService.ListProjectSchedulerEvents
+     */
+    listProjectSchedulerEvents: {
+      name: "ListProjectSchedulerEvents",
+      I: ListProjectSchedulerEventsRequest,
+      O: ListProjectSchedulerEventsResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc agentcompose.v2.ProjectService.StreamProjectSchedulerEvents
+     */
+    streamProjectSchedulerEvents: {
+      name: "StreamProjectSchedulerEvents",
+      I: StreamProjectSchedulerEventsRequest,
+      O: StreamProjectSchedulerEventsResponse,
+      kind: MethodKind.ServerStreaming,
+    },
+    /**
+     * Invokes the scheduler directly and returns its value without creating a
+     * persistent SchedulerRun. Cancellation cancels the invocation.
+     *
+     * @generated from rpc agentcompose.v2.ProjectService.InvokeScheduler
+     */
+    invokeScheduler: {
+      name: "InvokeScheduler",
+      I: InvokeSchedulerRequest,
+      O: InvokeSchedulerResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * Creates a persistent SchedulerRun and waits for it to reach a terminal
+     * state. The returned run is queryable with GetSchedulerRun and
+     * ListSchedulerRuns. Cancellation requests cancellation of the execution.
+     *
      * @generated from rpc agentcompose.v2.ProjectService.RunScheduler
      */
     runScheduler: {
@@ -103,6 +137,10 @@ export const ProjectService = {
       kind: MethodKind.Unary,
     },
     /**
+     * Creates a persistent SchedulerRun and returns after submission, without
+     * waiting for a terminal state. Disconnecting after submission does not
+     * cancel the run; use StopSchedulerRun to cancel it.
+     *
      * @generated from rpc agentcompose.v2.ProjectService.StartSchedulerRun
      */
     startSchedulerRun: {
@@ -127,6 +165,33 @@ export const ProjectService = {
       name: "ListSchedulerRuns",
       I: ListSchedulerRunsRequest,
       O: ListSchedulerRunsResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc agentcompose.v2.ProjectService.BatchGetLatestSchedulerRuns
+     */
+    batchGetLatestSchedulerRuns: {
+      name: "BatchGetLatestSchedulerRuns",
+      I: BatchGetLatestSchedulerRunsRequest,
+      O: BatchGetLatestSchedulerRunsResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc agentcompose.v2.ProjectService.StreamSchedulerRuns
+     */
+    streamSchedulerRuns: {
+      name: "StreamSchedulerRuns",
+      I: StreamSchedulerRunsRequest,
+      O: StreamSchedulerRunsResponse,
+      kind: MethodKind.ServerStreaming,
+    },
+    /**
+     * @generated from rpc agentcompose.v2.ProjectService.PruneSchedulerRuns
+     */
+    pruneSchedulerRuns: {
+      name: "PruneSchedulerRuns",
+      I: PruneSchedulerRunsRequest,
+      O: PruneSchedulerRunsResponse,
       kind: MethodKind.Unary,
     },
     /**
@@ -166,6 +231,11 @@ export const RunService = {
   typeName: "agentcompose.v2.RunService",
   methods: {
     /**
+     * Creates a persistent Agent Run and waits for it to reach a terminal state.
+     * The final RunDetail is equivalent to GetRun for the returned run ID. Client
+     * cancellation requests cancellation of the execution and its cleanup policy
+     * still applies.
+     *
      * @generated from rpc agentcompose.v2.RunService.RunAgent
      */
     runAgent: {
@@ -175,34 +245,47 @@ export const RunService = {
       kind: MethodKind.Unary,
     },
     /**
-     * @generated from rpc agentcompose.v2.RunService.StartRun
+     * Creates or reuses a persistent Agent Run and returns after submission.
+     * started is true only when this call returns a non-terminal run that has been
+     * scheduled for background execution. A false value means the returned run
+     * was already terminal; it never means that submission failed. Disconnecting
+     * after submission does not cancel the run; use StopRun to cancel it.
+     *
+     * @generated from rpc agentcompose.v2.RunService.StartAgentRun
      */
-    startRun: {
-      name: "StartRun",
-      I: StartRunRequest,
-      O: StartRunResponse,
+    startAgentRun: {
+      name: "StartAgentRun",
+      I: StartAgentRunRequest,
+      O: StartAgentRunResponse,
       kind: MethodKind.Unary,
     },
     /**
-     * Stable server-stream projection of RunAgent for non-interactive stream views.
-     * Interactive clients that need stdin, resize, signal, or multi-turn prompt
-     * attachment should use RunAttach.
+     * Creates a persistent Agent Run and projects started, output, status, and
+     * completed events for non-interactive clients. The completed run has the same
+     * terminal state and common fields as RunAgent/GetRun. Client cancellation
+     * requests cancellation of the execution and its cleanup policy still applies.
      *
-     * @generated from rpc agentcompose.v2.RunService.RunAgentStream
+     * @generated from rpc agentcompose.v2.RunService.StreamAgentRun
      */
-    runAgentStream: {
-      name: "RunAgentStream",
+    streamAgentRun: {
+      name: "StreamAgentRun",
       I: RunAgentRequest,
-      O: RunAgentStreamResponse,
+      O: StreamAgentRunResponse,
       kind: MethodKind.ServerStreaming,
     },
     /**
-     * @generated from rpc agentcompose.v2.RunService.RunAttach
+     * Starts an interactive Agent Run. The first client frame must be start and
+     * start may appear exactly once. Frames before start, duplicate start frames,
+     * and frames after a terminal server frame are invalid. stdin_eof closes only
+     * stdin; cancel requests cancellation of the execution. Client half-close or
+     * disconnection ends the attachment and requests cancellation of the run.
+     *
+     * @generated from rpc agentcompose.v2.RunService.AttachAgentRun
      */
-    runAttach: {
-      name: "RunAttach",
-      I: RunAttachRequest,
-      O: RunAttachResponse,
+    attachAgentRun: {
+      name: "AttachAgentRun",
+      I: AttachAgentRunRequest,
+      O: AttachAgentRunResponse,
       kind: MethodKind.BiDiStreaming,
     },
     /**
@@ -269,6 +352,10 @@ export const ExecService = {
   typeName: "agentcompose.v2.ExecService",
   methods: {
     /**
+     * Executes a non-persistent command and waits for its final exit result.
+     * Cancellation requests cancellation of the command. Exec IDs, when emitted
+     * by streaming forms, are correlation IDs and are not queryable resources.
+     *
      * @generated from rpc agentcompose.v2.ExecService.Exec
      */
     exec: {
@@ -278,25 +365,30 @@ export const ExecService = {
       kind: MethodKind.Unary,
     },
     /**
-     * Stable server-stream projection of Exec for non-interactive stream views.
-     * Interactive clients that need stdin, resize, or signal attachment should use
-     * ExecAttach.
+     * Executes a non-persistent command and projects output and the same final
+     * ExecResult returned by Exec. Client cancellation cancels the command.
      *
-     * @generated from rpc agentcompose.v2.ExecService.ExecStream
+     * @generated from rpc agentcompose.v2.ExecService.StreamExec
      */
-    execStream: {
-      name: "ExecStream",
+    streamExec: {
+      name: "StreamExec",
       I: ExecRequest,
-      O: ExecStreamResponse,
+      O: StreamExecResponse,
       kind: MethodKind.ServerStreaming,
     },
     /**
-     * @generated from rpc agentcompose.v2.ExecService.ExecAttach
+     * Starts an interactive, non-persistent command. The first client frame must
+     * be start and start may appear exactly once. Frames before start, duplicate
+     * start frames, and frames after a terminal server frame are invalid.
+     * stdin_eof closes only stdin; cancel, half-close, or disconnection requests
+     * cancellation of the command.
+     *
+     * @generated from rpc agentcompose.v2.ExecService.AttachExec
      */
-    execAttach: {
-      name: "ExecAttach",
-      I: ExecAttachRequest,
-      O: ExecAttachResponse,
+    attachExec: {
+      name: "AttachExec",
+      I: AttachExecRequest,
+      O: AttachExecResponse,
       kind: MethodKind.BiDiStreaming,
     },
   }

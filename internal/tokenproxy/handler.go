@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"agent-compose-ui/internal/apitoken"
+	"agent-compose-ui/internal/audit"
 )
 
 type authenticator interface {
@@ -20,10 +21,15 @@ type Handler struct {
 	store  authenticator
 	proxy  http.Handler
 	logger *slog.Logger
+	audit  *audit.Middleware
 }
 
 func New(store authenticator, proxy http.Handler, logger *slog.Logger) *Handler {
 	return &Handler{store: store, proxy: proxy, logger: logger}
+}
+
+func NewWithAudit(store authenticator, proxy http.Handler, logger *slog.Logger, recorder *audit.Middleware) *Handler {
+	return &Handler{store: store, proxy: proxy, logger: logger, audit: recorder}
 }
 
 func UnavailableHandler() http.Handler {
@@ -38,6 +44,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		writeUnauthorized(w)
 		h.log("", "", r, "deny", http.StatusUnauthorized, started)
+		h.record(r, audit.Principal{ID: "anonymous", Source: "anonymous", Username: "anonymous", DisplayName: "匿名", AuthMethod: "bearer"}, "denied", http.StatusUnauthorized, started)
 		return
 	}
 	identity, err := h.store.Authenticate(r.Context(), raw)
@@ -45,6 +52,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, apitoken.ErrInvalidToken) {
 			writeUnauthorized(w)
 			h.log("", "", r, "deny", http.StatusUnauthorized, started)
+			h.record(r, audit.Principal{ID: "anonymous", Source: "anonymous", Username: "anonymous", DisplayName: "匿名", AuthMethod: "bearer"}, "denied", http.StatusUnauthorized, started)
 			return
 		}
 		if h.logger != nil {
@@ -61,12 +69,33 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !authorized(identity.Role, r) {
 		writeConnectError(w, http.StatusForbidden, "permission_denied", "permission denied")
 		h.log(identity.ID, identity.Role, r, "deny", http.StatusForbidden, started)
+		name := identity.Name
+		if name == "" {
+			name = identity.ID
+		}
+		h.record(r, audit.Principal{ID: "token:" + identity.ID, Source: "api_token", Username: name, DisplayName: name, AuthMethod: "bearer"}, "denied", http.StatusForbidden, started)
 		return
 	}
 	sanitizeHeaders(r.Header)
+	name := identity.Name
+	if name == "" {
+		name = identity.ID
+	}
+	r = r.WithContext(audit.WithPrincipal(r.Context(), audit.Principal{ID: "token:" + identity.ID, Source: "api_token", Username: name, DisplayName: name, AuthMethod: "bearer"}))
 	tracked := &statusWriter{ResponseWriter: w, status: http.StatusOK}
-	h.proxy.ServeHTTP(tracked, r)
+	target := h.proxy
+	if h.audit != nil {
+		target = h.audit.Wrap(target)
+	}
+	target.ServeHTTP(tracked, r)
 	h.log(identity.ID, identity.Role, r, "allow", tracked.status, started)
+}
+
+func (h *Handler) record(r *http.Request, principal audit.Principal, outcome string, status int, started time.Time) {
+	if h.audit == nil {
+		return
+	}
+	h.audit.Record(r.Context(), audit.Input{Actor: principal, Category: "authentication", Action: "token.access", Method: r.Method, Path: r.URL.Path, Outcome: outcome, Status: status, Duration: time.Since(started), RequestID: r.Header.Get("X-Request-ID"), RemoteIP: r.RemoteAddr, UserAgent: r.UserAgent()})
 }
 
 func bearerToken(values []string) (string, bool) {

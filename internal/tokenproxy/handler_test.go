@@ -54,7 +54,9 @@ func TestReadOnlyPolicy(t *testing.T) {
 		{http.MethodPost, "/agentcompose.v2.ProjectService/ListProjectSchedulerEvents", http.StatusNoContent},
 		{http.MethodPost, "/agentcompose.v2.ProjectService/InvokeScheduler", http.StatusForbidden},
 		{http.MethodPost, "/agentcompose.v2.RunService/Run", http.StatusForbidden},
+		{http.MethodGet, "/api/events/topics", http.StatusNoContent},
 		{http.MethodGet, "/api/events/run-id/runs", http.StatusNoContent},
+		{http.MethodGet, "/api/events/run-id/trace", http.StatusNoContent},
 		{http.MethodDelete, "/api/events/run-id", http.StatusForbidden},
 		{http.MethodGet, "/unknown", http.StatusForbidden},
 	}

@@ -59,7 +59,7 @@ func TestTokenDaemonUsesH2COnlyForAttachProcedures(t *testing.T) {
 	for _, test := range []struct {
 		path      string
 		wantProto int
-	}{{"/agentcompose.v2.RunService/GetRun", 1}, {"/agentcompose.v2.RunService/RunAttach", 2}, {"/agentcompose.v2.ExecService/ExecAttach", 2}} {
+	}{{"/agentcompose.v2.RunService/GetRun", 1}, {"/agentcompose.v2.RunService/AttachAgentRun", 2}, {"/agentcompose.v2.ExecService/AttachExec", 2}} {
 		t.Run(test.path, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, test.path, nil))

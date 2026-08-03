@@ -22,13 +22,8 @@
   const paths = $derived(collectPaths(icon));
 </script>
 
-<svg
-  class={className}
-  aria-hidden="true"
-  viewBox={icon.attrs.viewBox}
-  focusable={icon.attrs.focusable ?? 'false'}
->
-  {#each paths as path}
+<svg class={className} aria-hidden="true" viewBox={icon.attrs.viewBox} focusable={icon.attrs.focusable ?? 'false'}>
+  {#each paths as path, index (index)}
     <path {...path}></path>
   {/each}
 </svg>

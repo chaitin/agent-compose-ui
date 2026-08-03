@@ -53,6 +53,28 @@ func TestAuthProtectsRPCAndAcceptsBasicAuth(t *testing.T) {
 	}
 }
 
+func TestPasswordLoginReturnsStablePrincipal(t *testing.T) {
+	t.Setenv("AUTH_USERNAME", "admin")
+	t.Setenv("AUTH_PASSWORD", "secret")
+	t.Setenv("AUTH_SECRET", "test-secret")
+	auth := NewManagerFromEnv()
+	handler := newTestApp(auth, http.NotFoundHandler())
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"admin","password":"secret"}`))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"local:admin"`) || !strings.Contains(rec.Body.String(), `"source":"local"`) {
+		t.Fatalf("response=%d %s", rec.Code, rec.Body.String())
+	}
+	cookie := rec.Result().Cookies()[0]
+	req = httptest.NewRequest(http.MethodGet, "/api/auth/status", nil)
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"authMethod":"password"`) {
+		t.Fatalf("status=%d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestAuthAllowsWebhookIngress(t *testing.T) {
 	t.Setenv("AUTH_PASSWORD", "secret")
 	t.Setenv("AUTH_SECRET", "test-secret")

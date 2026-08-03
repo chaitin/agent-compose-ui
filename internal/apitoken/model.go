@@ -13,6 +13,7 @@ const (
 )
 
 var ErrInvalidToken = errors.New("invalid api token")
+var ErrTokenNotFound = errors.New("api token not found")
 
 func (r Role) Valid() bool {
 	return r == RoleAdmin || r == RoleReadOnlyAdmin
@@ -35,4 +36,5 @@ type Created struct {
 type Identity struct {
 	ID   string
 	Role Role
+	Name string
 }

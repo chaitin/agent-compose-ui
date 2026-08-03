@@ -33,10 +33,21 @@ func NewTokenBackendProxy(backend *url.URL) http.Handler {
 
 func newBackendProxy(backend *url.URL, transport http.RoundTripper, amend func(*http.Request)) http.Handler {
 	proxy := httputil.NewSingleHostReverseProxy(backend)
+	// Connect server streams use application/connect+proto or
+	// application/connect+json rather than text/event-stream. ReverseProxy's
+	// default streaming heuristic does not recognize those content types and
+	// can buffer small RunAgentStream messages until the request completes.
+	// Flush every write so STARTED/OUTPUT events reach the browser immediately.
+	proxy.FlushInterval = -1
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalHost := req.Host
 		originalDirector(req)
+		if isSensitiveResponsePath(req.URL.Path) {
+			// The response body must remain uncompressed so sensitive event payloads
+			// can be removed before the response leaves the UI server.
+			req.Header.Set("Accept-Encoding", "identity")
+		}
 		if req.Header.Get("X-Forwarded-Host") == "" {
 			req.Header.Set("X-Forwarded-Host", originalHost)
 		}
@@ -45,11 +56,12 @@ func newBackendProxy(backend *url.URL, transport http.RoundTripper, amend func(*
 		}
 	}
 	proxy.Transport = transport
+	proxy.ModifyResponse = redactSensitiveResponse
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		slog.Error("proxy request failed", "path", r.URL.Path, "error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
-		_, _ = w.Write([]byte(`{"error":"failed to proxy daemon request"}` + "\n"))
+		_, _ = w.Write([]byte(`{"error":"后端服务请求失败"}` + "\n"))
 	}
 	return proxy
 }
@@ -88,7 +100,7 @@ type attachRoundTripper struct {
 }
 
 func (t attachRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Path == "/agentcompose.v2.RunService/RunAttach" || req.URL.Path == "/agentcompose.v2.ExecService/ExecAttach" {
+	if req.URL.Path == "/agentcompose.v2.RunService/AttachAgentRun" || req.URL.Path == "/agentcompose.v2.ExecService/AttachExec" {
 		return t.attach.RoundTrip(req)
 	}
 	return t.ordinary.RoundTrip(req)

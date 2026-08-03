@@ -64,13 +64,13 @@ func authorized(role apitoken.Role, r *http.Request) bool {
 }
 
 func readOnlyRESTPath(path string) bool {
-	if path == "/api/version" || path == "/api/webhook-sources" || path == "/api/events" {
+	if path == "/api/version" || path == "/api/webhook-sources" || path == "/api/events" || path == "/api/events/topics" {
 		return true
 	}
 	if strings.HasPrefix(path, "/api/events/") {
 		segments := strings.Split(strings.TrimPrefix(path, "/api/events/"), "/")
 		return (len(segments) == 1 && segments[0] != "") ||
-			len(segments) == 2 && segments[0] != "" && (segments[1] == "sessions" || segments[1] == "sandboxes" || segments[1] == "runs")
+			len(segments) == 2 && segments[0] != "" && (segments[1] == "sessions" || segments[1] == "sandboxes" || segments[1] == "runs" || segments[1] == "trace")
 	}
 	const workspacePrefix = "/api/agent-compose/workspaces/"
 	if strings.HasPrefix(path, workspacePrefix) {

@@ -1,4 +1,5 @@
 import { healthClient } from './client';
+import { timestampToISOString } from '../model/timestamps';
 
 export type HealthStatus = {
   version: string;
@@ -33,8 +34,8 @@ export async function watchHealthStatus(onStatus: (status: HealthStatus) => void
 function healthStatusFromResponse(response: Awaited<ReturnType<typeof healthClient.status>>): HealthStatus {
   return {
     version: response.version,
-    currentTime: response.currentTime,
-    startedAt: response.startedAt,
+    currentTime: timestampToISOString(response.currentTime),
+    startedAt: timestampToISOString(response.startedAt),
     uptimeSeconds: Number(response.uptimeSeconds),
     goVersion: response.goVersion,
     numGoroutines: Number(response.numGoroutines),

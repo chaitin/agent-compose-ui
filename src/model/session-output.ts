@@ -60,7 +60,13 @@ export function findSessionOutputMatches(cells: WorkSessionCell[], query: string
         const lineMatch = pattern.exec(line);
         if (lineMatch) {
           const startOffset = lineStartOffset + lineMatch.index;
-          matches.push({ cellId: cell.id, section, lineIndex, startOffset, endOffset: startOffset + lineMatch[0].length });
+          matches.push({
+            cellId: cell.id,
+            section,
+            lineIndex,
+            startOffset,
+            endOffset: startOffset + lineMatch[0].length,
+          });
         }
         lineStartOffset += line.length;
         if (value.startsWith('\r\n', lineStartOffset)) lineStartOffset += 2;
@@ -71,7 +77,10 @@ export function findSessionOutputMatches(cells: WorkSessionCell[], query: string
   return matches;
 }
 
-export function sessionOutputMatchParts(value: string, match: SessionOutputSearchMatch): Array<{ text: string; matched: boolean }> {
+export function sessionOutputMatchParts(
+  value: string,
+  match: SessionOutputSearchMatch,
+): Array<{ text: string; matched: boolean }> {
   if (match.startOffset < 0 || match.endOffset > value.length) return [{ text: value, matched: false }];
   return [
     { text: value.slice(0, match.startOffset), matched: false },

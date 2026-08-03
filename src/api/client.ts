@@ -3,9 +3,12 @@ import { createGrpcWebTransport } from '@connectrpc/connect-web';
 
 import {
   CapabilityService,
+  CacheService,
   DashboardService,
   ExecService,
+  ImageService,
   ProjectService,
+  ResourceService,
   RunService,
   SandboxService,
   SettingsService,
@@ -25,3 +28,6 @@ export const dashboardClient = createClient(DashboardService, grpcWebTransport);
 export const healthClient = createClient(HealthService, grpcWebTransport);
 export const runClient = createClient(RunService, grpcWebTransport);
 export const execClient = createClient(ExecService, grpcWebTransport);
+export const imageClient = createClient(ImageService, grpcWebTransport);
+export const cacheClient = createClient(CacheService, grpcWebTransport);
+export const resourceClient = createClient(ResourceService, grpcWebTransport);
