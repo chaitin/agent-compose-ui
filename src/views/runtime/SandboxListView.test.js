@@ -11,7 +11,7 @@ test('builds an authoritative Agent sandbox inventory and gates live v2 actions 
   expect(source).toContain('removeSandbox');
   expect(source).toContain('sandboxService.resumeSandbox');
   expect(source).toContain('sandboxService.stopSandbox');
-  expect(source).not.toContain('runService.startRun');
+  expect(source).not.toContain('runService.startAgentRun');
   expect(source).not.toContain('buildSandboxResumeRequest');
   expect(source).not.toContain('buildSandboxStopRequest');
   expect(source).toContain('sandboxJupyterPath');

@@ -1,3 +1,5 @@
+import { sha256 } from '../sha256';
+
 const DAEMON_VOLUME_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/u;
 const RESERVED_PROJECT_VOLUME_KEYS = new Set(['__proto__', 'constructor', 'prototype', 'toString']);
 const SAFE_LOGICAL_NAME = /^[a-z0-9](?:[a-z0-9_.-]*[a-z0-9])?$/u;
@@ -40,8 +42,8 @@ function normalizeLogicalName(logicalName: string): string {
 export async function managedVolumeName(projectKey: string, logicalName: string): Promise<string> {
   const encodedProjectKey = encodeProjectKey(projectKey);
   const safeLogicalName = normalizeLogicalName(logicalName);
-  const digest = await crypto.subtle.digest('SHA-256', encodedProjectKey);
-  const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0'))
+  const digest = await sha256(new Uint8Array(encodedProjectKey));
+  const hash = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0'))
     .join('')
     .slice(0, 12);
   return `ac-${hash}-${safeLogicalName}`;

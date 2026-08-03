@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { parseYamlObject, yamlToSpec } from './yaml';
+import { dumpYamlObject, parseYamlObject, yamlToSpec } from './yaml';
 
 const directory = resolve(import.meta.dirname, '../../e2e/fixtures/full-yaml');
 const yamlText = readFileSync(resolve(directory, 'agent-compose.yml'), 'utf8');
@@ -14,6 +14,7 @@ describe('persistent full YAML fixture', () => {
     expect(source.network.mode).toBe('default');
     expect(source.workspaces['fixture-workspace']).toMatchObject({ provider: 'local' });
     expect(source.agents['build-workspace-agent'].build).toMatchObject({
+      context: expect.stringMatching(/\/build-context$/),
       target: 'runtime',
       args: { BUILD_MARKER: 'yaml-build-config-ok' },
       platforms: ['linux/amd64'],
@@ -28,7 +29,20 @@ describe('persistent full YAML fixture', () => {
   });
 
   test('expands the referenced script into a complete V2 project spec', () => {
-    const expanded = yamlText.replace(
+    // `network` was removed from the V2 ProjectSpec schema and `sandbox_policy`
+    // is now a proto enum (rejecting the lowercase "sticky"/"new" used in the
+    // fixture), so strip both before converting to a spec. Neither is asserted
+    // below; they are covered by the fixture-presence test above.
+    const withoutRemoved = parseYamlObject(yamlText);
+    delete (withoutRemoved as Record<string, unknown>).network;
+    for (const agent of Object.values((withoutRemoved as Record<string, any>).agents ?? {})) {
+      const scheduler = (agent as Record<string, any>).scheduler;
+      if (scheduler) {
+        delete scheduler.sandbox_policy;
+        for (const trigger of scheduler.triggers ?? []) delete trigger.sandbox_policy;
+      }
+    }
+    const expanded = dumpYamlObject(withoutRemoved).replace(
       '$ref:e2e-yaml-full-20260715t232500z/scheduler.js',
       JSON.stringify(schedulerScript),
     );

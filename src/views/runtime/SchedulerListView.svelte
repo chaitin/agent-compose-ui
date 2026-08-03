@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { GetProjectRequest, GetSchedulerRequest, ListRunsRequest, ListSchedulerEventsRequest, RunAgentRequest, RunJupyterSpec, RunSandboxCleanupPolicy, RunSource, SetSchedulerEnabledRequest, SetSchedulerTriggerEnabledRequest, StartRunRequest, type ProjectScheduler, type ResolvedTrigger, type SchedulerEvent, type TriggerSpec } from '../../gen/agentcompose/v2/agentcompose_pb';
+  import { ProjectRef, GetProjectRequest, GetSchedulerRequest, ListRunsRequest, ListSchedulerEventsRequest, RunAgentRequest, RunJupyterSpec, RunSandboxCleanupPolicy, RunSource, SetSchedulerEnabledRequest, SetSchedulerTriggerEnabledRequest, StartAgentRunRequest, type ProjectScheduler, type ResolvedTrigger, type SchedulerEvent, type TriggerSpec } from '../../gen/agentcompose/v2/agentcompose_pb';
   import { projectService, runService, runtimeProjectService } from '../../lib/rpc';
   import { store } from '../../lib/stores.svelte';
   import RuntimeBreadcrumb from './RuntimeBreadcrumb.svelte';
   import { assertManagedWorkspace } from '../../lib/workspace/preflight';
 
-  type SchedulerRow = { sourceProjectId: string; summary: ProjectScheduler; triggers: TriggerSpec[]; resolvedTriggers: Record<string, ResolvedTrigger>; events: SchedulerEvent[]; eventsCursor: string; seenEventCursors: string[]; eventsLoading: boolean };
+  type SchedulerRow = { sourceProjectId: string; summary: ProjectScheduler; triggers: TriggerSpec[]; resolvedTriggers: Record<string, ResolvedTrigger>; events: SchedulerEvent[]; eventsOffset: number; eventsTotal: number; eventsLoading: boolean };
   let rows: SchedulerRow[] = $state([]);
   let payloads: Record<string, string> = $state({});
   type Overrides = { executionMode: 'wait' | 'detached'; sandboxId: string; driver: string; prompt: string; cleanupPolicy: RunSandboxCleanupPolicy; jupyterEnabled: boolean; jupyterExpose: boolean };
@@ -31,18 +31,18 @@
     loading = true;
     try {
       const [response, runResponse] = await Promise.all([
-        runtimeProjectService.getProject(new GetProjectRequest({ project: { projectId }, includeSpec: true }), { timeoutMs: 30_000 }),
+        runtimeProjectService.getProject(new GetProjectRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), includeSpec: true }), { timeoutMs: 30_000 }),
         runService.listRuns(new ListRunsRequest({ projectId, limit: 1000 })),
       ]);
       if (generation !== loadGeneration || projectId !== store.activeProjectId) return;
       const specs = new Map((response.project?.spec?.agents || []).map((agent) => [agent.name, agent.scheduler]));
       const summaries = (response.project?.schedulers || []).filter((summary) => !!specs.get(summary.agentName));
-      const details = await Promise.all(summaries.map((summary) => projectService.getScheduler(new GetSchedulerRequest({ project: { projectId }, agentName: summary.agentName })).catch(() => undefined)));
+      const details = await Promise.all(summaries.map((summary) => projectService.getScheduler(new GetSchedulerRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName: summary.agentName })).catch(() => undefined)));
       if (generation !== loadGeneration || projectId !== store.activeProjectId) return;
       rows = summaries.map((summary, index) => {
         const triggers = specs.get(summary.agentName)?.triggers || [];
         const resolvedTriggers = Object.fromEntries((details[index]?.triggers || []).filter((trigger) => trigger.spec?.name).map((trigger) => [trigger.spec!.name, trigger]));
-        return { sourceProjectId: projectId, summary, triggers, resolvedTriggers, events: [], eventsCursor: '', seenEventCursors: [], eventsLoading: false };
+        return { sourceProjectId: projectId, summary, triggers, resolvedTriggers, events: [], eventsOffset: 0, eventsTotal: 0, eventsLoading: false };
       });
       sandboxIds = [...new Set((runResponse.runs || []).map((run) => run.sandboxId).filter(Boolean))];
       for (const row of rows) void loadEvents(row, generation);
@@ -59,17 +59,16 @@
 
   async function loadEvents(row: SchedulerRow, generation: number, append = false) {
     const projectId = row.sourceProjectId;
-    const cursor = append ? row.eventsCursor : '';
-    if (append && (!cursor || row.eventsLoading || row.seenEventCursors.includes(cursor))) return;
+    const offset = append ? row.eventsOffset : 0;
+    if (append && (row.eventsOffset >= row.eventsTotal || row.eventsLoading)) return;
     if (append) rows = rows.map((current) => current.summary.schedulerId === row.summary.schedulerId ? { ...current, eventsLoading: true } : current);
     try {
-      const response = await projectService.listSchedulerEvents(new ListSchedulerEventsRequest({ project: { projectId }, agentName: row.summary.agentName, limit: 100, cursor }));
+      const response = await projectService.listSchedulerEvents(new ListSchedulerEventsRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName: row.summary.agentName, limit: 100, offset }));
       if (generation !== loadGeneration || projectId !== store.activeProjectId) return;
       rows = rows.map((current) => {
         if (current.summary.schedulerId !== row.summary.schedulerId) return current;
-        const seenEventCursors = cursor ? [...current.seenEventCursors, cursor] : current.seenEventCursors;
-        const nextCursor = response.nextCursor && !seenEventCursors.includes(response.nextCursor) ? response.nextCursor : '';
-        return { ...current, events: append ? [...current.events, ...response.events] : response.events, eventsCursor: nextCursor, seenEventCursors, eventsLoading: false };
+        const eventsOffset = append ? current.eventsOffset + response.events.length : response.events.length;
+        return { ...current, events: append ? [...current.events, ...response.events] : response.events, eventsOffset, eventsTotal: response.total, eventsLoading: false };
       });
     } catch (cause: any) {
       if (generation !== loadGeneration || projectId !== store.activeProjectId) return;
@@ -87,7 +86,7 @@
     controlling = key;
     error = '';
     try {
-      const response = await projectService.setSchedulerEnabled(new SetSchedulerEnabledRequest({ project: { projectId }, agentName: row.summary.agentName, enabled: !row.summary.enabled }));
+      const response = await projectService.setSchedulerEnabled(new SetSchedulerEnabledRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName: row.summary.agentName, enabled: !row.summary.enabled }));
       if (generation !== loadGeneration || projectId !== store.activeProjectId || !response.scheduler) return;
       rows = rows.map((current) => current.summary.schedulerId === row.summary.schedulerId ? { ...current, summary: response.scheduler! } : current);
     } catch (cause: any) {
@@ -109,7 +108,7 @@
     controlling = key;
     error = '';
     try {
-      const response = await projectService.setSchedulerTriggerEnabled(new SetSchedulerTriggerEnabledRequest({ project: { projectId }, agentName: row.summary.agentName, triggerId: resolved.triggerId, enabled: !resolved.enabled }));
+      const response = await projectService.setSchedulerTriggerEnabled(new SetSchedulerTriggerEnabledRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName: row.summary.agentName, triggerId: resolved.triggerId, enabled: !resolved.enabled }));
       if (generation !== loadGeneration || projectId !== store.activeProjectId || !response.trigger) return;
       rows = rows.map((current) => current.summary.schedulerId === row.summary.schedulerId
         ? { ...current, resolvedTriggers: { ...current.resolvedTriggers, [trigger.name]: response.trigger! } }
@@ -153,7 +152,7 @@
       const detached = advanced?.executionMode === 'detached';
       let runId = '';
       if (detached) {
-        const response = await runService.startRun(new StartRunRequest({ run: request }));
+        const response = await runService.startAgentRun(new StartAgentRunRequest({ run: request }));
         runId = response.run?.runId || '';
       } else {
         const response = await runService.runAgent(request);
@@ -186,7 +185,7 @@
     {#each row.triggers as trigger (trigger.name)}{@const key = `${row.sourceProjectId}/${row.summary.schedulerId}/${trigger.name}`} {@const resolved = row.resolvedTriggers[trigger.name]}
       <div class="trigger"><div><strong>{trigger.name}</strong><span>{trigger.kind} {trigger.cron || trigger.interval}</span></div>
         <input aria-label={`${trigger.name} Payload JSON`} bind:value={payloads[key]} placeholder="Payload JSON（可选）"/>
-        <button class:status-unknown={!resolved} aria-label={resolved ? `${resolved.enabled ? '禁用' : '启用'} Trigger ${trigger.name}` : `Trigger ${trigger.name} 状态未知`} onclick={() => setTriggerEnabled(row, trigger)} disabled={!!controlling || !resolved}>{controlling === `trigger/${row.summary.schedulerId}/${trigger.name}` ? '保存中...' : (resolved ? (resolved.enabled ? '已启用' : '已停用') : '状态未知')}</button>
+        <button aria-label={resolved ? `${resolved.enabled ? '禁用' : '启用'} Trigger ${trigger.name}` : `Trigger ${trigger.name} 状态未知`} onclick={() => setTriggerEnabled(row, trigger)} disabled={!!controlling || !resolved}>{controlling === `trigger/${row.summary.schedulerId}/${trigger.name}` ? '保存中...' : (resolved ? (resolved.enabled ? '已启用' : '已停用') : '状态未知')}</button>
         <button aria-label={`手动运行 ${trigger.name}`} onclick={() => run(row, trigger)} disabled={!!running}>{running === key ? '运行中...' : '手动 Run'}</button>
       </div>
       <details class="advanced" ontoggle={(event) => { if (event.currentTarget.open) ensureOverrides(key, trigger); }}>
@@ -205,10 +204,10 @@
     {/each}
     <section class="events" aria-label={`${row.summary.agentName} Scheduler 事件`}><h3>事件历史</h3>
       {#if row.events.length === 0}<p>暂无事件</p>{:else}{#each row.events as event (event.id)}<div class="event"><time>{formatTimestamp(event)}</time><strong>{event.type || 'event'} · {event.level || '-'}</strong><span>{event.message || '-'}</span></div>{/each}{/if}
-      {#if row.eventsCursor}<button aria-label={`加载更多 ${row.summary.agentName} Scheduler 事件`} onclick={() => loadEvents(row, loadGeneration, true)} disabled={row.eventsLoading}>{row.eventsLoading ? '加载中...' : '加载更多'}</button>{/if}
+      {#if row.eventsOffset < row.eventsTotal}<button aria-label={`加载更多 ${row.summary.agentName} Scheduler 事件`} onclick={() => loadEvents(row, loadGeneration, true)} disabled={row.eventsLoading}>{row.eventsLoading ? '加载中...' : '加载更多'}</button>{/if}
     </section>
   </article>{/each}</div>{/if}
   {#if error}<p class="error">{error}</p>{/if}
 </div>
 
-<style>.root{height:100%;overflow:auto;padding:0 14px 14px}.breadcrumb-wrap{margin:0 -14px 12px}button,input,select,textarea{border:1px solid var(--border-color);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary);padding:6px 8px}.state{padding:30px;text-align:center;color:var(--text-muted)}.list{display:grid;gap:8px;margin-bottom:12px}article{padding:10px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-secondary)}.summary{display:grid;grid-template-columns:120px 1fr 100px;gap:8px}.summary code,.trigger span{color:var(--text-muted);font-size:var(--font-size-xs)}.trigger{display:grid;grid-template-columns:180px 1fr auto auto;gap:8px;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-color)}.trigger div{display:flex;flex-direction:column}.trigger input{background:var(--bg-primary)}.trigger button.status-unknown{color:var(--accent-yellow)}.advanced{margin:8px 0 0 180px}.advanced summary{cursor:pointer}.advanced p,.events p{color:var(--text-muted);font-size:var(--font-size-sm)}.advanced-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.advanced-grid label{display:flex;flex-direction:column;gap:4px;font-size:var(--font-size-sm)}.advanced-grid label:has(input[type=checkbox]){flex-direction:row;align-items:center}.advanced-grid .wide{grid-column:1/-1}.advanced-grid textarea{min-height:54px;resize:vertical}.events{margin-top:12px;border-top:1px solid var(--border-color)}.events h3{font-size:var(--font-size-md)}.event{display:grid;grid-template-columns:160px 150px 1fr;gap:8px;padding:5px 0;font-size:var(--font-size-sm)}.event time{color:var(--text-muted)}p.error{color:var(--accent-red)}</style>
+<style>.root{height:100%;overflow:auto;padding:0 14px 14px}.breadcrumb-wrap{margin:0 -14px 12px}button,input,select,textarea{border:1px solid var(--border-color);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary);padding:6px 8px}.state{padding:30px;text-align:center;color:var(--text-muted)}.list{display:grid;gap:8px;margin-bottom:12px}article{padding:10px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-secondary)}.summary{display:grid;grid-template-columns:120px 1fr 100px;gap:8px}.summary code,.trigger span{color:var(--text-muted);font-size:var(--font-size-xs)}.trigger{display:grid;grid-template-columns:180px 1fr auto auto;gap:8px;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-color)}.trigger div{display:flex;flex-direction:column}.trigger input{background:var(--bg-primary)}.advanced{margin:8px 0 0 180px}.advanced summary{cursor:pointer}.advanced p,.events p{color:var(--text-muted);font-size:var(--font-size-sm)}.advanced-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.advanced-grid label{display:flex;flex-direction:column;gap:4px;font-size:var(--font-size-sm)}.advanced-grid label:has(input[type=checkbox]){flex-direction:row;align-items:center}.advanced-grid .wide{grid-column:1/-1}.advanced-grid textarea{min-height:54px;resize:vertical}.events{margin-top:12px;border-top:1px solid var(--border-color)}.events h3{font-size:var(--font-size-md)}.event{display:grid;grid-template-columns:160px 150px 1fr;gap:8px;padding:5px 0;font-size:var(--font-size-sm)}.event time{color:var(--text-muted)}</style>

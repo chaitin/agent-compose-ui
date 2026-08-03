@@ -121,44 +121,11 @@ describe('CacheListView', () => {
     expect(execute.filter.type).toBe(preview.filter.type);
   });
 
-  test('keeps referenced caches excluded by default and executes the disclosed dangerous preview snapshot', async () => {
-    rpc.cacheService.pruneCaches
-      .mockResolvedValueOnce({ dryRun: true, matched: [cache], removed: [], skipped: [], warnings: [] })
-      .mockResolvedValueOnce({ dryRun: false, matched: [cache], removed: ['cache-1'], skipped: [], warnings: [] });
-    render(CacheListView);
-    await screen.findByText('cache-1');
-    expect(screen.queryByRole('checkbox', { name: /仍被引用的缓存/ })).not.toBeInTheDocument();
-    await fireEvent.click(screen.getByRole('button', { name: '显示危险选项' }));
-    const includeReferenced = screen.getByRole('checkbox', { name: /仍被引用的缓存/ });
-    expect(includeReferenced).not.toBeChecked();
-    expect(screen.getByText(/可能破坏仍引用这些缓存的任务或沙箱/)).toBeInTheDocument();
-    await fireEvent.click(includeReferenced);
-    await fireEvent.click(screen.getByRole('button', { name: '预览清理' }));
-    await screen.findByRole('button', { name: '确认执行清理' });
-    expect(rpc.cacheService.pruneCaches.mock.calls[0][0].includeReferenced).toBe(true);
-
-    await fireEvent.click(includeReferenced);
-    await fireEvent.click(screen.getByRole('button', { name: '确认执行清理' }));
-    expect(rpc.cacheService.pruneCaches.mock.calls[1][0]).toEqual(expect.objectContaining({ includeReferenced: true, force: true }));
-  });
-
-  test('disables includeReferenced when its dangerous disclosure is hidden', async () => {
-    rpc.cacheService.pruneCaches.mockResolvedValueOnce({ dryRun: true, matched: [], removed: [], skipped: [], warnings: [] });
-    render(CacheListView);
-    await screen.findByText('cache-1');
-    await fireEvent.click(screen.getByRole('button', { name: '显示危险选项' }));
-    await fireEvent.click(screen.getByRole('checkbox', { name: /仍被引用的缓存/ }));
-    await fireEvent.click(screen.getByRole('button', { name: '隐藏危险选项' }));
-    await fireEvent.click(screen.getByRole('button', { name: '预览清理' }));
-    expect(rpc.cacheService.pruneCaches.mock.calls[0][0].includeReferenced).toBe(false);
-  });
-
-  test('hiding a dangerous referenced-cache preview revokes its confirmation authorization', async () => {
+  test('hiding a dangerous preview revokes its confirmation authorization', async () => {
     rpc.cacheService.pruneCaches.mockResolvedValueOnce({ dryRun: true, matched: [cache], removed: [], skipped: [], warnings: [] });
     render(CacheListView);
     await screen.findByText('cache-1');
     await fireEvent.click(screen.getByRole('button', { name: '显示危险选项' }));
-    await fireEvent.click(screen.getByRole('checkbox', { name: /仍被引用的缓存/ }));
     await fireEvent.click(screen.getByRole('button', { name: '预览清理' }));
     await screen.findByRole('button', { name: '确认执行清理' });
 
@@ -174,17 +141,15 @@ describe('CacheListView', () => {
     render(CacheListView);
     await screen.findByText('cache-1');
     await fireEvent.click(screen.getByRole('button', { name: '显示危险选项' }));
-    await fireEvent.click(screen.getByRole('checkbox', { name: /仍被引用的缓存/ }));
     await fireEvent.click(screen.getByRole('button', { name: '预览清理' }));
 
     const hide = screen.getByRole('button', { name: '隐藏危险选项' });
     expect(hide).toBeDisabled();
     await fireEvent.click(hide);
-    expect(screen.getByRole('checkbox', { name: /仍被引用的缓存/ })).toBeChecked();
 
     preview.resolve({ dryRun: true, matched: [cache], removed: [], skipped: [], warnings: [] });
     expect(await screen.findByRole('button', { name: '确认执行清理' })).toBeInTheDocument();
-    expect(screen.getByText(/可能破坏仍引用这些缓存/)).toBeInTheDocument();
+    expect(screen.getByText(/高风险/)).toBeInTheDocument();
   });
 
   test('revokes old cache removal confirmation when a new preview fails', async () => {
@@ -225,38 +190,6 @@ describe('CacheListView', () => {
 });
 
 describe('VolumeListView', () => {
-  test('links managed volume details back to its project resources without exposing the physical path', async () => {
-    const managed = new Volume({
-      name: 'managed-data',
-      driver: 'local',
-      projectId: 'project-managed',
-      path: '/data/volumes/local/managed-data',
-      labels: {
-        'agent-compose-ui.managed': 'true',
-        'agent-compose-ui.project-key': 'ws_0123456789abcdef0123456789abcdef',
-      },
-    });
-    rpc.volumeService.listVolumes.mockResolvedValue({ volumes: [managed] });
-    rpc.volumeService.inspectVolume.mockResolvedValue({ volume: managed });
-
-    render(VolumeListView);
-    await fireEvent.click(await screen.findByRole('button', { name: '检查 managed-data' }));
-
-    await screen.findByRole('complementary');
-    expect(document.body).not.toHaveTextContent(managed.path);
-    expect(screen.getByRole('link', { name: '返回项目资源' })).toHaveAttribute('href', '#/project/project-managed/agents');
-  });
-
-  test('does not treat a non-local volume with forged managed labels as managed', async () => {
-    const forged = new Volume({ name: 'forged', driver: 'nfs', projectId: 'project-forged', path: '/remote/forged', labels: { 'agent-compose-ui.managed': 'true', 'agent-compose-ui.project-key': 'ws_0123456789abcdef0123456789abcdef' } });
-    rpc.volumeService.listVolumes.mockResolvedValue({ volumes: [forged] });
-    rpc.volumeService.inspectVolume.mockResolvedValue({ volume: forged });
-    render(VolumeListView);
-    await fireEvent.click(await screen.findByRole('button', { name: '检查 forged' }));
-    await waitFor(() => expect(document.body.textContent?.split('/remote/forged').length - 1).toBe(2));
-    expect(screen.queryByRole('link', { name: '返回项目资源' })).not.toBeInTheDocument();
-  });
-
   test('keeps the newest volume list and inspect responses when older requests resolve last', async () => {
     const oldList = deferred<any>();
     const oldInspect = deferred<any>();

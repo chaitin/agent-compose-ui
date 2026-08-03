@@ -6,20 +6,17 @@ export async function loadSchedulerRunEvents(
   fetchPage: (request: ListSchedulerEventsRequest) => Promise<ListSchedulerEventsResponse>,
 ): Promise<SchedulerEvent[]> {
   const found: SchedulerEvent[] = [];
-  const seenCursors = new Set<string>();
-  let cursor = '';
+  let offset = 0;
   let foundStart = false;
   while (true) {
-    const page = await fetchPage(new ListSchedulerEventsRequest({ limit: 500, cursor }));
+    const page = await fetchPage(new ListSchedulerEventsRequest({ limit: 500, offset }));
     for (const event of page.events) {
       if (event.runId !== targetRunId) continue;
       found.push(event);
-      if (event.type === 'loader.run.started') foundStart = true;
+      if (event.type === 'scheduler.run.started') foundStart = true;
     }
-    if (foundStart || !page.nextCursor) break;
-    if (seenCursors.has(page.nextCursor)) throw new Error('Scheduler event pagination returned repeated cursor');
-    seenCursors.add(page.nextCursor);
-    cursor = page.nextCursor;
+    if (foundStart || page.events.length === 0 || offset + page.events.length >= page.total) break;
+    offset += page.events.length;
   }
   return found.sort(compareEvents);
 }
@@ -30,8 +27,8 @@ function timestamp(event: SchedulerEvent): string {
 }
 
 function eventRank(event: SchedulerEvent): number {
-  if (event.type === 'loader.run.started') return -1;
-  if (['loader.run.completed', 'loader.run.failed', 'loader.run.skipped'].includes(event.type)) return 1;
+  if (event.type === 'scheduler.run.started') return -1;
+  if (['scheduler.run.completed', 'scheduler.run.failed', 'scheduler.run.skipped'].includes(event.type)) return 1;
   return 0;
 }
 
@@ -41,9 +38,9 @@ function compareEvents(left: SchedulerEvent, right: SchedulerEvent): number {
 
 function tags(event: SchedulerEvent): RuntimeTimelineFilterTag[] {
   const result = new Set<RuntimeTimelineFilterTag>();
-  if (event.type.startsWith('loader.run.') || event.type.startsWith('loader.sandbox.')) result.add('run');
+  if (event.type.startsWith('scheduler.run.') || event.type.startsWith('scheduler.sandbox.')) result.add('run');
   else result.add('activity');
-  if (/loader\.(?:command|llm|agent|event)\./.test(event.type) && event.payloadJson) result.add('artifact');
+  if (/scheduler\.(?:command|llm|agent|event)\./.test(event.type) && event.payloadJson) result.add('artifact');
   if (/warn|error|fatal/i.test(event.level) || /\.failed$|\.warning$/.test(event.type)) result.add('problem');
   return [...result];
 }
@@ -60,7 +57,7 @@ export function buildSchedulerRunTimeline(events: readonly SchedulerEvent[]): Ru
         timestamp: createdAt,
         sortTime: createdAt ? Date.parse(createdAt) : 0,
         sequence,
-        kind: event.type.startsWith('loader.run.') ? 'run' : event.type.startsWith('loader.sandbox.') ? 'sandbox' : isError ? 'error' : 'process',
+        kind: event.type.startsWith('scheduler.run.') ? 'run' : event.type.startsWith('scheduler.sandbox.') ? 'sandbox' : isError ? 'error' : 'process',
         source: event.type,
         level: isError ? 'error' : isWarning ? 'warning' : 'info',
         content: [event.message, event.payloadJson].filter(Boolean).join('\n') || event.type,

@@ -1,8 +1,7 @@
 import { dumpYamlObject, parseYamlObject, yamlToSpec, type YamlMap } from '../yaml';
 import { assertProjectVolumeKey } from './volume-names';
 
-type SkillLocation = { source: string; provider?: never } | { provider: string; source?: never };
-export type SkillYaml = { name: string; path?: string; url?: string; ref?: string } & SkillLocation;
+export type SkillYaml = { name: string; provider: string; path?: string; url?: string; ref?: string };
 export type MountYaml = { type: 'volume' | 'bind'; source: string; target: string; read_only: boolean };
 
 type MutableMap = Record<string, unknown>;
@@ -85,23 +84,18 @@ function validationProjection(root: YamlMap): YamlMap {
   if (!isMap(projection.agents)) return projection;
   for (const value of Object.values(projection.agents)) {
     if (!isMap(value)) continue;
-    // These are forward-compatible authoring fields not present in the
-    // protobuf generated for this UI version.
-    if (Object.prototype.hasOwnProperty.call(value, 'mcp_servers')) {
-      if (Object.prototype.hasOwnProperty.call(value, 'mcps')) {
-        throw new Error('Agent 不能同时包含 mcps 和 mcp_servers');
-      }
-      value.mcps = value.mcp_servers;
-      delete value.mcp_servers;
+    if (Object.prototype.hasOwnProperty.call(value, 'mcps')
+      && Object.prototype.hasOwnProperty.call(value, 'mcp_servers')) {
+      throw new Error('Agent 不能同时包含 mcps 和 mcp_servers');
     }
     if (!Array.isArray(value.skills)) continue;
     for (const skill of value.skills) {
-      if (!isMap(skill) || !Object.prototype.hasOwnProperty.call(skill, 'provider')) continue;
-      if (Object.prototype.hasOwnProperty.call(skill, 'source')) {
+      if (!isMap(skill) || !Object.prototype.hasOwnProperty.call(skill, 'source')) continue;
+      if (Object.prototype.hasOwnProperty.call(skill, 'provider')) {
         throw new Error('Skill 不能同时包含 source 和 provider');
       }
-      skill.source = skill.provider;
-      delete skill.provider;
+      skill.provider = skill.source;
+      delete skill.source;
     }
   }
   return projection;

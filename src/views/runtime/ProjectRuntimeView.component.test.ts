@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import ProjectRuntimeView from './ProjectRuntimeView.svelte';
 import { RunSource, RunStatus, RunSummary } from '../../gen/agentcompose/v2/agentcompose_pb';
 import { store } from '../../lib/stores.svelte';
+import { buildRunDateRange } from '../../lib/run-history';
 
 const mocks = vi.hoisted(() => ({
   runService: { listRuns: vi.fn() },
@@ -43,7 +44,7 @@ test('queries v2 runs with lookahead and refreshes the expanded window without l
   await fireEvent.click(screen.getByRole('button', { name: '应用筛选' }));
   await waitFor(() => expect(mocks.runService.listRuns).toHaveBeenCalledTimes(2));
   const filtered = mocks.runService.listRuns.mock.calls[1][0];
-  expect(filtered).toMatchObject({ projectId: 'project-1', status: RunStatus.RUNNING, source: RunSource.API, startedFrom: new Date(2026, 6, 1).toISOString(), startedTo: new Date(new Date(2026, 6, 16).getTime() - 1).toISOString(), sandboxId: '', offset: 0, limit: 51 });
+  expect(filtered).toMatchObject({ projectId: 'project-1', status: RunStatus.RUNNING, source: RunSource.API, ...buildRunDateRange('2026-07-01', '2026-07-15'), sandboxId: '', offset: 0, limit: 51 });
   await fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
   await waitFor(() => expect(mocks.runService.listRuns).toHaveBeenCalledTimes(3));
   expect(mocks.runService.listRuns.mock.calls[2][0]).toMatchObject({ status: RunStatus.RUNNING, source: RunSource.API, sandboxId: '', offset: 0, limit: 101 });

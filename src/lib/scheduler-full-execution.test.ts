@@ -13,7 +13,7 @@ async function* chunks(...values: RunLogChunk[]) { yield* values; }
 function dependencies(overrides: Partial<FullExecutionDependencies> = {}): FullExecutionDependencies {
   return {
     listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [
-      new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'loader.run.started' }),
+      new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'scheduler.run.started' }),
     ] })),
     getSandbox: vi.fn(async request => new GetSandboxResponse({ sandbox: new Sandbox({ sandboxId: request.sandboxId }) })),
     listSandboxHistory: vi.fn(async () => new ListSandboxHistoryResponse()),
@@ -31,7 +31,7 @@ describe('loadFullSchedulerExecution', () => {
   test('exposes a Sandbox discovered from an associated Run detail', async () => {
     const deps = dependencies({
       listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [
-        new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'loader.run.started', payloadJson: '{"runId":"run-1"}' }),
+        new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'scheduler.run.started', payloadJson: '{"runId":"run-1"}' }),
       ] })),
       getRun: vi.fn(async () => new GetRunResponse({ run: new RunDetail({
         summary: new RunSummary({ runId: 'run-1', sandboxId: 'sandbox-from-run' }),
@@ -43,55 +43,41 @@ describe('loadFullSchedulerExecution', () => {
     expect(result.sandboxIds).toEqual(['sandbox-from-run']);
   });
 
-  test('pages scheduler history until the target start and exhausts resource cursors', async () => {
-    const schedulerCursors: string[] = [];
-    const sandboxCursors: string[] = [];
-    const runCursors: string[] = [];
+  test('pages scheduler history until the target start and exhausts resource offsets', async () => {
+    const schedulerOffsets: number[] = [];
+    const sandboxOffsets: number[] = [];
+    const runOffsets: number[] = [];
     const deps = dependencies({
       listSchedulerEvents: vi.fn(async request => {
-        schedulerCursors.push(request.cursor);
-        return request.cursor
-          ? new ListSchedulerEventsResponse({ events: [new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'loader.run.started', payloadJson: '{"sandboxId":"box","runId":"run"}' })] })
-          : new ListSchedulerEventsResponse({ events: [new SchedulerEvent({ id: 'other', runId: 'other' })], nextCursor: 'scheduler-2' });
+        schedulerOffsets.push(request.offset);
+        return request.offset
+          ? new ListSchedulerEventsResponse({ events: [new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'scheduler.run.started', payloadJson: '{"sandboxId":"box","runId":"run"}' })] })
+          : new ListSchedulerEventsResponse({ events: [new SchedulerEvent({ id: 'other', runId: 'other' })], total: 2 });
       }),
       listSandboxRunEvents: vi.fn(async request => {
-        sandboxCursors.push(request.cursor);
-        return new ListSandboxRunEventsResponse({ events: [new RunEvent({ id: `sandbox-${request.cursor || '1'}`, runId: 'run' })], nextCursor: request.cursor ? '' : 'sandbox-2', historyAvailableRunIds: ['run'] });
+        sandboxOffsets.push(request.offset);
+        return new ListSandboxRunEventsResponse({ events: [new RunEvent({ id: `sandbox-${request.offset + 1}`, runId: 'run' })], total: request.offset ? 0 : 2, historyAvailableRunIds: ['run'] });
       }),
       listRunEvents: vi.fn(async request => {
-        runCursors.push(request.cursor);
-        return new ListRunEventsResponse({ events: [new RunEvent({ id: `run-${request.cursor || '1'}`, runId: 'run' })], nextCursor: request.cursor ? '' : 'run-2', historyAvailable: true });
+        runOffsets.push(request.offset);
+        return new ListRunEventsResponse({ events: [new RunEvent({ id: `run-${request.offset + 1}`, runId: 'run' })], total: request.offset ? 0 : 2, historyAvailable: true });
       }),
     });
 
     const result = await loadFullSchedulerExecution(input, deps);
-    expect(schedulerCursors).toEqual(['', 'scheduler-2']);
-    expect(sandboxCursors).toEqual(['', 'sandbox-2']);
-    expect(runCursors).toEqual(['', 'run-2']);
+    expect(schedulerOffsets).toEqual([0, 1]);
+    expect(sandboxOffsets).toEqual([0, 1]);
+    expect(runOffsets).toEqual([0, 1]);
     expect(result.entries.filter(entry => entry.sourceType === 'run-event')).toHaveLength(4);
     expect(result.complete).toBe(true);
   });
 
-  test('marks repeated cursors failed and false history availability unavailable', async () => {
-    const deps = dependencies({
-      listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'loader.run.started', payloadJson: '{"sandboxId":"box","runId":"run"}' })] })),
-      listSandboxRunEvents: vi.fn(async () => new ListSandboxRunEventsResponse({ nextCursor: 'same' })),
-      listRunEvents: vi.fn(async () => new ListRunEventsResponse({ historyAvailable: false })),
-    });
-    const result = await loadFullSchedulerExecution(input, deps);
-    expect(result.sourceStatuses).toEqual(expect.arrayContaining([
-      expect.objectContaining({ source: 'sandbox-run-events', resourceId: 'box', state: 'failed', error: expect.stringContaining('repeated cursor') }),
-      expect.objectContaining({ source: 'run-events', resourceId: 'run', state: 'unavailable' }),
-    ]));
-    expect(result.complete).toBe(false);
-  });
-
   test('keeps run event history unavailable when an early page reports false', async () => {
     const deps = dependencies({
-      listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'loader.run.started', payloadJson: '{"runId":"run"}' })] })),
-      listRunEvents: vi.fn(async request => request.cursor
+      listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'scheduler.run.started', payloadJson: '{"runId":"run"}' })] })),
+      listRunEvents: vi.fn(async request => request.offset
         ? new ListRunEventsResponse({ events: [new RunEvent({ id: 'second', runId: 'run' })], historyAvailable: true })
-        : new ListRunEventsResponse({ events: [new RunEvent({ id: 'first', runId: 'run' })], nextCursor: 'next', historyAvailable: false })),
+        : new ListRunEventsResponse({ events: [new RunEvent({ id: 'first', runId: 'run' })], total: 2, historyAvailable: false })),
     });
 
     const result = await loadFullSchedulerExecution(input, deps);
@@ -102,10 +88,10 @@ describe('loadFullSchedulerExecution', () => {
 
   test('marks sandbox run history unavailable when a relevant linked run is never confirmed', async () => {
     const deps = dependencies({
-      listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'loader.run.started', payloadJson: '{"sandboxId":"box","runId":"run"}' })] })),
-      listSandboxRunEvents: vi.fn(async request => request.cursor
+      listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'scheduler.run.started', payloadJson: '{"sandboxId":"box","runId":"run"}' })] })),
+      listSandboxRunEvents: vi.fn(async request => request.offset
         ? new ListSandboxRunEventsResponse({ events: [new RunEvent({ id: 'second', runId: 'run' })] })
-        : new ListSandboxRunEventsResponse({ events: [new RunEvent({ id: 'first', runId: 'run' })], nextCursor: 'next' })),
+        : new ListSandboxRunEventsResponse({ events: [new RunEvent({ id: 'first', runId: 'run' })], total: 2 })),
     });
 
     const result = await loadFullSchedulerExecution(input, deps);
@@ -118,10 +104,10 @@ describe('loadFullSchedulerExecution', () => {
 
   test('accumulates sandbox run history confirmations across pages', async () => {
     const deps = dependencies({
-      listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'loader.run.started', payloadJson: '{"links":[{"sandboxId":"box","runId":"run-a"},{"sandboxId":"box","runId":"run-b"}]}' })] })),
-      listSandboxRunEvents: vi.fn(async request => request.cursor
+      listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'scheduler.run.started', payloadJson: '{"links":[{"sandboxId":"box","runId":"run-a"},{"sandboxId":"box","runId":"run-b"}]}' })] })),
+      listSandboxRunEvents: vi.fn(async request => request.offset
         ? new ListSandboxRunEventsResponse({ historyAvailableRunIds: ['run-b'] })
-        : new ListSandboxRunEventsResponse({ nextCursor: 'next', historyAvailableRunIds: ['run-a'] })),
+        : new ListSandboxRunEventsResponse({ events: [new RunEvent({ id: 'page-1', runId: 'run-a' })], total: 2, historyAvailableRunIds: ['run-a'] })),
     });
 
     const result = await loadFullSchedulerExecution(input, deps);
@@ -132,7 +118,7 @@ describe('loadFullSchedulerExecution', () => {
   test('uses exact structural sandbox and run pairs for filtering and completeness', async () => {
     const deps = dependencies({
       listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [new SchedulerEvent({
-        id: 'start', runId: 'scheduler-run', type: 'loader.run.started',
+        id: 'start', runId: 'scheduler-run', type: 'scheduler.run.started',
         payloadJson: '{"links":[{"sandboxId":"box-a","runId":"run-a"},{"sandboxId":"box-b","runId":"run-b"},{"runId":"run-unpaired"}]}',
       })] })),
       listSandboxRunEvents: vi.fn(async request => new ListSandboxRunEventsResponse({
@@ -160,7 +146,7 @@ describe('loadFullSchedulerExecution', () => {
 
   test('retains only explicitly linked cells and runs', async () => {
     const deps = dependencies({
-      listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'loader.run.started', payloadJson: '{"sandboxId":"box","cellId":"wanted-cell","runId":"wanted-run"}' })] })),
+      listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'scheduler.run.started', payloadJson: '{"sandboxId":"box","cellId":"wanted-cell","runId":"wanted-run"}' })] })),
       listSandboxHistory: vi.fn(async () => new ListSandboxHistoryResponse({ cells: [new SandboxHistoryCell({ id: 'wanted-cell' }), new SandboxHistoryCell({ id: 'other-cell' })] })),
       listSandboxRunEvents: vi.fn(async () => new ListSandboxRunEventsResponse({ events: [new RunEvent({ id: 'wanted-event', runId: 'wanted-run' }), new RunEvent({ id: 'other-event', runId: 'other-run' })], historyAvailableRunIds: ['wanted-run'] })),
     });
@@ -175,8 +161,8 @@ describe('loadFullSchedulerExecution', () => {
     const stableId = await stableProjectRunId('project', 'agent', 'scheduler', 'scheduler-run:agent:1');
     const deps = dependencies({
       listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [
-        new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'loader.run.started' }),
-        new SchedulerEvent({ id: 'agent-start', runId: 'scheduler-run', type: 'loader.agent.started' }),
+        new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'scheduler.run.started' }),
+        new SchedulerEvent({ id: 'agent-start', runId: 'scheduler-run', type: 'scheduler.agent.started' }),
       ] })),
       getRun: vi.fn(async request => new GetRunResponse({ run: new RunDetail({ prompt: request.runId }) })),
       listRunEvents: vi.fn(async request => new ListRunEventsResponse({
@@ -206,9 +192,9 @@ describe('loadFullSchedulerExecution', () => {
   test('does not probe a stable Project Run for scheduler executions without agent activity', async () => {
     const deps = dependencies({
       listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [
-        new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'loader.run.started' }),
-        new SchedulerEvent({ id: 'shell', runId: 'scheduler-run', type: 'loader.command.completed' }),
-        new SchedulerEvent({ id: 'llm', runId: 'scheduler-run', type: 'loader.llm.completed' }),
+        new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'scheduler.run.started' }),
+        new SchedulerEvent({ id: 'shell', runId: 'scheduler-run', type: 'scheduler.command.completed' }),
+        new SchedulerEvent({ id: 'llm', runId: 'scheduler-run', type: 'scheduler.llm.completed' }),
       ] })),
     });
 
@@ -228,7 +214,7 @@ describe('loadFullSchedulerExecution', () => {
   test('filters each sandbox history by structural cell pairs and preserves introducers', async () => {
     const deps = dependencies({
       listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [new SchedulerEvent({
-        id: 'pair-event', runId: 'scheduler-run', type: 'loader.run.started',
+        id: 'pair-event', runId: 'scheduler-run', type: 'scheduler.run.started',
         payloadJson: JSON.stringify({ links: [
           { sandboxId: 'box-a', cellId: 'shared-cell' },
           { sandboxId: 'box-b', cellId: 'cell-b' },
@@ -255,8 +241,8 @@ describe('loadFullSchedulerExecution', () => {
     const stableId = await stableProjectRunId('project', 'agent', 'scheduler', 'scheduler-run:agent:1');
     const deps = dependencies({
       listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [
-        new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'loader.run.started', payloadJson: JSON.stringify({ runId: stableId }) }),
-        new SchedulerEvent({ id: 'agent', runId: 'scheduler-run', type: 'loader.agent.completed' }),
+        new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'scheduler.run.started', payloadJson: JSON.stringify({ runId: stableId }) }),
+        new SchedulerEvent({ id: 'agent', runId: 'scheduler-run', type: 'scheduler.agent.completed' }),
       ] })),
     });
 
@@ -269,11 +255,11 @@ describe('loadFullSchedulerExecution', () => {
 
   test('preserves successful resources when one resource fails and requires final log chunks', async () => {
     const deps = dependencies({
-      listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'loader.run.started', payloadJson: '{"runId":"good"}\n{"runId":"bad"}' })] })),
+      listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'scheduler.run.started', payloadJson: '{"runId":"good"}\n{"runId":"bad"}' })] })),
     });
     // Use two valid scheduler payloads because malformed JSON is deliberately only a warning.
     vi.mocked(deps.listSchedulerEvents).mockResolvedValue(new ListSchedulerEventsResponse({ events: [
-      new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'loader.run.started', payloadJson: '{"runId":"good"}' }),
+      new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'scheduler.run.started', payloadJson: '{"runId":"good"}' }),
       new SchedulerEvent({ id: 'link', runId: 'scheduler-run', payloadJson: '{"runId":"bad"}' }),
     ] }));
     vi.mocked(deps.getRun).mockImplementation(async request => {
@@ -297,7 +283,7 @@ describe('loadFullSchedulerExecution', () => {
     const removed = new ConnectError('read /data/sessions/box-gone/metadata.json: no such file', Code.NotFound);
     const deps = dependencies({
       listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [new SchedulerEvent({
-        id: 'start', runId: 'scheduler-run', type: 'loader.run.started',
+        id: 'start', runId: 'scheduler-run', type: 'scheduler.run.started',
         payloadJson: '{"sandboxId":"box-gone","runId":"run-kept"}',
       })] })),
       getSandbox: vi.fn(async () => { throw removed; }),
@@ -326,7 +312,7 @@ describe('loadFullSchedulerExecution', () => {
 
   test('malformed payloads create warning statuses', async () => {
     const deps = dependencies({ listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [
-      new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'loader.run.started' }),
+      new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'scheduler.run.started' }),
       new SchedulerEvent({ id: 'bad-json', runId: 'scheduler-run', payloadJson: '{' }),
     ] })) });
     const result = await loadFullSchedulerExecution(input, deps);
@@ -338,7 +324,7 @@ describe('loadFullSchedulerExecution', () => {
     const controller = new AbortController();
     let calls = 0;
     const deps = dependencies({
-      listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'loader.run.started', payloadJson: JSON.stringify({ runId: ['ignored'], links: Array.from({ length: 8 }, (_, i) => ({ runId: `run-${i}` })) }) })] })),
+      listSchedulerEvents: vi.fn(async () => new ListSchedulerEventsResponse({ events: [new SchedulerEvent({ id: 'start', runId: 'scheduler-run', type: 'scheduler.run.started', payloadJson: JSON.stringify({ runId: ['ignored'], links: Array.from({ length: 8 }, (_, i) => ({ runId: `run-${i}` })) }) })] })),
       getRun: vi.fn(async () => {
         calls += 1;
         if (calls === 1) controller.abort();

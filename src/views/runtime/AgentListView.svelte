@@ -2,7 +2,7 @@
   import { projectService, runService, runtimeProjectService } from '../../lib/rpc';
   import { store } from '../../lib/stores.svelte';
   import RuntimeBreadcrumb from './RuntimeBreadcrumb.svelte';
-  import { GetProjectRequest, GetSchedulerRequest, ListRunsRequest, ListSchedulerEventsRequest, type RunSummary, type SchedulerEvent } from '../../gen/agentcompose/v2/agentcompose_pb';
+  import { ProjectRef, GetProjectRequest, GetSchedulerRequest, ListRunsRequest, ListSchedulerEventsRequest, type RunSummary, type SchedulerEvent } from '../../gen/agentcompose/v2/agentcompose_pb';
   import { groupSchedulerExecutions, mergeAgentOwnedExecutions, type AgentOwnedExecution } from '../../lib/agent-owned-executions';
 
   interface AgentInfo {
@@ -41,7 +41,7 @@
       loadError = '';
       try {
         const req = new GetProjectRequest({
-          project: { projectId },
+          project: new ProjectRef({ selector: { case: "projectId", value: projectId } }),
           includeSpec: true,
         });
         const resp: any = await runtimeProjectService.getProject(req, { signal: controller.signal, timeoutMs: 30_000 });
@@ -98,18 +98,16 @@
 
   async function loadSchedulerEvents(projectId: string, agentName: string): Promise<SchedulerEvent[]> {
     const events: SchedulerEvent[] = [];
-    const seenCursors = new Set<string>();
-    let cursor = '';
-    do {
-      if (seenCursors.has(cursor)) throw new Error('Scheduler 历史返回了重复游标');
-      seenCursors.add(cursor);
+    let offset = 0;
+    while (true) {
       const resp: any = await projectService.listSchedulerEvents(new ListSchedulerEventsRequest({
-        project: { projectId }, agentName, limit: 500, cursor,
+        project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName, limit: 500, offset,
       }));
-      events.push(...(resp.events || []));
-      cursor = resp.nextCursor || '';
-    } while (cursor);
-    return events;
+      const page = resp.events || [];
+      events.push(...page);
+      if (page.length === 0 || offset + page.length >= resp.total) return events;
+      offset += page.length;
+    }
   }
 
   async function fetchOperationalStats(a: AgentInfo, projectId: string) {
@@ -129,7 +127,7 @@
     if (a.schedulerEnabled) {
       try {
         const resp: any = await projectService.getScheduler(new GetSchedulerRequest({
-          project: { projectId }, agentName: a.agentName,
+          project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName: a.agentName,
         }));
         const dates = (resp.triggers || [])
           .filter((trigger: any) => trigger.enabled !== false)
@@ -170,14 +168,10 @@
   }
 
   function statusClass(s: AgentOwnedExecution['status'] | undefined): string {
-    if (s === undefined) return 'status-absent';
     if (s === 'running') return 'status-running';
     if (s === 'succeeded') return 'status-ok';
     if (s === 'failed') return 'status-err';
-    if (s === 'pending') return 'status-pending';
-    if (s === 'canceled') return 'status-canceled';
-    if (s === 'skipped') return 'status-skipped';
-    return 'status-unknown';
+    return '';
   }
 
   function formatDateTime(value: string | Date | null): string {
@@ -316,7 +310,7 @@
     border-radius: 50%;
     background: currentColor;
   }
-  .current-status.status-idle { color: var(--text-muted); }
+  .current-status.status-idle { color: #8badd9; }
   .current-status.status-running { color: var(--accent-green); }
   .current-status.status-running i { animation: pulse 1.2s ease-in-out infinite; }
 
@@ -350,10 +344,6 @@
   }
   .metric b.status-ok, .metric b.status-running { color: var(--accent-green); }
   .metric b.status-err { color: var(--accent-red); }
-  .metric b.status-canceled { color: var(--accent-orange); }
-  .metric b.status-pending, .metric b.status-unknown { color: var(--accent-yellow); }
-  .metric b.status-skipped { color: var(--text-muted); }
-  .metric b.status-absent { color: var(--text-muted); }
   .arrow {
     align-self: center;
     font-size: 14px;

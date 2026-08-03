@@ -50,7 +50,19 @@ bun run dev
 
 启动后打开 <http://localhost:5174>。
 
-`bun run dev` 会运行 `scripts/dev.mjs`，自动生成一个随机 `SCRIPT_SERVICE_TOKEN` 并共享给网关、Vite 与脚本服务。Vite 的所有后端请求都代理到网关，不持有或注入脚本服务令牌。认证默认使用 `AUTH_MODE=disabled`；任一子进程退出时，其余进程会被一并终止。开发监督器只向 UI 网关传递 `LOCAL_VOLUME_ROOT`，默认指向相邻 daemon 仓库的 `../agent-compose/.dev-data/volumes/local`。如果 daemon 使用其他数据根目录，请将 `LOCAL_VOLUME_ROOT` 显式设置为其 `volumes/local` 绝对路径。
+`bun run dev` 会运行 `scripts/dev.mjs`，自动生成一个随机 `SCRIPT_SERVICE_TOKEN` 并共享给网关、Vite 与脚本服务。Vite 的所有后端请求都代理到网关，不持有或注入脚本服务令牌。认证默认使用 `AUTH_MODE=disabled`；任一子进程退出时，其余进程会被一并终止。开发监督器只向 UI 网关传递 `LOCAL_VOLUME_ROOT`，默认指向 UI 仓库的 `.cache/volumes/local`，避免与受保护的 daemon 数据库目录重叠。如果需要访问其他本地卷目录，请将 `LOCAL_VOLUME_ROOT` 显式设置为安全、独立的绝对路径。
+
+> **托管卷联调注意事项：** `LOCAL_VOLUME_ROOT` 必须与当前 agent-compose daemon 实际使用的 `volumes/local` 目录一致。目录不一致时，卷文件接口会返回 `403 access forbidden`，文件列表以及新建文件夹、上传文件等操作都会被禁用。由于网关不会让可写卷根目录与 daemon 数据库目录重叠，本仓库与相邻 `agent-compose` 仓库联调时，应先在 UI 缓存目录创建数据库文件链接，再使用该链接和实际卷目录启动：
+>
+> ```bash
+> ln -s /root/guest/agent-compose/.dev-data/data.db \
+>   /root/guest/agent-compose-ui/.cache/agent-compose-data.db
+> AGENT_COMPOSE_DB_PATH=/root/guest/agent-compose-ui/.cache/agent-compose-data.db \
+> LOCAL_VOLUME_ROOT=/root/guest/agent-compose/.dev-data/volumes/local \
+> bun run dev
+> ```
+>
+> 数据库链接只供网关只读查询项目元数据；卷文件权限仍只覆盖 `volumes/local`。若链接已存在，无需重复创建。修改这些变量后必须重启 UI 开发服务；无需修改 agent-compose 后端。
 
 本地开发默认不设置 `TOKEN_DB_PATH`，因此 API Token 管理不可用。需要联调该功能时，先创建数据库文件所在目录，再显式指定绝对路径启动：
 

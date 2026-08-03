@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
     addToast: vi.fn(), triggerRuntimeRefresh: vi.fn(), syncHash: vi.fn(), saveEditorDraft: vi.fn(), removeEditorDraft: vi.fn(),
     ensureEditorDraftSourcePath: vi.fn(), activeDraftBinding: vi.fn(() => ({})), persistActiveDraftBinding: vi.fn(), browserDrafts: [] as Array<any>,
   },
-  startRun: vi.fn(),
+  startAgentRun: vi.fn(),
   softPauseProject: vi.fn(),
   probeProjectRuntimeActivity: vi.fn(),
   stopProjectRuns: vi.fn(),
@@ -47,7 +47,7 @@ vi.mock('../lib/rpc', () => ({
   projectService: { getProject: mocks.getProject, getScheduler: mocks.getScheduler, listSchedulers: mocks.listSchedulers, setSchedulerEnabled: mocks.setSchedulerEnabled, listSchedulerRuns: mocks.listSchedulerRuns, stopSchedulerRun: mocks.stopSchedulerRun }, imageService: {},
   capabilityService: {},
   settingsService: { getGlobalEnv: mocks.getGlobalEnv },
-  runService: { startRun: mocks.startRun, followRunLogs: vi.fn(), listRuns: mocks.listRuns, stopRun: mocks.stopRun },
+  runService: { startAgentRun: mocks.startAgentRun, followRunLogs: vi.fn(), listRuns: mocks.listRuns, stopRun: mocks.stopRun },
   sandboxService: { listSandboxes: mocks.listSandboxes, stopSandbox: mocks.stopSandbox },
 }));
 vi.mock('../lib/project-dependency-preflight', () => ({ checkProjectDependencies: mocks.checkProjectDependencies }));
@@ -390,7 +390,7 @@ test('creates and opens the batch before starting the first Agent without lockin
   await applyAndRun();
   expect(mocks.store.runtimeView.level).toBe('latest-run');
   expect(yamlRunBatches.current('p1')?.agents.map((agent) => agent.agentName)).toEqual(['a', 'b']);
-  expect(mocks.runCalls[0].client.startRun).toBe(mocks.startRun);
+  expect(mocks.runCalls[0].client.startAgentRun).toBe(mocks.startAgentRun);
   expect(hiddenRunButton()).not.toBeDisabled();
 });
 
@@ -417,7 +417,7 @@ test('does not duplicate the latest-run entry in the toolbar', async () => {
   render(Toolbar);
   expect(screen.queryByRole('button', { name: /运行中监控|最近运行结果/ })).toBeNull();
   expect(mocks.runCalls).toHaveLength(0);
-  expect(mocks.startRun).not.toHaveBeenCalled();
+  expect(mocks.startAgentRun).not.toHaveBeenCalled();
 });
 
 test('a second batch aborts the first and stale callbacks cannot mutate the replacement', async () => {

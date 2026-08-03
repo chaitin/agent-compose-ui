@@ -201,7 +201,7 @@
       await skillApi.create(key, name);
       created = true;
       if (context !== contextGeneration || key !== projectKey) throw new Error('项目上下文已变化');
-      const next = upsertAgentSkill(yaml, agent, { name, source: 'file', path: `./skills/${name}` });
+      const next = upsertAgentSkill(yaml, agent, { name, provider: 'file', path: `./skills/${name}` });
       await onYamlChange(next);
       if (operation !== createGeneration || context !== contextGeneration || key !== projectKey) return;
       status = `已创建 ${name}`;
@@ -232,7 +232,7 @@
       await skillApi.mkdir(key, name); folder = true;
       await skillApi.upload(key, `${name}/SKILL.md`, file);
       if (context !== contextGeneration || key !== projectKey) throw new Error('项目上下文已变化');
-      await onYamlChange(upsertAgentSkill(yaml, agent, { name, source: 'file', path: `./skills/${name}` }));
+      await onYamlChange(upsertAgentSkill(yaml, agent, { name, provider: 'file', path: `./skills/${name}` }));
       if (operation !== createGeneration || context !== contextGeneration || key !== projectKey) return;
       status = `已上传 ${name}`; modal = '';
       if (await loadList(key)) await openSkill(name, key);
@@ -251,7 +251,7 @@
     try {
       syncPreview = {
         yamlRevision: yaml,
-        nextYaml: upsertAgentSkill(yaml, targetAgent, { name: selected, source: 'file', path: expectedPath }),
+        nextYaml: upsertAgentSkill(yaml, targetAgent, { name: selected, provider: 'file', path: expectedPath }),
         skillName: selected,
         agentName: targetAgent,
         oldPath,

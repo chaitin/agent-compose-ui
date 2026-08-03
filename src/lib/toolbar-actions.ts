@@ -7,7 +7,7 @@ import {
   type RemoveProjectResponse,
   ListRunsRequest,
   RunAgentRequest,
-  StartRunRequest,
+  StartAgentRunRequest,
   GetRunRequest,
   FollowRunLogsRequest,
   RunSource,
@@ -16,7 +16,7 @@ import {
   StopRunRequest,
   type RunLogChunk,
   type RunSummary,
-  type StartRunResponse,
+  type StartAgentRunResponse,
   type GetRunResponse,
   type ListRunsResponse,
   ListSchedulersRequest,
@@ -34,6 +34,7 @@ import {
   RemoveSandboxRequest,
   type RemoveSandboxResponse,
   StopSandboxRequest,
+  SandboxStatus,
 } from '../gen/agentcompose/v2/agentcompose_pb';
 import { yamlToSpec } from './yaml';
 import { isSameProjectId } from './projects';
@@ -47,7 +48,7 @@ export interface RunAgentClient {
 }
 
 export interface TrackedRunClient {
-  startRun(request: StartRunRequest): Promise<StartRunResponse>;
+  startAgentRun(request: StartAgentRunRequest): Promise<StartAgentRunResponse>;
   followRunLogs(request: FollowRunLogsRequest, options?: { signal?: AbortSignal }): AsyncIterable<RunLogChunk>;
   getRun(request: GetRunRequest, options?: { signal?: AbortSignal }): Promise<GetRunResponse>;
 }
@@ -74,9 +75,9 @@ export async function runYamlBatch(options: RunYamlBatchOptions): Promise<void> 
     if (!active()) return;
     options.onStarting(agent.name);
 
-    let response: StartRunResponse;
+    let response: StartAgentRunResponse;
     try {
-      response = await options.client.startRun(new StartRunRequest({
+      response = await options.client.startAgentRun(new StartAgentRunRequest({
         run: new RunAgentRequest({
           projectId: options.projectId,
           agentName: agent.name,
@@ -209,43 +210,37 @@ async function listProjectSchedulers(
   client: Pick<SoftPauseProjectClient, 'listSchedulers'>,
 ): Promise<Array<{ projectId: string; agentName: string }>> {
   const schedulers: Array<{ projectId: string; agentName: string }> = [];
-  const seen = new Set<string>();
-  let cursor = '';
+  let offset = 0;
   while (true) {
-    const response = await client.listSchedulers(new ListSchedulersRequest({ limit: 500, cursor }));
-    schedulers.push(...(response.schedulers ?? []).filter((item) => (
+    const response = await client.listSchedulers(new ListSchedulersRequest({ limit: 500, offset }));
+    const page = response.schedulers ?? [];
+    schedulers.push(...page.filter((item) => (
       isSameProjectId(item.projectId, projectId) && !!item.agentName
     )).map((item) => ({ projectId: item.projectId, agentName: item.agentName })));
-    const next = response.nextCursor?.trim() ?? '';
-    if (!next) return schedulers;
-    if (seen.has(next)) throw new Error(`ListSchedulers returned repeated cursor: ${next}`);
-    seen.add(next);
-    cursor = next;
+    if (page.length === 0 || offset + page.length >= response.total) return schedulers;
+    offset += page.length;
   }
 }
 
 async function hasEnabledScheduler(projectId: string, client: ProjectRuntimeActivityClient): Promise<boolean> {
   const schedulers = await listProjectSchedulers(projectId, client);
   const details = await Promise.all(schedulers.map((item) => client.getScheduler(new GetSchedulerRequest({
-    project: new ProjectRef({ projectId: item.projectId }),
+    project: new ProjectRef({ selector: { case: "projectId", value: item.projectId } }),
     agentName: item.agentName,
   }))));
   return details.some((detail) => detail.scheduler?.enabled === true);
 }
 
 async function hasActiveSchedulerRun(projectId: string, client: ProjectRuntimeActivityClient): Promise<boolean> {
-  const seen = new Set<string>();
-  let cursor = '';
+  let offset = 0;
   while (true) {
     const response = await client.listSchedulerRuns(new ListSchedulerRunsRequest({
-      project: new ProjectRef({ projectId }), limit: 500, cursor,
+      project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), limit: 500, offset,
     }));
-    if ((response.runs ?? []).some((run) => run.status === SchedulerRunStatus.RUNNING)) return true;
-    const next = response.nextCursor?.trim() ?? '';
-    if (!next) return false;
-    if (seen.has(next)) throw new Error(`ListSchedulerRuns returned repeated cursor: ${next}`);
-    seen.add(next);
-    cursor = next;
+    const runs = response.runs ?? [];
+    if (runs.some((run) => run.status === SchedulerRunStatus.RUNNING)) return true;
+    if (runs.length === 0 || offset + runs.length >= response.total) return false;
+    offset += runs.length;
   }
 }
 
@@ -263,18 +258,13 @@ async function hasActiveRun(projectId: string, client: ProjectRuntimeActivityCli
 }
 
 async function hasRunningSandbox(projectId: string, client: ProjectRuntimeActivityClient): Promise<boolean> {
-  const seen = new Set<string>();
-  let cursor = '';
+  let offset = 0;
   while (true) {
-    const response = await client.listSandboxes(new ListSandboxesRequest({ limit: 500, cursor }));
-    if ((response.sandboxes ?? []).some((item) => (
-      item.projectId === projectId && item.status.trim().toUpperCase() === 'RUNNING'
-    ))) return true;
-    const next = response.nextCursor?.trim() ?? '';
-    if (!next) return false;
-    if (seen.has(next)) throw new Error(`ListSandboxes returned repeated cursor: ${next}`);
-    seen.add(next);
-    cursor = next;
+    const response = await client.listSandboxes(new ListSandboxesRequest({ limit: 500, offset }));
+    const sandboxes = response.sandboxes ?? [];
+    if (sandboxes.some((item) => item.projectId === projectId && item.status === SandboxStatus.RUNNING)) return true;
+    if (sandboxes.length === 0 || offset + sandboxes.length >= response.total) return false;
+    offset += sandboxes.length;
   }
 }
 
@@ -353,7 +343,7 @@ export async function prepareProjectPreview<TPrepared extends { yamlText: string
     preparedYaml: prepared.yamlText,
     newProjectSourcePath: options.newProjectSourcePath,
     sourcePathOverride: options.sourcePathOverride,
-    expectedSpecHash: snapshotProject?.summary.specHash || options.fallbackSpecHash,
+    submittedSpecHash: snapshotProject?.summary.specHash || options.fallbackSpecHash,
   });
   if (!options.isCurrent(options.currentProjectId)) return undefined;
   return { currentProjectId: options.currentProjectId, editorContent: options.editorContent, prepared, ...preview };
@@ -379,7 +369,7 @@ export interface SaveProjectOptions {
   newProjectSourcePath?: string;
   sourcePathOverride?: string;
   preparedYaml?: string;
-  expectedSpecHash?: string;
+  submittedSpecHash?: string;
 }
 
 function prepareApplyRequest(editorContent: string, options?: SaveProjectOptions) {
@@ -402,7 +392,7 @@ function prepareApplyRequest(editorContent: string, options?: SaveProjectOptions
   return {
     spec,
     source: new ProjectSource({ composePath }),
-    expectedSpecHash: options?.expectedSpecHash || '',
+    submittedSpecHash: options?.submittedSpecHash || '',
   };
 }
 
@@ -410,10 +400,10 @@ export async function previewProject(editorContent: string, client: ApplyProject
   const prepared = prepareApplyRequest(editorContent, options);
   const response = await client.applyProject(new ApplyProjectRequest({
     ...prepared,
-    expectedSpecHash: '',
+    submittedSpecHash: '',
     dryRun: true,
   }));
-  const savedSpecHash = prepared.expectedSpecHash.trim();
+  const savedSpecHash = prepared.submittedSpecHash.trim();
   const previewSpecHash = response.revision?.specHash.trim() || '';
   if (savedSpecHash && savedSpecHash === previewSpecHash) {
     for (const change of response.changes) {
@@ -427,7 +417,7 @@ export async function previewProject(editorContent: string, client: ApplyProject
   }
   const confirmed = {
     ...prepared,
-    expectedSpecHash: response.revision?.specHash || '',
+    submittedSpecHash: response.revision?.specHash || '',
   };
   return {
     response,
@@ -489,7 +479,7 @@ export async function deleteProject(
   options: { stopRunningSessions?: boolean } = {},
 ) {
   return client.removeProject(new RemoveProjectRequest({
-    project: new ProjectRef({ projectId }),
+    project: new ProjectRef({ selector: { case: "projectId", value: projectId } }),
     removeHistory: false,
     stopRunningSandboxes: options.stopRunningSessions ?? true,
   }));
@@ -506,27 +496,24 @@ function sandboxBelongsToProjectForDeletion(
 
 export async function cascadeDeleteProject(projectId: string, client: CascadeDeleteProjectClient) {
   const related: string[] = [];
-  const seen = new Set<string>();
-  let cursor = '';
+  let offset = 0;
   while (true) {
-    const response = await client.listSandboxes(new ListSandboxesRequest({ limit: 500, cursor }));
-    for (const sandbox of response.sandboxes ?? []) {
+    const response = await client.listSandboxes(new ListSandboxesRequest({ limit: 500, offset }));
+    const page = response.sandboxes ?? [];
+    for (const sandbox of page) {
       if (!sandboxBelongsToProjectForDeletion(sandbox, projectId)) continue;
       if (!sandbox.sandboxId) throw new Error('关联 Sandbox 缺少 ID，项目未删除');
       related.push(sandbox.sandboxId);
     }
-    const next = response.nextCursor?.trim() ?? '';
-    if (!next) break;
-    if (seen.has(next)) throw new Error(`ListSandboxes returned repeated cursor: ${next}`);
-    seen.add(next);
-    cursor = next;
+    if (page.length === 0 || offset + page.length >= response.total) break;
+    offset += page.length;
   }
   for (const sandboxId of related) {
     const response = await client.removeSandbox(new RemoveSandboxRequest({ sandboxId, force: true }));
     if (!response.removed) throw new Error(`Sandbox ${sandboxId} 未能删除，项目未删除`);
   }
   await client.removeProject(new RemoveProjectRequest({
-    project: new ProjectRef({ projectId }),
+    project: new ProjectRef({ selector: { case: "projectId", value: projectId } }),
     removeHistory: false,
     stopRunningSandboxes: true,
   }));
@@ -587,14 +574,14 @@ async function pauseSchedulers(projectId: string, client: SoftPauseProjectClient
     let attempted = false;
     try {
       const detail = await client.getScheduler(new GetSchedulerRequest({
-        project: new ProjectRef({ projectId: scheduler.projectId }),
+        project: new ProjectRef({ selector: { case: "projectId", value: scheduler.projectId } }),
         agentName: scheduler.agentName,
       }));
       if (detail.scheduler?.enabled !== true) continue;
       result.attempted++;
       attempted = true;
       const response = await client.setSchedulerEnabled(new SetSchedulerEnabledRequest({
-        project: new ProjectRef({ projectId: scheduler.projectId }),
+        project: new ProjectRef({ selector: { case: "projectId", value: scheduler.projectId } }),
         agentName: scheduler.agentName,
         enabled: false,
       }));
@@ -613,27 +600,24 @@ async function pauseSchedulers(projectId: string, client: SoftPauseProjectClient
 
 async function pauseSchedulerRuns(projectId: string, client: SoftPauseProjectClient): Promise<PauseStageResult> {
   const activeRuns: Array<{ runId: string }> = [];
-  const seenCursors = new Set<string>();
-  let cursor = '';
+  let offset = 0;
   while (true) {
     const response = await client.listSchedulerRuns(new ListSchedulerRunsRequest({
-      project: new ProjectRef({ projectId }), limit: 500, cursor,
+      project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), limit: 500, offset,
     }));
-    activeRuns.push(...(response.runs ?? []).filter((run) => (
+    const runs = response.runs ?? [];
+    activeRuns.push(...runs.filter((run) => (
       run.status === SchedulerRunStatus.RUNNING && !!run.runId
     )).map((run) => ({ runId: run.runId })));
-    const nextCursor = response.nextCursor?.trim() ?? '';
-    if (!nextCursor) break;
-    if (seenCursors.has(nextCursor)) throw new Error(`ListSchedulerRuns returned repeated cursor: ${nextCursor}`);
-    seenCursors.add(nextCursor);
-    cursor = nextCursor;
+    if (runs.length === 0 || offset + runs.length >= response.total) break;
+    offset += runs.length;
   }
 
   const result: PauseStageResult = { attempted: activeRuns.length, succeeded: 0, failed: 0, errors: [] };
   for (const run of activeRuns) {
     try {
       await client.stopSchedulerRun(new StopSchedulerRunRequest({
-        project: new ProjectRef({ projectId }), runId: run.runId, reason: 'project paused from web console',
+        project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), runId: run.runId, reason: 'project paused from web console',
       }));
       result.succeeded++;
     } catch (error) {
@@ -662,20 +646,17 @@ function sandboxBelongsToProject(
 
 async function pauseSandboxes(projectId: string, client: SoftPauseProjectClient): Promise<PauseStageResult> {
   const sandboxes: Array<{ sandboxId: string }> = [];
-  const seenCursors = new Set<string>();
-  let cursor = '';
+  let offset = 0;
   while (true) {
-    const response = await client.listSandboxes(new ListSandboxesRequest({ limit: 500, cursor }));
-    sandboxes.push(...(response.sandboxes ?? []).filter((sandbox) => (
+    const response = await client.listSandboxes(new ListSandboxesRequest({ limit: 500, offset }));
+    const page = response.sandboxes ?? [];
+    sandboxes.push(...page.filter((sandbox) => (
       sandboxBelongsToProject(sandbox, projectId) &&
-      sandbox.status.trim().toUpperCase() === 'RUNNING' &&
+      sandbox.status === SandboxStatus.RUNNING &&
       !!sandbox.sandboxId
     )));
-    const nextCursor = response.nextCursor?.trim() ?? '';
-    if (!nextCursor) break;
-    if (seenCursors.has(nextCursor)) throw new Error(`ListSandboxes returned repeated cursor: ${nextCursor}`);
-    seenCursors.add(nextCursor);
-    cursor = nextCursor;
+    if (page.length === 0 || offset + page.length >= response.total) break;
+    offset += page.length;
   }
 
   const result: PauseStageResult = { attempted: sandboxes.length, succeeded: 0, failed: 0, errors: [] };

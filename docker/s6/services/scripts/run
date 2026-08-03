@@ -1,4 +1,5 @@
 #!/bin/sh
 # Bun script-service: zero npm deps, runs the .mjs files in /app/script-service.
-# SCRIPT_SERVICE_HOST/PORT/TOKEN are inherited from the container env.
-exec bun /app/script-service/server.mjs
+# SCRIPT_SERVICE_HOST/PORT/TOKEN come from the container env via with-contenv
+# (s6-overlay v3 does not inherit the container env by default).
+exec with-contenv bun /app/script-service/server.mjs

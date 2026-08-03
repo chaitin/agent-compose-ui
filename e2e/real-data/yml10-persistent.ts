@@ -60,11 +60,11 @@ try {
     if (!validated.valid) throw new Error(`${filename}: ${validated.issues.map(x => x.message).join('; ')}`);
     const preview = await clients.project.applyProject(new ApplyProjectRequest({ spec: parsed.spec, source, dryRun: true }));
     const applied = await clients.project.applyProject(new ApplyProjectRequest({
-      spec: parsed.spec, source, dryRun: false, expectedSpecHash: preview.revision?.specHash ?? '',
+      spec: parsed.spec, source, dryRun: false, submittedSpecHash: preview.revision?.specHash ?? '',
     }));
     const projectId = applied.project?.summary?.projectId ?? '';
     if (!projectId) throw new Error(`${filename}: missing project ID`);
-    const saved = await clients.project.getProject(new GetProjectRequest({ project: new ProjectRef({ projectId }), includeSpec: true }));
+    const saved = await clients.project.getProject(new GetProjectRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), includeSpec: true }));
     const failing = index === 4;
     const command = failing
       ? `/bin/bash -lc 'printf ${marker}-stderr >&2; exit 17'`

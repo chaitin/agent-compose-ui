@@ -1,5 +1,6 @@
 import { Code, ConnectError } from '@connectrpc/connect';
 import type { RunSummary } from '../gen/agentcompose/v2/agentcompose_pb';
+import { timestampToIso } from './proto-helpers';
 
 export interface SandboxInventory {
   sandboxId: string;
@@ -50,7 +51,7 @@ export function groupSandboxInventory(runs: readonly InventoryRun[]): SandboxInv
   const grouped = new Map<string, InventoryRun[]>();
   const sorted = [...runs]
     .filter(run => run.sandboxId)
-    .sort((left, right) => (right.updatedAt || right.createdAt).localeCompare(left.updatedAt || left.createdAt));
+    .sort((left, right) => timestampToIso(right.updatedAt ?? right.createdAt).localeCompare(timestampToIso(left.updatedAt ?? left.createdAt)));
 
   for (const run of sorted) {
     const sandboxRuns = grouped.get(run.sandboxId) ?? [];
@@ -65,8 +66,8 @@ export function groupSandboxInventory(runs: readonly InventoryRun[]): SandboxInv
       sandboxId,
       latestRunId: newest.runId,
       agentName: newest.agentName,
-      firstSeenAt: oldest.createdAt || oldest.updatedAt,
-      updatedAt: newest.updatedAt || newest.createdAt,
+      firstSeenAt: timestampToIso(oldest.createdAt ?? oldest.updatedAt),
+      updatedAt: timestampToIso(newest.updatedAt ?? newest.createdAt),
       runCount: sandboxRuns.length,
       runs: sandboxRuns,
     };

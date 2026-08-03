@@ -1,8 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { Code, ConnectError } from '@connectrpc/connect';
+import { Timestamp } from '@bufbuild/protobuf';
 import RunDetailView from './RunDetailView.svelte';
-import { ExecStreamEventType, ExecStreamResponse, GetSchedulerRunResponse, ListSandboxHistoryResponse, ListSandboxRunEventsResponse, RunDetail, RunEvent, RunEventKind, RunSource, RunStatus, RunSummary, SandboxHistoryCell, SchedulerEvent, SchedulerRun, StdioStream } from '../../gen/agentcompose/v2/agentcompose_pb';
+import { StreamExecEventType, StreamExecResponse, GetSchedulerRunResponse, ListSandboxHistoryResponse, ListSandboxRunEventsResponse, RunDetail, RunEvent, RunEventKind, RunSource, RunStatus, RunSummary, SandboxHistoryCell, SandboxStatus, SchedulerEvent, SchedulerRun, StdioStream } from '../../gen/agentcompose/v2/agentcompose_pb';
 import { store } from '../../lib/stores.svelte';
 import { stableProjectRunId } from '../../lib/run-scheduler-evidence';
 
@@ -10,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   runService: { getRun: vi.fn(), listRunEvents: vi.fn(), listSandboxRunEvents: vi.fn(), followRunLogs: vi.fn(), stopRun: vi.fn() },
   projectService: { getSchedulerRun: vi.fn(), listSchedulerEvents: vi.fn() },
   sandboxService: { listSandboxHistory: vi.fn(), getSandbox: vi.fn() },
-  execService: { execStream: vi.fn() },
+  execService: { streamExec: vi.fn() },
 }));
 vi.mock('../../lib/rpc', () => ({ runService: mocks.runService, projectService: mocks.projectService, sandboxService: mocks.sandboxService, execService: mocks.execService }));
 
@@ -19,7 +20,7 @@ function failedRunDetail() {
   return new RunDetail({
     summary: new RunSummary({
       runId: 'run-1', agentName: 'worker', status: RunStatus.FAILED,
-      startedAt: '2026-07-15T01:00:00Z', completedAt: '2026-07-15T01:01:00Z',
+      startedAt: Timestamp.fromDate(new Date('2026-07-15T01:00:00Z')), completedAt: Timestamp.fromDate(new Date('2026-07-15T01:01:00Z')),
     }),
   });
 }
@@ -34,7 +35,7 @@ function relatedRunDetail() {
       triggerId: 'nightly',
       sandboxId: 'sandbox-1',
       status: RunStatus.SUCCEEDED,
-      startedAt: '2026-07-15T01:00:00Z',
+      startedAt: Timestamp.fromDate(new Date('2026-07-15T01:00:00Z')),
     }),
     driver: 'docker',
     imageRef: 'guest:latest',
@@ -85,8 +86,8 @@ beforeEach(() => {
   mocks.projectService.listSchedulerEvents.mockResolvedValue({ events: [], nextCursor: '' });
   mocks.projectService.getSchedulerRun.mockResolvedValue(new GetSchedulerRunResponse());
   mocks.sandboxService.listSandboxHistory.mockResolvedValue(new ListSandboxHistoryResponse());
-  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: { status: 'RUNNING' } });
-  mocks.execService.execStream.mockReturnValue(emptyLogs());
+  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: { status: SandboxStatus.RUNNING } });
+  mocks.execService.streamExec.mockReturnValue(emptyLogs());
 });
 afterEach(() => cleanup());
 
@@ -97,13 +98,13 @@ test('merges only confirmed Scheduler, Cell, and Sandbox Run evidence and filter
     summary: new RunSummary({
       runId: projectRunId, agentName: 'worker', source: RunSource.SCHEDULER, triggerId: 'trigger-1',
       sandboxId: 'sandbox-1', status: RunStatus.SUCCEEDED,
-      startedAt: '2026-07-21T03:30:37Z', completedAt: '2026-07-21T03:32:31Z',
+      startedAt: Timestamp.fromDate(new Date('2026-07-21T03:30:37Z')), completedAt: Timestamp.fromDate(new Date('2026-07-21T03:32:31Z')),
     }),
     resultJson: '{"cellId":"cell-1"}', logsPath: '/logs/output.txt', artifactsDir: '/data/sessions/sandbox-1/state/cells/cell-1',
   }) });
   mocks.runService.listRunEvents.mockResolvedValue({ events: [], nextCursor: '', historyAvailable: true });
   mocks.projectService.listSchedulerEvents.mockResolvedValue({ events: [
-    new SchedulerEvent({ id: 'scheduler-match', runId: 'loader-run-1', triggerId: 'trigger-1', type: 'loader.run.started', message: 'confirmed scheduler start' }),
+    new SchedulerEvent({ id: 'scheduler-match', runId: 'loader-run-1', triggerId: 'trigger-1', type: 'scheduler.run.started', message: 'confirmed scheduler start' }),
     new SchedulerEvent({ id: 'scheduler-other', runId: 'loader-run-2', triggerId: 'trigger-1', message: 'unrelated scheduler event' }),
   ], nextCursor: '' });
   mocks.sandboxService.listSandboxHistory.mockResolvedValue(new ListSandboxHistoryResponse({ cells: [
@@ -114,10 +115,10 @@ test('merges only confirmed Scheduler, Cell, and Sandbox Run evidence and filter
     new RunEvent({ id: 'sandbox-current', runId: projectRunId, kind: RunEventKind.AGENT_MESSAGE, text: 'confirmed sandbox response' }),
     new RunEvent({ id: 'sandbox-other', runId: 'other-run', text: 'unrelated sandbox response' }),
   ] }));
-  mocks.execService.execStream.mockReturnValue(streamOf(new ExecStreamResponse({
-    eventType: ExecStreamEventType.OUTPUT,
+  mocks.execService.streamExec.mockReturnValue(streamOf(new StreamExecResponse({
+    eventType: StreamExecEventType.OUTPUT,
     stream: StdioStream.STDOUT,
-    chunk: '1784604700\t/workspace/2026-07-21/report.md\0',
+    chunk: '1784604700\t/workspace/2026-07-21/report.md\n',
   })));
 
   render(RunDetailView);
@@ -152,7 +153,7 @@ test('shows the parent Scheduler Event ID below Trigger ID and links to Event de
     }),
   }) });
   mocks.projectService.listSchedulerEvents.mockResolvedValue({ events: [
-    new SchedulerEvent({ id: 'loader-start', runId: 'loader-run-1', triggerId: 'siem-alert-handler', type: 'loader.run.started' }),
+    new SchedulerEvent({ id: 'loader-start', runId: 'loader-run-1', triggerId: 'siem-alert-handler', type: 'scheduler.run.started' }),
   ], nextCursor: '' });
   mocks.projectService.getSchedulerRun.mockResolvedValue(new GetSchedulerRunResponse({
     run: new SchedulerRun({ payloadJson: '{"payload":{"eventId":"evt/siem-1"}}' }),
@@ -173,7 +174,7 @@ test('keeps Scheduler evidence usable when optional Event metadata is unavailabl
     summary: new RunSummary({ runId: projectRunId, agentName: 'worker', source: RunSource.SCHEDULER, status: RunStatus.SUCCEEDED }),
   }) });
   mocks.projectService.listSchedulerEvents.mockResolvedValue({ events: [
-    new SchedulerEvent({ id: 'loader-start', runId: 'loader-run-1', type: 'loader.run.started', message: 'confirmed scheduler start' }),
+    new SchedulerEvent({ id: 'loader-start', runId: 'loader-run-1', type: 'scheduler.run.started', message: 'confirmed scheduler start' }),
   ], nextCursor: '' });
   mocks.projectService.getSchedulerRun.mockRejectedValue(new Error('metadata unavailable'));
 
@@ -190,12 +191,12 @@ test('merges parent Scheduler logs for a manually triggered child Agent Run with
   mocks.runService.getRun.mockResolvedValue({ run: new RunDetail({
     summary: new RunSummary({
       runId: projectRunId, agentName: 'script-agent', source: RunSource.MANUAL,
-      status: RunStatus.SUCCEEDED, completedAt: '2026-07-15T01:01:00Z',
+      status: RunStatus.SUCCEEDED, completedAt: Timestamp.fromDate(new Date('2026-07-15T01:01:00Z')),
     }),
   }) });
   mocks.projectService.listSchedulerEvents.mockResolvedValue({ events: [
-    new SchedulerEvent({ id: 'loader-start', runId: 'loader-manual-1', type: 'loader.run.started', message: 'Loader started' }),
-    new SchedulerEvent({ id: 'scheduler-log', runId: 'loader-manual-1', type: 'loader.log', message: 'yaml scheduler script interval executed' }),
+    new SchedulerEvent({ id: 'loader-start', runId: 'loader-manual-1', type: 'scheduler.run.started', message: 'Loader started' }),
+    new SchedulerEvent({ id: 'scheduler-log', runId: 'loader-manual-1', type: 'scheduler.log', message: 'yaml scheduler script interval executed' }),
   ], nextCursor: '' });
 
   render(RunDetailView);
@@ -203,7 +204,7 @@ test('merges parent Scheduler logs for a manually triggered child Agent Run with
   expect(await screen.findByText('Loader started')).toBeInTheDocument();
   expect(screen.getByText('yaml scheduler script interval executed')).toBeInTheDocument();
   expect(mocks.projectService.listSchedulerEvents).toHaveBeenCalledWith(expect.objectContaining({
-    project: expect.objectContaining({ projectId: 'project-1' }), agentName: 'script-agent',
+    project: expect.objectContaining({ selector: { case: 'projectId', value: 'project-1' } }), agentName: 'script-agent',
   }), expect.objectContaining({ signal: expect.any(AbortSignal) }));
 });
 
@@ -212,11 +213,11 @@ test('pages structured events and renders them instead of inferred log evidence'
   mocks.runService.listRunEvents
     .mockResolvedValueOnce({
       events: [new RunEvent({ id: 'event-2', seq: 2n, kind: RunEventKind.STATUS, success: false, exitCode: 9, stopReason: 'timeout' })],
-      nextCursor: 'next', historyAvailable: true,
+      total: 2, historyAvailable: true,
     })
     .mockResolvedValueOnce({
       events: [new RunEvent({ id: 'event-1', seq: 1n, kind: RunEventKind.AGENT_MESSAGE, agent: 'worker', text: 'structured answer' })],
-      nextCursor: '', historyAvailable: true,
+      total: 2, historyAvailable: true,
     });
   mocks.runService.followRunLogs.mockReturnValue(streamOf(logChunk('$ inferred command', 10)));
 
@@ -227,7 +228,7 @@ test('pages structured events and renders them instead of inferred log evidence'
   expect(screen.getByText(/失败 · 退出码 9/)).toBeTruthy();
   expect(screen.getByText(/停止原因：timeout/)).toBeTruthy();
   expect(screen.queryByText(/inferred command/)).toBeNull();
-  expect(mocks.runService.listRunEvents.mock.calls.map(([request]) => request.cursor)).toEqual(['', 'next']);
+  expect(mocks.runService.listRunEvents.mock.calls.map(([request]) => request.offset)).toEqual([0, 1]);
   expect(mocks.runService.followRunLogs).not.toHaveBeenCalled();
 });
 
@@ -236,7 +237,7 @@ test('ignores deferred structured history after the run identity changes', async
   mocks.runService.getRun.mockResolvedValue({ run: failedRunDetail() });
   mocks.runService.listRunEvents
     .mockReturnValueOnce(old.promise)
-    .mockResolvedValueOnce({ events: [new RunEvent({ id: 'new', seq: 1n, text: 'new evidence' })], historyAvailable: true });
+    .mockResolvedValueOnce({ events: [new RunEvent({ id: 'new', seq: 1n, text: 'new evidence' })], total: 1, historyAvailable: true });
 
   render(RunDetailView);
   await waitFor(() => expect(mocks.runService.listRunEvents).toHaveBeenCalledTimes(1));
@@ -448,7 +449,7 @@ test('hides protobuf-default exit code for RUNNING and shows elapsed timeline ti
   mocks.runService.getRun.mockResolvedValue({
     run: new RunDetail({ summary: new RunSummary({
       runId: 'run-1', agentName: 'worker', status: RunStatus.RUNNING,
-      startedAt: '2026-07-15T01:00:00Z',
+      startedAt: Timestamp.fromDate(new Date('2026-07-15T01:00:00Z')),
     }) }),
   });
   mocks.runService.followRunLogs.mockImplementation((request) => request.follow
@@ -503,7 +504,7 @@ test('does not toast when sandbox history is gone for a canceled run', async () 
     summary: new RunSummary({
       runId: 'run-1', agentName: 'worker', source: RunSource.MANUAL,
       sandboxId: 'sandbox-gone', status: RunStatus.CANCELED,
-      completedAt: '2026-07-15T01:01:00Z',
+      completedAt: Timestamp.fromDate(new Date('2026-07-15T01:01:00Z')),
     }),
     prompt: 'Sandbox 删除后仍保留的提问',
     output: 'Sandbox 删除后仍保留的回答',

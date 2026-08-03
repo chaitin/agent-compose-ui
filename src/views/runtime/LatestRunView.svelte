@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { GetProjectRequest, ListRunsRequest, RunStatus, type RunDetail, type RunSummary } from '../../gen/agentcompose/v2/agentcompose_pb';
+  import { ProjectRef, GetProjectRequest, ListRunsRequest, RunStatus, type RunDetail, type RunSummary } from '../../gen/agentcompose/v2/agentcompose_pb';
   import { runService, runtimeProjectService } from '../../lib/rpc';
   import { store } from '../../lib/stores.svelte';
   import RunExecutionProcess from './RunExecutionProcess.svelte';
@@ -50,7 +50,7 @@
   async function loadProject(requestedProject: string, requestedGeneration: number, requestedController: AbortController) {
     try {
       const response = await runtimeProjectService.getProject(new GetProjectRequest({
-        project: { projectId: requestedProject },
+        project: new ProjectRef({ selector: { case: "projectId", value: requestedProject } }),
         includeSpec: true,
       }), { signal: requestedController.signal, timeoutMs: 30_000 });
       if (!isCurrent(requestedProject, requestedGeneration, requestedController.signal)) return;
@@ -124,15 +124,6 @@
     if (status === RunStatus.CANCELED) return '已取消';
     return '未知';
   }
-
-  function statusClass(status: RunStatus) {
-    if (status === RunStatus.PENDING) return 'status-pending';
-    if (status === RunStatus.RUNNING) return 'status-running';
-    if (status === RunStatus.SUCCEEDED) return 'status-succeeded';
-    if (status === RunStatus.FAILED) return 'status-failed';
-    if (status === RunStatus.CANCELED) return 'status-canceled';
-    return 'status-unknown';
-  }
 </script>
 
 <div class="root">
@@ -155,7 +146,7 @@
     <div class="agent-sections">
       {#each entries as entry (entry.agentName)}
         <section class="agent-section" data-agent={entry.agentName}>
-          <header><span>Agent</span><h2>{entry.agentName}</h2>{#if entry.latestRun}<strong class="run-status {statusClass(entry.status)}">{statusLabel(entry.status)}</strong>{/if}</header>
+          <header><span>Agent</span><h2>{entry.agentName}</h2>{#if entry.latestRun}<strong class="run-status">{statusLabel(entry.status)}</strong>{/if}</header>
           {#if entry.loading}
             <div class="state">正在加载最近运行记录...</div>
           {:else if entry.error}
@@ -189,11 +180,7 @@
   header span { color: var(--text-muted); font: var(--font-size-xs) var(--font-mono); text-transform: uppercase; }
   h2 { margin: 2px 0 0; color: var(--text-primary); font-size: var(--font-size-xl); }
   .run-status { margin-left: auto; color: var(--text-secondary); font-size: var(--font-size-sm); }
-  .run-status.status-pending, .run-status.status-unknown { color: var(--accent-yellow); }
-  .run-status.status-running, .run-status.status-succeeded { color: var(--accent-green); }
-  .run-status.status-failed { color: var(--accent-red); }
-  .run-status.status-canceled { color: var(--accent-orange); }
   .state, .empty, .project-error { padding: 48px; text-align: center; color: var(--text-muted); }
-  .agent-error { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 36px; color: var(--accent-red); }
+  .agent-error { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 36px; color: var(--danger, #ef4444); }
   button { border: 1px solid var(--border-color); border-radius: 5px; padding: 5px 10px; color: var(--text-primary); background: var(--bg-primary); cursor: pointer; }
 </style>

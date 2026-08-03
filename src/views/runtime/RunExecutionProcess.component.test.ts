@@ -1,15 +1,16 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { Code, ConnectError } from '@connectrpc/connect';
+import { Timestamp } from '@bufbuild/protobuf';
 import RunExecutionProcess from './RunExecutionProcess.svelte';
-import { ExecStreamEventType, ExecStreamResponse, ListSandboxHistoryResponse, ListSandboxRunEventsResponse, RunDetail, RunStatus, RunSummary, StdioStream } from '../../gen/agentcompose/v2/agentcompose_pb';
+import { StreamExecEventType, StreamExecResponse, ListSandboxHistoryResponse, ListSandboxRunEventsResponse, RunDetail, RunStatus, RunSummary, SandboxStatus, StdioStream } from '../../gen/agentcompose/v2/agentcompose_pb';
 import { store } from '../../lib/stores.svelte';
 
 const mocks = vi.hoisted(() => ({
   runService: { getRun: vi.fn(), listRunEvents: vi.fn(), listSandboxRunEvents: vi.fn(), followRunLogs: vi.fn() },
   projectService: { listSchedulerEvents: vi.fn() },
   sandboxService: { listSandboxHistory: vi.fn(), getSandbox: vi.fn(), resumeSandbox: vi.fn() },
-  execService: { execStream: vi.fn() },
+  execService: { streamExec: vi.fn() },
 }));
 
 vi.mock('../../lib/rpc', () => ({
@@ -21,10 +22,10 @@ vi.mock('../../lib/rpc', () => ({
 
 async function* emptyLogs() {}
 async function* artifactStream(path: string) {
-  yield new ExecStreamResponse({
-    eventType: ExecStreamEventType.OUTPUT,
+  yield new StreamExecResponse({
+    eventType: StreamExecEventType.OUTPUT,
     stream: StdioStream.STDOUT,
-    chunk: `1784604700\t${path}\0`,
+    chunk: `1784604700\t${path}\n`,
   });
 }
 const deferred = <T,>() => {
@@ -45,8 +46,8 @@ beforeEach(() => {
   mocks.runService.followRunLogs.mockReturnValue(emptyLogs());
   mocks.projectService.listSchedulerEvents.mockResolvedValue({ events: [], nextCursor: '' });
   mocks.sandboxService.listSandboxHistory.mockResolvedValue(new ListSandboxHistoryResponse());
-  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: { status: 'RUNNING' } });
-  mocks.execService.execStream.mockReturnValue(emptyLogs());
+  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: { status: SandboxStatus.RUNNING } });
+  mocks.execService.streamExec.mockReturnValue(emptyLogs());
 });
 
 afterEach(() => {
@@ -67,10 +68,10 @@ test('opens a discovered Workspace artifact in the Sandbox files tab', async () 
   window.history.replaceState(null, '', '/?view=run');
   mocks.runService.getRun.mockResolvedValue({ run: new RunDetail({
     summary: new RunSummary({ runId: 'run-1', agentName: 'writer', sandboxId: 'sandbox-1', status: RunStatus.SUCCEEDED,
-      startedAt: '2026-07-21T03:30:37Z', completedAt: '2026-07-21T03:32:31Z' }),
+      startedAt: Timestamp.fromDate(new Date('2026-07-21T03:30:37Z')), completedAt: Timestamp.fromDate(new Date('2026-07-21T03:32:31Z')) }),
     artifactsDir: '/existing/artifacts',
   }) });
-  mocks.execService.execStream.mockReturnValue(artifactStream('/workspace/2026-07-21/report.md'));
+  mocks.execService.streamExec.mockReturnValue(artifactStream('/workspace/2026-07-21/report.md'));
   render(RunExecutionProcess, { projectId: 'p1', agentName: 'writer', runId: 'run-1' });
 
   await fireEvent.click(await screen.findByRole('button', { name: '打开 Workspace 文件 /workspace/2026-07-21/report.md' }));
@@ -83,23 +84,23 @@ test('opens a discovered Workspace artifact in the Sandbox files tab', async () 
 test('keeps existing artifacts and does not exec or resume a stopped Sandbox', async () => {
   mocks.runService.getRun.mockResolvedValue({ run: new RunDetail({
     summary: new RunSummary({ runId: 'run-1', agentName: 'writer', sandboxId: 'sandbox-1', status: RunStatus.SUCCEEDED,
-      startedAt: '2026-07-21T03:30:37Z', completedAt: '2026-07-21T03:32:31Z' }),
+      startedAt: Timestamp.fromDate(new Date('2026-07-21T03:30:37Z')), completedAt: Timestamp.fromDate(new Date('2026-07-21T03:32:31Z')) }),
     artifactsDir: '/existing/artifacts',
   }) });
-  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: { status: 'STOPPED' } });
+  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: { status: SandboxStatus.STOPPED } });
   render(RunExecutionProcess, { projectId: 'p1', agentName: 'writer', runId: 'run-1' });
 
   expect(await screen.findByText('Sandbox 已停止，请先手动恢复后刷新产物')).toBeTruthy();
   await fireEvent.click(screen.getByRole('button', { name: '产物' }));
   expect(await screen.findByText('/existing/artifacts')).toBeTruthy();
-  expect(mocks.execService.execStream).not.toHaveBeenCalled();
+  expect(mocks.execService.streamExec).not.toHaveBeenCalled();
   expect(mocks.sandboxService.resumeSandbox).not.toHaveBeenCalled();
 });
 
 test('keeps existing artifacts when the Sandbox was removed', async () => {
   mocks.runService.getRun.mockResolvedValue({ run: new RunDetail({
     summary: new RunSummary({ runId: 'run-1', agentName: 'writer', sandboxId: 'sandbox-1', status: RunStatus.SUCCEEDED,
-      startedAt: '2026-07-21T03:30:37Z', completedAt: '2026-07-21T03:32:31Z' }),
+      startedAt: Timestamp.fromDate(new Date('2026-07-21T03:30:37Z')), completedAt: Timestamp.fromDate(new Date('2026-07-21T03:32:31Z')) }),
     artifactsDir: '/existing/artifacts',
   }) });
   mocks.sandboxService.getSandbox.mockRejectedValueOnce(new ConnectError('gone', Code.NotFound));
@@ -112,10 +113,10 @@ test('keeps existing artifacts when the Sandbox was removed', async () => {
 test('shows a non-blocking exec failure while keeping existing artifacts', async () => {
   mocks.runService.getRun.mockResolvedValue({ run: new RunDetail({
     summary: new RunSummary({ runId: 'run-1', agentName: 'writer', sandboxId: 'sandbox-1', status: RunStatus.SUCCEEDED,
-      startedAt: '2026-07-21T03:30:37Z', completedAt: '2026-07-21T03:32:31Z' }), artifactsDir: '/existing/artifacts',
+      startedAt: Timestamp.fromDate(new Date('2026-07-21T03:30:37Z')), completedAt: Timestamp.fromDate(new Date('2026-07-21T03:32:31Z')) }), artifactsDir: '/existing/artifacts',
   }) });
-  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: { status: 'RUNNING' } });
-  mocks.execService.execStream.mockImplementation(() => { throw new Error('find unavailable'); });
+  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: { status: SandboxStatus.RUNNING } });
+  mocks.execService.streamExec.mockImplementation(() => { throw new Error('find unavailable'); });
   render(RunExecutionProcess, { projectId: 'p1', agentName: 'writer', runId: 'run-1' });
   expect(await screen.findByText(/Workspace 产物加载失败：.*find unavailable/)).toBeTruthy();
   await fireEvent.click(screen.getByRole('button', { name: '产物' }));
@@ -127,24 +128,24 @@ test('ignores Workspace artifacts returned after the run identity changes', asyn
   const runACompleted = deferred<void>();
   mocks.runService.getRun
     .mockResolvedValueOnce({ run: new RunDetail({ summary: new RunSummary({ runId: 'run-1', agentName: 'writer', sandboxId: 'sandbox-a', status: RunStatus.SUCCEEDED,
-      startedAt: '2026-07-21T03:30:37Z', completedAt: '2026-07-21T03:32:31Z' }) }) })
+      startedAt: Timestamp.fromDate(new Date('2026-07-21T03:30:37Z')), completedAt: Timestamp.fromDate(new Date('2026-07-21T03:32:31Z')) }) }) })
     .mockResolvedValueOnce({ run: new RunDetail({ summary: new RunSummary({ runId: 'run-2', agentName: 'reviewer', sandboxId: 'sandbox-b', status: RunStatus.SUCCEEDED,
-      startedAt: '2026-07-21T03:30:37Z', completedAt: '2026-07-21T03:32:31Z' }) }) });
-  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: { status: 'RUNNING' } });
-  mocks.execService.execStream.mockImplementation((request: any) => {
+      startedAt: Timestamp.fromDate(new Date('2026-07-21T03:30:37Z')), completedAt: Timestamp.fromDate(new Date('2026-07-21T03:32:31Z')) }) }) });
+  mocks.sandboxService.getSandbox.mockResolvedValue({ sandbox: { status: SandboxStatus.RUNNING } });
+  mocks.execService.streamExec.mockImplementation((request: any) => {
     const sandboxId = request.target.value;
     return (async function* () {
       if (sandboxId === 'sandbox-a') await runAExec.promise;
-      yield new ExecStreamResponse({
-        eventType: ExecStreamEventType.OUTPUT,
+      yield new StreamExecResponse({
+        eventType: StreamExecEventType.OUTPUT,
         stream: StdioStream.STDOUT,
-        chunk: `1784604700\t/workspace/${sandboxId === 'sandbox-a' ? 'run-a' : 'run-b'}.md\0`,
+        chunk: `1784604700\t/workspace/${sandboxId === 'sandbox-a' ? 'run-a' : 'run-b'}.md\n`,
       });
       if (sandboxId === 'sandbox-a') runACompleted.resolve();
     })();
   });
   const view = render(RunExecutionProcess, { projectId: 'p1', agentName: 'writer', runId: 'run-1' });
-  await waitFor(() => expect(mocks.execService.execStream).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(mocks.execService.streamExec).toHaveBeenCalledTimes(1));
   await view.rerender({ projectId: 'p1', agentName: 'reviewer', runId: 'run-2' });
   expect(await screen.findByRole('button', { name: '打开 Workspace 文件 /workspace/run-b.md' })).toBeTruthy();
 

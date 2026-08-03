@@ -224,12 +224,11 @@ test('creates standard Skill YAML that the real apply parser accepts', async () 
   await fireEvent.click(screen.getByRole('button', { name: '创建 Skill' }));
   await waitFor(() => expect(onYamlChange).toHaveBeenCalledOnce());
   const changed = onYamlChange.mock.calls[0][0] as string;
-  expect(changed).toContain('source: file');
-  expect(changed).not.toContain('provider: file');
+  expect(changed).toContain('provider: file');
   const parsed = yamlToSpec(changed);
   expect(parsed.error).toBeUndefined();
   expect(parsed.spec.agents.find((agent) => agent.name === 'beta')?.skills[0]).toMatchObject({
-    name: 'new-skill', source: 'file', path: './skills/new-skill',
+    name: 'new-skill', provider: 'file', path: './skills/new-skill',
   });
 });
 

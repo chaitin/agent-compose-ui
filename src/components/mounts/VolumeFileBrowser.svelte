@@ -17,7 +17,7 @@
   function message(value: unknown) { if (value instanceof VolumeFileApiError && value.status === 409) return '文件已发生冲突，请重新加载后重试'; return value instanceof Error ? value.message : String(value); }
   function listFailure(value: unknown): { availability: Availability; message: string } {
     if (value instanceof VolumeFileApiError && value.status === 503 && value.code === 'unavailable') return { availability: 'unavailable', message: '卷文件服务未配置，配置后请刷新页面。' };
-    if (value instanceof VolumeFileApiError && value.status === 404 && value.code === 'not_found') return { availability: 'missing', message: '卷尚未创建，请先应用项目后刷新页面。' };
+    if (value instanceof VolumeFileApiError && value.status === 404 && value.code === 'not_found') return { availability: 'missing', message: '实体卷尚未创建。请点击上方“应用 YAML”；成功后会自动加载。' };
     return { availability: 'pending', message: message(value) };
   }
   function active(token: number, key: string, vol: string) { return token === generation && key === projectKey && vol === volume; }

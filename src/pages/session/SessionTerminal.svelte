@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { Terminal } from '@xterm/xterm';
   import { FitAddon } from '@xterm/addon-fit';
-  import { ExecCommand, ExecRequest, ExecStreamEventType, EnvVarSpec } from '../../gen/agentcompose/v2/agentcompose_pb';
+  import { ExecCommand, ExecRequest, StreamExecEventType, EnvVarSpec } from '../../gen/agentcompose/v2/agentcompose_pb';
   import { execService } from '../../lib/rpc';
   import '@xterm/xterm/css/xterm.css';
 
@@ -55,8 +55,8 @@
       target: { case: 'sandboxId', value: sandboxId }, command: new ExecCommand({ command, args }), cwd: requestCwd,
       env: [new EnvVarSpec({ name: 'COLUMNS', value: String(columns) })], timeoutMs: 120_000, maxOutputBytes: 4 * 1024 * 1024,
     });
-    for await (const event of execService.execStream(request, { signal: active.signal })) {
-      if (event.eventType === ExecStreamEventType.OUTPUT && event.chunk) { const text = terminalText(event.chunk); terminal?.write(text); output += event.chunk; }
+    for await (const event of execService.streamExec(request, { signal: active.signal })) {
+      if (event.eventType === StreamExecEventType.OUTPUT && event.chunk) { const text = terminalText(event.chunk); terminal?.write(text); output += event.chunk; }
       if (event.result?.error) resultError = event.result.error;
     }
     if (resultError) throw new Error(resultError);
@@ -115,4 +115,4 @@
 </script>
 
 <section class="terminal" aria-label="Sandbox command terminal"><header><strong>Terminal</strong><code>{sandboxId}</code><span>{running ? '执行中…' : '已连接'}</span></header><div class="host" bind:this={host}></div></section>
-<style>.terminal{display:flex;flex-direction:column;height:100%;min-height:360px;background:var(--bg-primary);color:var(--text-primary)}.terminal header{display:flex;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border-color)}.terminal code{flex:1;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis}.terminal span{font-size:var(--font-size-xs);color:var(--accent-green)}.host{flex:1;min-height:0;padding:6px}</style>
+<style>.terminal{display:flex;flex-direction:column;height:100%;min-height:360px;background:#0d1117;color:#d8dee9}.terminal header{display:flex;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid #30363d}.terminal code{flex:1;color:#8b949e;overflow:hidden;text-overflow:ellipsis}.terminal span{font-size:var(--font-size-xs);color:#7ee787}.host{flex:1;min-height:0;padding:6px}</style>

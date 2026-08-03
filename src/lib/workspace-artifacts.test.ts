@@ -1,6 +1,6 @@
 import { Code, ConnectError } from '@connectrpc/connect';
 import { describe, expect, test, vi } from 'vitest';
-import { ExecResult, ExecStreamEventType, ExecStreamResponse, StdioStream } from '../gen/agentcompose/v2/agentcompose_pb';
+import { ExecResult, StreamExecEventType, StreamExecResponse, StdioStream } from '../gen/agentcompose/v2/agentcompose_pb';
 import {
   parseWorkspaceArtifactRecords,
   discoverWorkspaceArtifacts,
@@ -55,9 +55,9 @@ describe('discoverWorkspaceArtifacts', () => {
       completedAt: '2026-07-21T03:32:31Z',
       now: () => new Date('2026-07-21T03:40:00Z'),
       getSandbox: async () => ({ sandbox: { status: 'RUNNING' } }),
-      execStream: async function* (request) {
+      streamExec: async function* (request) {
         requests.push(request);
-        yield new ExecStreamResponse({ eventType: ExecStreamEventType.OUTPUT, stream: StdioStream.STDOUT, chunk: '1784604640\t/workspace/report.md\n' });
+        yield new StreamExecResponse({ eventType: StreamExecEventType.OUTPUT, stream: StdioStream.STDOUT, chunk: '1784604640\t/workspace/report.md\n' });
       },
     });
     expect(result.status).toBe('ready');
@@ -75,34 +75,34 @@ describe('discoverWorkspaceArtifacts', () => {
   });
 
   test('does not resume or exec a stopped Sandbox', async () => {
-    const execStream = vi.fn();
+    const streamExec = vi.fn();
     const result = await discoverWorkspaceArtifacts({
       sandboxId: 'sandbox-1', startedAt: '2026-07-21T03:30:37Z', completedAt: '', now: () => new Date(),
-      getSandbox: async () => ({ sandbox: { status: 'STOPPED' } }), execStream,
+      getSandbox: async () => ({ sandbox: { status: 'STOPPED' } }), streamExec,
     });
     expect(result).toMatchObject({ status: 'stopped', files: [] });
-    expect(execStream).not.toHaveBeenCalled();
+    expect(streamExec).not.toHaveBeenCalled();
   });
 
   test('maps GetSandbox NotFound to removed', async () => {
-    const execStream = vi.fn();
+    const streamExec = vi.fn();
     const result = await discoverWorkspaceArtifacts({
       sandboxId: 'sandbox-gone', startedAt: '2026-07-21T03:30:37Z', completedAt: '', now: () => new Date(),
-      getSandbox: async () => { throw new ConnectError('gone', Code.NotFound); }, execStream,
+      getSandbox: async () => { throw new ConnectError('gone', Code.NotFound); }, streamExec,
     });
     expect(result).toMatchObject({ status: 'removed', files: [] });
-    expect(execStream).not.toHaveBeenCalled();
+    expect(streamExec).not.toHaveBeenCalled();
   });
 
   test('maps stderr and a terminal result error to error', async () => {
     for (const event of [
-      new ExecStreamResponse({ eventType: ExecStreamEventType.OUTPUT, stream: StdioStream.STDERR, chunk: 'find failed' }),
-      new ExecStreamResponse({ eventType: ExecStreamEventType.COMPLETED, result: new ExecResult({ error: 'find failed' }) }),
+      new StreamExecResponse({ eventType: StreamExecEventType.OUTPUT, stream: StdioStream.STDERR, chunk: 'find failed' }),
+      new StreamExecResponse({ eventType: StreamExecEventType.COMPLETED, result: new ExecResult({ error: 'find failed' }) }),
     ]) {
       const result = await discoverWorkspaceArtifacts({
         sandboxId: 'sandbox-1', startedAt: '2026-07-21T03:30:37Z', completedAt: '', now: () => new Date('2026-07-21T03:32:31Z'),
         getSandbox: async () => ({ sandbox: { status: 'RUNNING' } }),
-        execStream: async function* () { yield event; },
+        streamExec: async function* () { yield event; },
       });
       expect(result).toMatchObject({ status: 'error', files: [] });
     }
@@ -112,8 +112,8 @@ describe('discoverWorkspaceArtifacts', () => {
     const result = await discoverWorkspaceArtifacts({
       sandboxId: 'sandbox-1', startedAt: '2026-07-21T03:30:37Z', completedAt: '', now: () => new Date('2026-07-21T03:30:40Z'),
       getSandbox: async () => ({ sandbox: { status: 'RUNNING' } }),
-      execStream: async function* () {
-        yield new ExecStreamResponse({ eventType: ExecStreamEventType.OUTPUT, stream: StdioStream.STDOUT, chunk: '1784604640\t/workspace/at-now.md\n' });
+      streamExec: async function* () {
+        yield new StreamExecResponse({ eventType: StreamExecEventType.OUTPUT, stream: StdioStream.STDOUT, chunk: '1784604640\t/workspace/at-now.md\n' });
       },
     });
     expect(result.files.map(file => file.path)).toEqual(['/workspace/at-now.md']);
@@ -126,8 +126,8 @@ describe('discoverWorkspaceArtifacts', () => {
     const result = await discoverWorkspaceArtifacts({
       sandboxId: 'sandbox-1', startedAt: '2026-07-21T03:30:37Z', completedAt: '2026-07-21T03:32:31Z', now: () => new Date(),
       getSandbox: async () => ({ sandbox: { status: 'RUNNING' } }),
-      execStream: async function* () {
-        yield new ExecStreamResponse({ eventType: ExecStreamEventType.OUTPUT, stream: StdioStream.STDOUT, chunk: oversized });
+      streamExec: async function* () {
+        yield new StreamExecResponse({ eventType: StreamExecEventType.OUTPUT, stream: StdioStream.STDOUT, chunk: oversized });
       },
     });
     expect(result).toMatchObject({ status: 'ready', truncated: true });
@@ -140,31 +140,31 @@ describe('discoverWorkspaceArtifacts', () => {
     await discoverWorkspaceArtifacts({
       sandboxId: 'sandbox-1', startedAt: '2026-07-21T03:30:37Z', completedAt: '', now: () => new Date('2026-07-21T03:32:31Z'), signal,
       getSandbox: async (_request, callOptions) => { options.push(callOptions); return { sandbox: { status: 'RUNNING' } }; },
-      execStream: async function* (_request, callOptions) { options.push(callOptions); },
+      streamExec: async function* (_request, callOptions) { options.push(callOptions); },
     });
     expect(options).toEqual([{ signal }, { signal }]);
   });
 
   test('rejects an invalid time window before calling RPCs', async () => {
     const getSandbox = vi.fn();
-    const execStream = vi.fn();
+    const streamExec = vi.fn();
     const result = await discoverWorkspaceArtifacts({
-      sandboxId: 'sandbox-1', startedAt: 'invalid', completedAt: '', now: () => new Date(), getSandbox, execStream,
+      sandboxId: 'sandbox-1', startedAt: 'invalid', completedAt: '', now: () => new Date(), getSandbox, streamExec,
     });
     expect(result).toMatchObject({ status: 'invalid-time', files: [] });
     expect(getSandbox).not.toHaveBeenCalled();
-    expect(execStream).not.toHaveBeenCalled();
+    expect(streamExec).not.toHaveBeenCalled();
   });
 
   test('rejects an invalid injected current time before calling RPCs', async () => {
     const getSandbox = vi.fn();
-    const execStream = vi.fn();
+    const streamExec = vi.fn();
     const result = await discoverWorkspaceArtifacts({
       sandboxId: 'sandbox-1', startedAt: '2026-07-21T03:30:37Z', completedAt: '',
-      now: () => new Date(Number.NaN), getSandbox, execStream,
+      now: () => new Date(Number.NaN), getSandbox, streamExec,
     });
     expect(result).toMatchObject({ status: 'invalid-time', files: [] });
     expect(getSandbox).not.toHaveBeenCalled();
-    expect(execStream).not.toHaveBeenCalled();
+    expect(streamExec).not.toHaveBeenCalled();
   });
 });

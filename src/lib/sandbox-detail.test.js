@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { ListSandboxHistoryResponse, ListSandboxRunEventsResponse, Sandbox, SandboxHistoryCell } from '../gen/agentcompose/v2/agentcompose_pb';
+import { ListSandboxHistoryResponse, ListSandboxRunEventsResponse, Sandbox, SandboxHistoryCell, SandboxStatus } from '../gen/agentcompose/v2/agentcompose_pb';
 import { buildSandboxDetailSnapshot, buildSandboxTimeline } from './sandbox-detail';
 
 describe('buildSandboxDetailSnapshot', () => {
   test('uses the direct sandbox record and history responses', () => {
     const snapshot = buildSandboxDetailSnapshot(
-      new Sandbox({ sandboxId: 'sb-1', status: 'RUNNING' }),
+      new Sandbox({ sandboxId: 'sb-1', status: SandboxStatus.RUNNING }),
       new ListSandboxHistoryResponse({ cells: [{ id: 'cell-1', source: 'pwd' }], events: [{ id: 'event-1', message: 'ready' }], legacyHistory: true }),
       new ListSandboxRunEventsResponse({ events: [{ id: 'run-event-1', text: 'agent response' }] }),
     );

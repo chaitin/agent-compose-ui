@@ -27,7 +27,7 @@ function deferred<T>() {
 function schedulerResponse(runId: string, timelineCount: number, options: { payloadJson?: string; failed?: boolean; subsequentType?: string } = {}) {
   const schedulerCount = Math.max(1, timelineCount - 1); // aggregation contributes one source-status entry
   return new ListSchedulerEventsResponse({ events: Array.from({ length: schedulerCount }, (_, index) => new SchedulerEvent({
-    id: `${runId}-event-${index}`, runId, type: index === 0 ? 'loader.run.started' : options.failed && index === 1 ? 'loader.run.failed' : options.subsequentType ?? 'loader.command.completed',
+    id: `${runId}-event-${index}`, runId, type: index === 0 ? 'scheduler.run.started' : options.failed && index === 1 ? 'scheduler.run.failed' : options.subsequentType ?? 'scheduler.command.completed',
     message: index === 1 ? 'needle content' : `full content ${index}`, payloadJson: index === 0 ? options.payloadJson ?? '' : '',
     createdAt: { seconds: BigInt(index + 1) },
   })) });
@@ -36,7 +36,7 @@ function multilineResponse(runId: string, lines: number[]) {
   return new ListSchedulerEventsResponse({ events: lines.map((lineCount, index) => new SchedulerEvent({
     id: `${runId}-event-${index}`,
     runId,
-    type: index === 0 ? 'loader.run.started' : 'loader.command.completed',
+    type: index === 0 ? 'scheduler.run.started' : 'scheduler.command.completed',
     message: Array.from({ length: lineCount }, (_, line) => `entry ${index} line ${line + 1}`).join('\n') + '\n',
     createdAt: { seconds: BigInt(index + 1) },
   })) });
@@ -89,7 +89,7 @@ test('keeps the desktop page header at 41px and lets it grow on narrow screens',
 });
 
 test('matches the agent run summary layout and keeps execution times in the timeline heading', async () => {
-  mocks.projectService.listSchedulerEvents.mockResolvedValue(schedulerResponse('loader-1', 3, { subsequentType: 'loader.run.completed' }));
+  mocks.projectService.listSchedulerEvents.mockResolvedValue(schedulerResponse('loader-1', 3, { subsequentType: 'scheduler.run.completed' }));
   const { container } = render(SchedulerRunDetailView);
 
   await screen.findByText(/全量加载完成 · 已展示 \d+ \/ \d+ 条/);
@@ -278,7 +278,7 @@ test('expands and collapses long entries independently before raw data details',
 test('collapses a long single-line JSON value when browser wrapping exceeds 20 rendered lines', async () => {
   mockTimelineLayout();
   mocks.projectService.listSchedulerEvents.mockResolvedValue(new ListSchedulerEventsResponse({ events: [new SchedulerEvent({
-    id: 'loader-1-event-0', runId: 'loader-1', type: 'loader.command.completed',
+    id: 'loader-1-event-0', runId: 'loader-1', type: 'scheduler.command.completed',
     message: JSON.stringify({ generated_at: '2026-07-16T05:10:14.4823Z', payload: 'x'.repeat(2000) }),
     createdAt: { seconds: 1n },
   })] }));
@@ -339,7 +339,7 @@ test('aborts stale navigation and only renders the latest scheduler run', async 
   const first = deferred<ListSchedulerEventsResponse>();
   let staleSignal: AbortSignal | undefined;
   mocks.projectService.listSchedulerEvents.mockImplementation((request, options) => {
-    if (request.cursor === '' && request.project?.projectId === 'project-1' && mocks.projectService.listSchedulerEvents.mock.calls.length === 1) {
+    if (request.offset === 0 && request.project?.selector?.value === 'project-1' && mocks.projectService.listSchedulerEvents.mock.calls.length === 1) {
       staleSignal = options?.signal;
       return first.promise;
     }

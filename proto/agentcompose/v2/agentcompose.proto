@@ -16,23 +16,52 @@ service ProjectService {
   rpc GetScheduler(GetSchedulerRequest) returns (GetSchedulerResponse);
   rpc ListSchedulers(ListSchedulersRequest) returns (ListSchedulersResponse);
   rpc ListSchedulerEvents(ListSchedulerEventsRequest) returns (ListSchedulerEventsResponse);
+  rpc ListProjectSchedulerEvents(ListProjectSchedulerEventsRequest) returns (ListProjectSchedulerEventsResponse);
+  rpc StreamProjectSchedulerEvents(StreamProjectSchedulerEventsRequest) returns (stream StreamProjectSchedulerEventsResponse);
+  // Invokes the scheduler directly and returns its value without creating a
+  // persistent SchedulerRun. Cancellation cancels the invocation.
+  rpc InvokeScheduler(InvokeSchedulerRequest) returns (InvokeSchedulerResponse);
+  // Creates a persistent SchedulerRun and waits for it to reach a terminal
+  // state. The returned run is queryable with GetSchedulerRun and
+  // ListSchedulerRuns. Cancellation requests cancellation of the execution.
   rpc RunScheduler(RunSchedulerRequest) returns (RunSchedulerResponse);
+  // Creates a persistent SchedulerRun and returns after submission, without
+  // waiting for a terminal state. Disconnecting after submission does not
+  // cancel the run; use StopSchedulerRun to cancel it.
   rpc StartSchedulerRun(StartSchedulerRunRequest) returns (StartSchedulerRunResponse);
   rpc GetSchedulerRun(GetSchedulerRunRequest) returns (GetSchedulerRunResponse);
   rpc ListSchedulerRuns(ListSchedulerRunsRequest) returns (ListSchedulerRunsResponse);
+  rpc BatchGetLatestSchedulerRuns(BatchGetLatestSchedulerRunsRequest) returns (BatchGetLatestSchedulerRunsResponse);
+  rpc StreamSchedulerRuns(StreamSchedulerRunsRequest) returns (stream StreamSchedulerRunsResponse);
+  rpc PruneSchedulerRuns(PruneSchedulerRunsRequest) returns (PruneSchedulerRunsResponse);
   rpc StopSchedulerRun(StopSchedulerRunRequest) returns (StopSchedulerRunResponse);
   rpc SetSchedulerEnabled(SetSchedulerEnabledRequest) returns (SetSchedulerEnabledResponse);
   rpc SetSchedulerTriggerEnabled(SetSchedulerTriggerEnabledRequest) returns (SetSchedulerTriggerEnabledResponse);
 }
 
 service RunService {
+  // Creates a persistent Agent Run and waits for it to reach a terminal state.
+  // The final RunDetail is equivalent to GetRun for the returned run ID. Client
+  // cancellation requests cancellation of the execution and its cleanup policy
+  // still applies.
   rpc RunAgent(RunAgentRequest) returns (RunAgentResponse);
-  rpc StartRun(StartRunRequest) returns (StartRunResponse);
-  // Stable server-stream projection of RunAgent for non-interactive stream views.
-  // Interactive clients that need stdin, resize, signal, or multi-turn prompt
-  // attachment should use RunAttach.
-  rpc RunAgentStream(RunAgentRequest) returns (stream RunAgentStreamResponse);
-  rpc RunAttach(stream RunAttachRequest) returns (stream RunAttachResponse);
+  // Creates or reuses a persistent Agent Run and returns after submission.
+  // started is true only when this call returns a non-terminal run that has been
+  // scheduled for background execution. A false value means the returned run
+  // was already terminal; it never means that submission failed. Disconnecting
+  // after submission does not cancel the run; use StopRun to cancel it.
+  rpc StartAgentRun(StartAgentRunRequest) returns (StartAgentRunResponse);
+  // Creates a persistent Agent Run and projects started, output, status, and
+  // completed events for non-interactive clients. The completed run has the same
+  // terminal state and common fields as RunAgent/GetRun. Client cancellation
+  // requests cancellation of the execution and its cleanup policy still applies.
+  rpc StreamAgentRun(RunAgentRequest) returns (stream StreamAgentRunResponse);
+  // Starts an interactive Agent Run. The first client frame must be start and
+  // start may appear exactly once. Frames before start, duplicate start frames,
+  // and frames after a terminal server frame are invalid. stdin_eof closes only
+  // stdin; cancel requests cancellation of the execution. Client half-close or
+  // disconnection ends the attachment and requests cancellation of the run.
+  rpc AttachAgentRun(stream AttachAgentRunRequest) returns (stream AttachAgentRunResponse);
   rpc GetRun(GetRunRequest) returns (GetRunResponse);
   rpc ListRuns(ListRunsRequest) returns (ListRunsResponse);
   rpc FollowRunLogs(FollowRunLogsRequest) returns (stream RunLogChunk);
@@ -42,12 +71,19 @@ service RunService {
 }
 
 service ExecService {
+  // Executes a non-persistent command and waits for its final exit result.
+  // Cancellation requests cancellation of the command. Exec IDs, when emitted
+  // by streaming forms, are correlation IDs and are not queryable resources.
   rpc Exec(ExecRequest) returns (ExecResponse);
-  // Stable server-stream projection of Exec for non-interactive stream views.
-  // Interactive clients that need stdin, resize, or signal attachment should use
-  // ExecAttach.
-  rpc ExecStream(ExecRequest) returns (stream ExecStreamResponse);
-  rpc ExecAttach(stream ExecAttachRequest) returns (stream ExecAttachResponse);
+  // Executes a non-persistent command and projects output and the same final
+  // ExecResult returned by Exec. Client cancellation cancels the command.
+  rpc StreamExec(ExecRequest) returns (stream StreamExecResponse);
+  // Starts an interactive, non-persistent command. The first client frame must
+  // be start and start may appear exactly once. Frames before start, duplicate
+  // start frames, and frames after a terminal server frame are invalid.
+  // stdin_eof closes only stdin; cancel, half-close, or disconnection requests
+  // cancellation of the command.
+  rpc AttachExec(stream AttachExecRequest) returns (stream AttachExecResponse);
 }
 
 service ImageService {
@@ -75,6 +111,7 @@ service VolumeService {
 
 service SandboxService {
   rpc RemoveSandbox(RemoveSandboxRequest) returns (RemoveSandboxResponse);
+  rpc PruneSandboxes(PruneSandboxesRequest) returns (PruneSandboxesResponse);
   rpc GetSandboxStats(GetSandboxStatsRequest) returns (GetSandboxStatsResponse);
   rpc GetSandbox(GetSandboxRequest) returns (GetSandboxResponse);
   rpc StopSandbox(StopSandboxRequest) returns (StopSandboxResponse);
@@ -104,6 +141,14 @@ service CapabilityService {
   rpc GetCapabilityStatus(GetCapabilityStatusRequest) returns (CapabilityStatusResponse);
   rpc ListCapabilitySets(ListCapabilitySetsRequest) returns (ListCapabilitySetsResponse);
   rpc GetCapabilityCatalog(GetCapabilityCatalogRequest) returns (GetCapabilityCatalogResponse);
+}
+
+service LLMService {
+  rpc Generate(GenerateLLMRequest) returns (GenerateLLMResponse);
+}
+
+service ResourceService {
+  rpc ResolveID(ResolveResourceIDRequest) returns (ResolveResourceIDResponse);
 }
 
 enum ProjectValidationSeverity {
@@ -152,10 +197,45 @@ enum SchedulerRunStatus {
   SCHEDULER_RUN_STATUS_SKIPPED = 5;
 }
 
-enum AgentStatus {
-  AGENT_STATUS_UNSPECIFIED = 0;
-  AGENT_STATUS_ENABLED = 1;
-  AGENT_STATUS_DISABLED = 2;
+enum SandboxStatus {
+  SANDBOX_STATUS_UNSPECIFIED = 0;
+  SANDBOX_STATUS_PENDING = 1;
+  SANDBOX_STATUS_RUNNING = 2;
+  SANDBOX_STATUS_STOPPED = 3;
+  SANDBOX_STATUS_FAILED = 4;
+  SANDBOX_STATUS_DELETING = 5;
+}
+
+enum WorkspaceReclamationState {
+  WORKSPACE_RECLAMATION_STATE_UNSPECIFIED = 0;
+  WORKSPACE_RECLAMATION_STATE_RECLAIMING = 1;
+  WORKSPACE_RECLAMATION_STATE_RECLAIMED = 2;
+}
+
+enum SchedulerConcurrencyPolicy {
+  SCHEDULER_CONCURRENCY_POLICY_UNSPECIFIED = 0;
+  SCHEDULER_CONCURRENCY_POLICY_SKIP = 1;
+  SCHEDULER_CONCURRENCY_POLICY_PARALLEL = 2;
+}
+
+enum SchedulerSandboxPolicy {
+  SCHEDULER_SANDBOX_POLICY_UNSPECIFIED = 0;
+  SCHEDULER_SANDBOX_POLICY_STICKY = 1;
+  SCHEDULER_SANDBOX_POLICY_NEW = 2;
+}
+
+enum TriggerKind {
+  TRIGGER_KIND_UNSPECIFIED = 0;
+  TRIGGER_KIND_CRON = 1;
+  TRIGGER_KIND_INTERVAL = 2;
+  TRIGGER_KIND_TIMEOUT = 3;
+  TRIGGER_KIND_EVENT = 4;
+}
+
+enum VolumeMountType {
+  VOLUME_MOUNT_TYPE_UNSPECIFIED = 0;
+  VOLUME_MOUNT_TYPE_VOLUME = 1;
+  VOLUME_MOUNT_TYPE_BIND = 2;
 }
 
 enum ProjectAgentAvailability {
@@ -179,19 +259,15 @@ enum RunEventKind {
   RUN_EVENT_KIND_STATUS = 4;
 }
 
-enum RunAgentStreamEventType {
-  RUN_AGENT_STREAM_EVENT_TYPE_UNSPECIFIED = 0;
-  RUN_AGENT_STREAM_EVENT_TYPE_STARTED = 1;
-  RUN_AGENT_STREAM_EVENT_TYPE_OUTPUT = 2;
-  RUN_AGENT_STREAM_EVENT_TYPE_STATUS = 3;
-  RUN_AGENT_STREAM_EVENT_TYPE_COMPLETED = 4;
+enum StreamAgentRunEventType {
+  STREAM_AGENT_RUN_EVENT_TYPE_UNSPECIFIED = 0;
+  STREAM_AGENT_RUN_EVENT_TYPE_STARTED = 1;
+  STREAM_AGENT_RUN_EVENT_TYPE_OUTPUT = 2;
+  STREAM_AGENT_RUN_EVENT_TYPE_STATUS = 3;
+  STREAM_AGENT_RUN_EVENT_TYPE_COMPLETED = 4;
 }
 
 enum RunSandboxCleanupPolicy {
-  reserved "RUN_SESSION_CLEANUP_POLICY_UNSPECIFIED";
-  reserved "RUN_SESSION_CLEANUP_POLICY_STOP_ON_COMPLETION";
-  reserved "RUN_SESSION_CLEANUP_POLICY_KEEP_RUNNING";
-  reserved "RUN_SESSION_CLEANUP_POLICY_REMOVE_ON_COMPLETION";
 
   RUN_SANDBOX_CLEANUP_POLICY_UNSPECIFIED = 0;
   RUN_SANDBOX_CLEANUP_POLICY_STOP_ON_COMPLETION = 1;
@@ -199,11 +275,11 @@ enum RunSandboxCleanupPolicy {
   RUN_SANDBOX_CLEANUP_POLICY_REMOVE_ON_COMPLETION = 3;
 }
 
-enum ExecStreamEventType {
-  EXEC_STREAM_EVENT_TYPE_UNSPECIFIED = 0;
-  EXEC_STREAM_EVENT_TYPE_STARTED = 1;
-  EXEC_STREAM_EVENT_TYPE_OUTPUT = 2;
-  EXEC_STREAM_EVENT_TYPE_COMPLETED = 3;
+enum StreamExecEventType {
+  STREAM_EXEC_EVENT_TYPE_UNSPECIFIED = 0;
+  STREAM_EXEC_EVENT_TYPE_STARTED = 1;
+  STREAM_EXEC_EVENT_TYPE_OUTPUT = 2;
+  STREAM_EXEC_EVENT_TYPE_COMPLETED = 3;
 }
 
 enum AttachRunMode {
@@ -246,13 +322,24 @@ enum MetricStatus {
 }
 
 enum CacheDomain {
-  reserved "CACHE_DOMAIN_SESSION_EPHEMERAL_STATE";
 
   CACHE_DOMAIN_UNSPECIFIED = 0;
   CACHE_DOMAIN_OCI_IMAGE_STORE = 1;
   CACHE_DOMAIN_MATERIALIZED_IMAGE_CACHE = 2;
   CACHE_DOMAIN_RUNTIME_DERIVED_CACHE = 3;
-  CACHE_DOMAIN_SANDBOX_EPHEMERAL_STATE = 4;
+  CACHE_DOMAIN_SKILL_ARTIFACT_CACHE = 4;
+}
+
+enum CacheReferencePolicy {
+  CACHE_REFERENCE_POLICY_UNSPECIFIED = 0;
+  CACHE_REFERENCE_POLICY_REQUIRED = 1;
+  CACHE_REFERENCE_POLICY_ADVISORY = 2;
+}
+
+enum SandboxPruneCandidateKind {
+  SANDBOX_PRUNE_CANDIDATE_KIND_UNSPECIFIED = 0;
+  SANDBOX_PRUNE_CANDIDATE_KIND_SANDBOX_RECORD = 1;
+  SANDBOX_PRUNE_CANDIDATE_KIND_RUNTIME_RESIDUE = 2;
 }
 
 enum CacheStatus {
@@ -265,10 +352,24 @@ enum CacheStatus {
   CACHE_STATUS_UNKNOWN = 6;
 }
 
+enum ResourceKind {
+  RESOURCE_KIND_UNSPECIFIED = 0;
+  RESOURCE_KIND_PROJECT = 1;
+  RESOURCE_KIND_AGENT = 2;
+  RESOURCE_KIND_RUN = 3;
+  RESOURCE_KIND_SANDBOX = 4;
+  RESOURCE_KIND_IMAGE = 5;
+  RESOURCE_KIND_CACHE = 6;
+}
+
 message ValidateProjectRequest {
   ProjectSpec spec = 1;
   ProjectSource source = 2;
-  string expected_spec_hash = 3;
+  // submitted_spec_hash optionally verifies the submitted spec after the server
+  // normalizes it. It is not compared with the currently stored project and is
+  // not an optimistic-concurrency precondition. An empty value skips this check.
+  // Canonicalization, encoding, and hashing are defined by pkg/compose.
+  string submitted_spec_hash = 3;
 }
 
 message ValidateProjectResponse {
@@ -278,9 +379,19 @@ message ValidateProjectResponse {
 }
 
 message ApplyProjectRequest {
+  // Required. The complete desired project specification. All repeated and map
+  // fields in the spec replace the previously persisted collections; an empty
+  // collection explicitly clears that collection.
   ProjectSpec spec = 1;
+  // Optional source metadata used while normalizing the replacement. An absent
+  // source supplies empty compose_path and project_dir values.
   ProjectSource source = 2;
-  string expected_spec_hash = 3;
+  // submitted_spec_hash optionally verifies the submitted spec after the server
+  // normalizes it. It is not compared with the currently stored project and is
+  // not an optimistic-concurrency precondition. An empty value skips this check.
+  // Canonicalization, encoding, and hashing are defined by pkg/compose.
+  string submitted_spec_hash = 3;
+  // Explicit execution mode. False applies the replacement; true only plans it.
   bool dry_run = 4;
 }
 
@@ -305,19 +416,19 @@ message GetProjectResponse {
 message ListProjectsRequest {
   string query = 1;
   bool include_removed = 2;
+  // Number of matching resources to skip. Values at or above total return an empty page.
   uint32 offset = 3;
+  // Maximum resources to return. Zero uses the server default; values above 500 are rejected.
   uint32 limit = 4;
 }
 
 message ListProjectsResponse {
   repeated ProjectSummary projects = 1;
-  uint32 total_count = 2;
-  bool has_more = 3;
-  uint32 next_offset = 4;
+  // Total matching resources before offset and limit are applied.
+  uint32 total = 2;
 }
 
 message RemoveProjectRequest {
-  reserved "stop_running_sessions";
 
   ProjectRef project = 1;
   bool remove_history = 2;
@@ -341,9 +452,12 @@ message WatchProjectResponse {
 }
 
 message ProjectRef {
-  string project_id = 1;
-  string name = 2;
-  string source_path = 3;
+  // Select exactly one stable project identifier.
+  oneof selector {
+    string project_id = 1;
+    string name = 2;
+    string source_path = 3;
+  }
 }
 
 message ProjectSource {
@@ -368,9 +482,9 @@ message ProjectSummary {
   uint32 scheduler_count = 7;
   uint32 running_run_count = 8;
   string latest_run_id = 9;
-  string created_at = 10;
-  string updated_at = 11;
-  string removed_at = 12;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+  google.protobuf.Timestamp removed_at = 12;
 }
 
 message ProjectRevision {
@@ -378,7 +492,7 @@ message ProjectRevision {
   uint64 revision = 2;
   string spec_hash = 3;
   ProjectSpec spec = 4;
-  string created_at = 5;
+  google.protobuf.Timestamp created_at = 5;
 }
 
 message ProjectAgent {
@@ -395,6 +509,8 @@ message ProjectAgent {
   ProjectAgentHealth health = 11;
   ProjectAgentCurrentRun current_run = 12;
   ProjectAgentLatestRun latest_run = 13;
+  string display_name = 14;
+  string description = 15;
 }
 
 message ProjectAgentCurrentRun {
@@ -411,14 +527,14 @@ message ProjectAgentLatestRun {
 }
 
 message ProjectScheduler {
-  reserved 4;
-  reserved "managed_loader_id";
 
   string project_id = 1;
   string agent_name = 2;
   string scheduler_id = 3;
-  bool enabled = 5;
-  uint32 trigger_count = 6;
+  bool enabled = 4;
+  uint32 trigger_count = 5;
+  string display_name = 6;
+  string description = 7;
 }
 
 message GetSchedulerRequest {
@@ -444,8 +560,10 @@ message ResolvedTrigger {
 
 message ListSchedulersRequest {
   string query = 1;
+  // Maximum resources to return. Zero uses the server default; values above 500 are rejected.
   uint32 limit = 2;
-  string cursor = 3;
+  // Number of matching resources to skip. Values at or above total return an empty page.
+  uint32 offset = 3;
 }
 
 message SchedulerSummary {
@@ -457,18 +575,23 @@ message SchedulerSummary {
   uint32 run_count = 6;
   google.protobuf.Timestamp latest_run_at = 7;
   string last_error = 8;
+  string display_name = 9;
+  string description = 10;
 }
 
 message ListSchedulersResponse {
   repeated SchedulerSummary schedulers = 1;
-  string next_cursor = 2;
+  // Total matching resources before offset and limit are applied.
+  uint32 total = 2;
 }
 
 message ListSchedulerEventsRequest {
   ProjectRef project = 1;
   string agent_name = 2;
+  // Maximum resources to return. Zero uses the server default; values above 500 are rejected.
   uint32 limit = 3;
-  string cursor = 4;
+  // Number of matching resources to skip. Values at or above total return an empty page.
+  uint32 offset = 4;
 }
 
 message SchedulerEvent {
@@ -480,11 +603,46 @@ message SchedulerEvent {
   string run_id = 6;
   string trigger_id = 7;
   google.protobuf.Timestamp created_at = 8;
+  string agent_name = 9;
+  string scheduler_id = 10;
+  string linked_sandbox_id = 11;
+  string linked_cell_id = 12;
+  string linked_agent_thread_id = 13;
 }
 
 message ListSchedulerEventsResponse {
   repeated SchedulerEvent events = 1;
-  string next_cursor = 2;
+  // Total matching resources before offset and limit are applied.
+  uint32 total = 2;
+}
+
+message ListProjectSchedulerEventsRequest {
+  ProjectRef project = 1;
+  string agent_name = 2;
+  string trigger_id = 3;
+  string run_id = 4;
+  // Maximum resources to return. Zero uses the server default; values above 500 are rejected.
+  uint32 limit = 5;
+  // Number of matching resources to skip. Values at or above total return an empty page.
+  uint32 offset = 6;
+}
+
+message ListProjectSchedulerEventsResponse {
+  repeated SchedulerEvent events = 1;
+  // Total matching resources before offset and limit are applied.
+  uint32 total = 2;
+}
+
+message InvokeSchedulerRequest {
+  ProjectRef project = 1;
+  string agent_name = 2;
+  string payload_json = 3;
+}
+
+message InvokeSchedulerResponse {
+  string result_json = 1;
+  int64 duration_ms = 2;
+  repeated string warnings = 3;
 }
 
 message RunSchedulerRequest {
@@ -521,13 +679,52 @@ message GetSchedulerRunResponse {
 message ListSchedulerRunsRequest {
   ProjectRef project = 1;
   string agent_name = 2;
+  // Maximum resources to return. Zero uses the server default; values above 500 are rejected.
   uint32 limit = 3;
-  string cursor = 4;
+  // Number of matching resources to skip. Values at or above total return an empty page.
+  uint32 offset = 4;
+  string trigger_id = 5;
+  SchedulerRunStatus status = 6;
 }
 
 message ListSchedulerRunsResponse {
   repeated SchedulerRun runs = 1;
-  string next_cursor = 2;
+  // Total matching resources before offset and limit are applied.
+  uint32 total = 2;
+}
+
+message PruneSchedulerRunsRequest {
+  ProjectRef project = 1;
+  string agent_name = 2;
+  string trigger_id = 3;
+  repeated SchedulerRunStatus status = 4;
+  uint64 older_than_seconds = 5;
+  bool force = 6;
+}
+
+message SchedulerRunPruneStats {
+  uint64 runs = 1;
+  uint64 scheduler_events = 2;
+  uint64 event_deliveries = 3;
+  uint64 event_sandbox_links = 4;
+  uint64 artifact_dirs = 5;
+  uint64 artifact_bytes = 6;
+}
+
+message SchedulerRunPruneResidue {
+  string scheduler_id = 1;
+  string run_id = 2;
+  string path = 3;
+  string error = 4;
+}
+
+message PruneSchedulerRunsResponse {
+  bool dry_run = 1;
+  SchedulerRunPruneStats matched = 2;
+  SchedulerRunPruneStats removed = 3;
+  uint64 skipped_runs = 4;
+  repeated SchedulerRunPruneResidue residues = 5;
+  repeated string warnings = 6;
 }
 
 message StopSchedulerRunRequest {
@@ -547,7 +744,9 @@ message SchedulerRun {
   string agent_name = 3;
   string scheduler_id = 4;
   string trigger_id = 5;
-  string trigger_kind = 6;
+  // Daemon-owned trigger kind used to create this run. Historical or unknown
+  // persisted values are projected as TRIGGER_KIND_UNSPECIFIED.
+  TriggerKind trigger_kind = 6;
   string trigger_source = 7;
   SchedulerRunStatus status = 8;
   google.protobuf.Timestamp started_at = 9;
@@ -558,11 +757,15 @@ message SchedulerRun {
   string payload_json = 14;
   string source_script_sha256 = 15;
   string artifacts_dir = 16;
+  repeated string sandbox_ids = 17;
 }
 
 message SetSchedulerEnabledRequest {
+  // Required. Exactly one non-empty project selector must be set.
   ProjectRef project = 1;
+  // Required stable agent name within the selected project.
   string agent_name = 2;
+  // Explicit replacement value. False disables the scheduler; it is not a no-op.
   bool enabled = 3;
 }
 
@@ -572,9 +775,13 @@ message SetSchedulerEnabledResponse {
 }
 
 message SetSchedulerTriggerEnabledRequest {
+  // Required. Exactly one non-empty project selector must be set.
   ProjectRef project = 1;
+  // Required stable agent name within the selected project.
   string agent_name = 2;
+  // Required stable trigger ID within the selected scheduler.
   string trigger_id = 3;
+  // Explicit replacement value. False disables the trigger; it is not a no-op.
   bool enabled = 4;
 }
 
@@ -599,13 +806,11 @@ message ProjectChange {
 message ProjectSpec {
   string name = 1;
   repeated EnvVarSpec variables = 2;
-  reserved 3;
-  reserved "workspace";
-  repeated AgentSpec agents = 4;
-  NetworkSpec network = 5;
-  repeated ProjectVolumeSpec volumes = 6;
-  repeated NamedWorkspaceSpec workspaces = 7;
-  repeated MCPServerSpec mcps = 8;
+  repeated AgentSpec agents = 3;
+  repeated ProjectVolumeSpec volumes = 4;
+  repeated NamedWorkspaceSpec workspaces = 5;
+  repeated MCPServerSpec mcp_servers = 6;
+  repeated OctoBusServerSpec octobus_servers = 7;
 }
 
 message NamedWorkspaceSpec {
@@ -615,9 +820,12 @@ message NamedWorkspaceSpec {
 
 message AgentSpec {
   string name = 1;
+  // Provider-defined identifier. Unknown extension values are allowed.
   string provider = 2;
+  // Provider-defined model identifier. Unknown extension values are allowed.
   string model = 3;
   string system_prompt = 4;
+  // Runtime image reference. Registries define its extensible syntax.
   string image = 5;
   DriverSpec driver = 6;
   repeated EnvVarSpec env = 7;
@@ -627,20 +835,36 @@ message AgentSpec {
   JupyterSpec jupyter = 11;
   BuildSpec build = 12;
   repeated VolumeMountSpec volumes = 13;
-  repeated MCPServerSpec mcps = 14;
+  repeated MCPServerSpec mcp_servers = 14;
   repeated SkillSpec skills = 15;
-  AgentStatus status = 16;
+  optional bool enabled = 16;
+  string display_name = 17;
+  string description = 18;
+  SandboxSpec sandbox = 19;
+}
+
+message SandboxSpec {
+  // Runtime handling after a confirmed stop. Empty defaults to "remove".
+  string stopped_runtime_policy = 1;
 }
 
 message MCPServerSpec {
   string name = 1;
+  // MCP implementation type. Unknown extension values are allowed.
   string type = 2;
+  // MCP transport name. Unknown extension values are allowed.
   string transport = 3;
   string command = 4;
   repeated string args = 5;
   repeated EnvVarSpec env = 6;
   string url = 7;
   repeated EnvVarSpec headers = 8;
+}
+
+message OctoBusServerSpec {
+  string name = 1;
+  string url = 2;
+  string token = 3;
 }
 
 message ProjectVolumeSpec {
@@ -653,7 +877,7 @@ message ProjectVolumeSpec {
 }
 
 message VolumeMountSpec {
-  string type = 1;
+  VolumeMountType type = 1;
   string source = 2;
   string target = 3;
   bool read_only = 4;
@@ -677,50 +901,70 @@ message EnvVarSpec {
 }
 
 message EnvVarUpdateSpec {
+  // Required replacement key. Duplicate names are normalized with the last
+  // occurrence winning.
   string name = 1;
+  // Presence is meaningful only for secret preservation during
+  // UpdateGlobalEnv: absent preserves the existing secret value; present empty
+  // explicitly clears it. Non-secret entries treat absence as an empty value.
   optional string value = 2;
+  // Explicit replacement value. False changes the entry to non-secret.
   bool secret = 3;
 }
 
 message WorkspaceSpec {
+  // Workspace provider name. Unknown extension values are allowed.
   string provider = 1;
   string url = 2;
-  string branch = 3;
+  string ref = 3;
   string path = 4;
   string name = 5;
-}
-
-message NetworkSpec {
-  string mode = 1;
+  // Provider-defined workspace format. Unknown extension values are allowed.
+  string format = 6;
+  string target = 7;
+  string username = 8;
+  string password = 9;
+  string token = 10;
 }
 
 message SchedulerSpec {
   bool enabled = 1;
   repeated TriggerSpec triggers = 2;
   string script = 3;
-  string sandbox_policy = 4;
+  SchedulerSandboxPolicy sandbox_policy = 4;
+  string display_name = 5;
+  string description = 6;
+  SchedulerConcurrencyPolicy concurrency_policy = 7;
 }
 
 message TriggerSpec {
   string name = 1;
-  string kind = 2;
+  TriggerKind kind = 2;
   string cron = 3;
   string interval = 4;
   string timeout = 5;
   EventTriggerSpec event = 6;
   string prompt = 7;
-  string sandbox_policy = 8;
+  SchedulerSandboxPolicy sandbox_policy = 8;
+  // Optional IANA timezone. Unset cron triggers use the daemon's local timezone.
+  string timezone = 9;
 }
 
 message EventTriggerSpec {
+  // Producer-defined event topic. Unknown extension values are allowed.
   string topic = 1;
 }
 
 message DriverSpec {
+  // Required. Must match the selected config case.
   string name = 1;
-  BoxliteDriverSpec boxlite = 2;
-  DockerDriverSpec docker = 3;
-  MicrosandboxDriverSpec microsandbox = 4;
+
+  // Required. A project agent has exactly one runtime driver configuration.
+  oneof config {
+    BoxliteDriverSpec boxlite = 2;
+    DockerDriverSpec docker = 3;
+    MicrosandboxDriverSpec microsandbox = 4;
+  }
 }
 
 message BoxliteDriverSpec {
@@ -737,25 +981,25 @@ message MicrosandboxDriverSpec {
 }
 
 message RunAgentRequest {
-  reserved 5;
-  reserved "session_id";
 
   string project_id = 1;
   string agent_name = 2;
   string prompt = 3;
   RunSource source = 4;
-  repeated EnvVarSpec env = 6;
-  RunSandboxCleanupPolicy cleanup_policy = 7;
-  string scheduler_id = 8;
-  string trigger_id = 9;
-  string output_schema_json = 10;
-  string client_request_id = 11;
-  string command = 12;
-  RunJupyterSpec jupyter = 13;
-  string driver = 14;
-  string sandbox_id = 15;
-  repeated VolumeMountSpec volumes = 16;
-  string payload_json = 17;
+  repeated EnvVarSpec env = 5;
+  RunSandboxCleanupPolicy cleanup_policy = 6;
+  string scheduler_id = 7;
+  string trigger_id = 8;
+  string output_schema_json = 9;
+  // Idempotency key scoped by project, agent, and run source. Retries with the
+  // same key resolve to the same persistent Run ID.
+  string client_request_id = 10;
+  string command = 11;
+  RunJupyterSpec jupyter = 12;
+  string driver = 13;
+  string sandbox_id = 14;
+  repeated VolumeMountSpec volumes = 15;
+  string payload_json = 16;
 }
 
 message RunAgentResponse {
@@ -763,22 +1007,24 @@ message RunAgentResponse {
   repeated string warnings = 2;
 }
 
-message RunAgentStreamResponse {
-  RunAgentStreamEventType event_type = 1;
+message StreamAgentRunResponse {
+  StreamAgentRunEventType event_type = 1;
   RunSummary run = 2;
   string run_id = 3;
   string chunk = 4;
   StdioStream stream = 5;
-  string created_at = 6;
+  google.protobuf.Timestamp created_at = 6;
   repeated string warnings = 7;
   TranscriptEvent transcript = 8;
 }
 
-message RunAttachRequest {
+message AttachAgentRunRequest {
+  // Frame variants occupy the low-number range. Envelope metadata starts at
+  // 15 so future frame variants can be added without moving metadata fields.
   string client_frame_id = 15;
 
   oneof frame {
-    RunAttachStart start = 1;
+    AttachAgentRunStart start = 1;
     AttachStdin stdin = 2;
     AttachStdinEOF stdin_eof = 3;
     AttachResize resize = 4;
@@ -788,9 +1034,11 @@ message RunAttachRequest {
   }
 }
 
-message RunAttachResponse {
+message AttachAgentRunResponse {
+  // Frame variants occupy the low-number range. Envelope metadata starts at
+  // 15 so future frame variants can be added without moving metadata fields.
   string server_frame_id = 15;
-  string created_at = 16;
+  google.protobuf.Timestamp created_at = 16;
 
   oneof frame {
     AttachStarted started = 1;
@@ -802,7 +1050,7 @@ message RunAttachResponse {
   }
 }
 
-message RunAttachStart {
+message AttachAgentRunStart {
   RunAgentRequest request = 1;
   AttachRunMode mode = 2;
   bool attach_stdin = 3;
@@ -813,9 +1061,9 @@ message RunAttachStart {
 message TranscriptEvent {
   StdioStream stream = 1;
   string text = 2;
-  string name = 4;
-  string payload_json = 5;
-  string created_at = 6;
+  string name = 3;
+  string payload_json = 4;
+  google.protobuf.Timestamp created_at = 5;
 }
 
 message GetRunRequest {
@@ -828,23 +1076,32 @@ message GetRunResponse {
 }
 
 message ListRunsRequest {
-  reserved 3;
-  reserved "session_id";
-
   string project_id = 1;
   string agent_name = 2;
-  string scheduler_id = 4;
-  RunStatus status = 5;
-  RunSource source = 6;
-  string started_from = 7;
-  string started_to = 8;
-  uint32 offset = 9;
-  uint32 limit = 10;
-  string sandbox_id = 11;
+  string scheduler_id = 3;
+  RunStatus status = 4;
+  RunSource source = 5;
+  // Inclusive lower bound for the run start time. Values must use millisecond precision;
+  // timestamps with sub-millisecond precision return INVALID_ARGUMENT.
+  // An unset field applies no lower bound.
+  // Invalid timestamps, or a value later than started_to, return INVALID_ARGUMENT.
+  google.protobuf.Timestamp started_from = 6;
+  // Inclusive upper bound for the run start time. Values must use millisecond precision;
+  // timestamps with sub-millisecond precision return INVALID_ARGUMENT.
+  // An unset field applies no upper bound.
+  // Invalid timestamps, or a value earlier than started_from, return INVALID_ARGUMENT.
+  google.protobuf.Timestamp started_to = 7;
+  // Number of matching resources to skip. Values at or above total return an empty page.
+  uint32 offset = 8;
+  // Maximum resources to return. Zero uses the server default; values above 500 are rejected.
+  uint32 limit = 9;
+  string sandbox_id = 10;
 }
 
 message ListRunsResponse {
   repeated RunSummary runs = 1;
+  // Total matching resources before offset and limit are applied.
+  uint32 total = 2;
 }
 
 message FollowRunLogsRequest {
@@ -853,6 +1110,9 @@ message FollowRunLogsRequest {
   uint32 tail_lines = 3;
   uint64 start_offset = 4;
   bool follow = 5;
+  bool include_metadata = 6;
+  // Distinguishes an explicit zero-line tail from the default full history.
+  bool tail_set = 7;
 }
 
 message RunLogChunk {
@@ -860,7 +1120,9 @@ message RunLogChunk {
   uint64 offset = 2;
   bool is_final = 3;
   RunStatus run_status = 4;
-  string created_at = 5;
+  google.protobuf.Timestamp created_at = 5;
+  RunSummary run = 6;
+  string prompt = 7;
 }
 
 message StopRunRequest {
@@ -875,8 +1137,10 @@ message StopRunResponse {
 
 message ListRunEventsRequest {
   string run_id = 1;
+  // Maximum resources to return. Zero uses the server default; values above 500 are rejected.
   uint32 limit = 2;
-  string cursor = 3;
+  // Number of matching resources to skip. Values at or above total return an empty page.
+  uint32 offset = 3;
 }
 
 message RunEvent {
@@ -896,19 +1160,23 @@ message RunEvent {
 
 message ListRunEventsResponse {
   repeated RunEvent events = 1;
-  string next_cursor = 2;
+  // Total matching resources before offset and limit are applied.
+  uint32 total = 2;
   bool history_available = 3;
 }
 
 message ListSandboxRunEventsRequest {
   string sandbox_id = 1;
+  // Maximum resources to return. Zero uses the server default; values above 500 are rejected.
   uint32 limit = 2;
-  string cursor = 3;
+  // Number of matching resources to skip. Values at or above total return an empty page.
+  uint32 offset = 3;
 }
 
 message ListSandboxRunEventsResponse {
   repeated RunEvent events = 1;
-  string next_cursor = 2;
+  // Total matching resources before offset and limit are applied.
+  uint32 total = 2;
   repeated string history_available_run_ids = 3;
 }
 
@@ -921,6 +1189,39 @@ message RemoveSandboxResponse {
   string sandbox_id = 1;
   bool stopped = 2;
   bool removed = 3;
+}
+
+message PruneSandboxesRequest {
+  string project_id = 1;
+  // Optional lifecycle-state filter. Only STOPPED and FAILED are safe to prune;
+  // UNSPECIFIED and other states are rejected unless force is true.
+  repeated SandboxStatus status = 2;
+  string agent_name = 3;
+  string driver = 4;
+  uint64 older_than_seconds = 5;
+  bool include_orphans = 6;
+  bool force = 7;
+}
+
+message SandboxPruneCandidate {
+  SandboxPruneCandidateKind kind = 1;
+  string sandbox_id = 2;
+  string project_id = 3;
+  string agent_name = 4;
+  string driver = 5;
+  SandboxStatus status = 6;
+  string runtime_id = 7;
+  google.protobuf.Timestamp updated_at = 8;
+  bool removable = 9;
+  repeated string blocked_reasons = 10;
+}
+
+message PruneSandboxesResponse {
+  bool dry_run = 1;
+  repeated SandboxPruneCandidate matched = 2;
+  repeated string removed = 3;
+  repeated SandboxPruneCandidate skipped = 4;
+  repeated string warnings = 5;
 }
 
 message GetSandboxStatsRequest {
@@ -937,7 +1238,7 @@ message GetSandboxRequest {
 
 message Sandbox {
   string sandbox_id = 1;
-  string status = 2;
+  SandboxStatus status = 2;
   string driver = 3;
   string project_id = 4;
   string agent_name = 5;
@@ -952,6 +1253,14 @@ message Sandbox {
   uint32 cell_count = 14;
   uint32 event_count = 15;
   string notebook_url = 16;
+  WorkspaceReclamationState workspace_reclamation_state = 17;
+  google.protobuf.Timestamp workspace_reclamation_started_at = 18;
+  google.protobuf.Timestamp workspace_reclamation_completed_at = 19;
+  string workspace_reclamation_last_error = 20;
+  string stopped_runtime_policy = 21;
+  string stopped_runtime_state = 22;
+  string stopped_runtime_last_error = 23;
+  google.protobuf.Timestamp stopped_runtime_released_at = 24;
 }
 
 message SandboxTag {
@@ -960,13 +1269,19 @@ message SandboxTag {
 }
 
 message ListSandboxesRequest {
+  // Maximum resources to return. Zero uses the server default; values above 500 are rejected.
   uint32 limit = 1;
-  string cursor = 2;
+  // Number of matching resources to skip. Values at or above total return an empty page.
+  uint32 offset = 2;
+  string project_id = 3;
+  // Optional lifecycle-state filter. UNSPECIFIED entries are rejected.
+  repeated SandboxStatus status = 4;
 }
 
 message ListSandboxesResponse {
   repeated Sandbox sandboxes = 1;
-  string next_cursor = 2;
+  // Total matching resources before offset and limit are applied.
+  uint32 total = 2;
 }
 
 message GetSandboxResponse {
@@ -999,7 +1314,7 @@ message MetricValue {
 message SandboxStats {
   string sandbox_id = 1;
   string driver = 2;
-  string sampled_at = 3;
+  google.protobuf.Timestamp sampled_at = 3;
   MetricValue cpu_percent = 4;
   MetricValue memory_usage_bytes = 5;
   MetricValue memory_limit_bytes = 6;
@@ -1012,8 +1327,6 @@ message SandboxStats {
 }
 
 message RunSummary {
-  reserved 11;
-  reserved "session_id";
 
   string run_id = 1;
   string project_id = 2;
@@ -1025,17 +1338,17 @@ message RunSummary {
   string scheduler_id = 8;
   string trigger_id = 9;
   RunStatus status = 10;
-  int32 exit_code = 12;
-  string error = 13;
-  string started_at = 14;
-  string completed_at = 15;
-  int64 duration_ms = 16;
-  string created_at = 17;
-  string updated_at = 18;
-  repeated string warnings = 19;
-  string sandbox_id = 20;
-  string run_short_id = 21;
-  string sandbox_short_id = 22;
+  int32 exit_code = 11;
+  string error = 12;
+  google.protobuf.Timestamp started_at = 13;
+  google.protobuf.Timestamp completed_at = 14;
+  int64 duration_ms = 15;
+  google.protobuf.Timestamp created_at = 16;
+  google.protobuf.Timestamp updated_at = 17;
+  repeated string warnings = 18;
+  string sandbox_id = 19;
+  string run_short_id = 20;
+  string sandbox_short_id = 21;
 }
 
 message RunDetail {
@@ -1052,7 +1365,6 @@ message RunDetail {
 }
 
 message ExecRequest {
-  reserved "session_id";
 
   oneof target {
     string sandbox_id = 1;
@@ -1067,8 +1379,12 @@ message ExecRequest {
 }
 
 message ExecSandboxSelector {
-  string project_id = 1;
-  string project_name = 2;
+  // Required. Select exactly one project by stable ID or exact name.
+  oneof project {
+    string project_id = 1;
+    string project_name = 2;
+  }
+  // Optional filter. Empty matches sandboxes for every agent in the project.
   string agent_name = 3;
 }
 
@@ -1081,10 +1397,9 @@ message ExecResponse {
   ExecResult result = 1;
 }
 
-message ExecStreamResponse {
-  reserved "session_id";
+message StreamExecResponse {
 
-  ExecStreamEventType event_type = 1;
+  StreamExecEventType event_type = 1;
   string exec_id = 2;
   string sandbox_id = 3;
   string run_id = 4;
@@ -1094,11 +1409,13 @@ message ExecStreamResponse {
   TranscriptEvent transcript = 8;
 }
 
-message ExecAttachRequest {
+message AttachExecRequest {
+  // Frame variants occupy the low-number range. Envelope metadata starts at
+  // 15 so future frame variants can be added without moving metadata fields.
   string client_frame_id = 15;
 
   oneof frame {
-    ExecAttachStart start = 1;
+    AttachExecStart start = 1;
     AttachStdin stdin = 2;
     AttachStdinEOF stdin_eof = 3;
     AttachResize resize = 4;
@@ -1108,9 +1425,11 @@ message ExecAttachRequest {
   }
 }
 
-message ExecAttachResponse {
+message AttachExecResponse {
+  // Frame variants occupy the low-number range. Envelope metadata starts at
+  // 15 so future frame variants can be added without moving metadata fields.
   string server_frame_id = 15;
-  string created_at = 16;
+  google.protobuf.Timestamp created_at = 16;
 
   oneof frame {
     AttachStarted started = 1;
@@ -1122,7 +1441,7 @@ message ExecAttachResponse {
   }
 }
 
-message ExecAttachStart {
+message AttachExecStart {
   ExecRequest request = 1;
   bool attach_stdin = 2;
   bool tty = 3;
@@ -1180,7 +1499,7 @@ message AttachAgentEvent {
   string name = 1;
   string text = 2;
   string payload_json = 3;
-  string created_at = 4;
+  google.protobuf.Timestamp created_at = 4;
 }
 
 message AttachAgentTurnCompleted {
@@ -1207,7 +1526,6 @@ message AttachError {
 }
 
 message ExecResult {
-  reserved "session_id";
 
   string exec_id = 1;
   string sandbox_id = 2;
@@ -1230,16 +1548,17 @@ message ListImagesRequest {
   string query = 2;
   bool all = 3;
   bool include_cache_status = 4;
+  // Number of matching resources to skip. Values at or above total return an empty page.
   uint32 offset = 5;
+  // Maximum resources to return. Zero uses the server default; values above 500 are rejected.
   uint32 limit = 6;
 }
 
 message ListImagesResponse {
   repeated Image images = 1;
-  uint32 total_count = 2;
-  bool has_more = 3;
-  uint32 next_offset = 4;
-  ImageStoreStatus store_status = 5;
+  // Total matching resources before offset and limit are applied.
+  uint32 total = 2;
+  ImageStoreStatus store_status = 3;
 }
 
 message PullImageRequest {
@@ -1314,11 +1633,17 @@ message CacheFilter {
 
 message ListCachesRequest {
   CacheFilter filter = 1;
+  // Number of matching resources to skip. Values at or above total return an empty page.
+  uint32 offset = 2;
+  // Maximum resources to return. Zero uses the server default; values above 500 are rejected.
+  uint32 limit = 3;
 }
 
 message ListCachesResponse {
   repeated CacheItem caches = 1;
   repeated string warnings = 2;
+  // Total matching resources before offset and limit are applied.
+  uint32 total = 3;
 }
 
 message InspectCacheRequest {
@@ -1332,8 +1657,7 @@ message InspectCacheResponse {
 
 message PruneCachesRequest {
   CacheFilter filter = 1;
-  bool include_referenced = 2;
-  bool force = 3;
+  bool force = 2;
 }
 
 message PruneCachesResponse {
@@ -1358,8 +1682,6 @@ message RemoveCacheResponse {
 }
 
 message CacheItem {
-  reserved 10;
-  reserved "session_id";
 
   string cache_id = 1;
   CacheDomain domain = 2;
@@ -1370,14 +1692,13 @@ message CacheItem {
   string image_id = 7;
   string image_ref = 8;
   string resolved_ref = 9;
-  string sandbox_id = 11;
-  CacheStatus status = 12;
-  bool removable = 13;
-  repeated string blocked_reasons = 14;
-  string last_used_at = 15;
-  string last_used_source = 16;
-  repeated CacheReference references = 17;
-  repeated string warnings = 18;
+  CacheStatus status = 10;
+  bool removable = 11;
+  repeated string blocked_reasons = 12;
+  google.protobuf.Timestamp last_used_at = 13;
+  string last_used_source = 14;
+  repeated CacheReference references = 15;
+  repeated string warnings = 16;
 }
 
 message CacheReference {
@@ -1387,16 +1708,23 @@ message CacheReference {
   string path = 4;
   string status = 5;
   string description = 6;
+  CacheReferencePolicy policy = 7;
 }
 
 message ListVolumesRequest {
   string query = 1;
   string driver = 2;
   string project_id = 3;
+  // Number of matching resources to skip. Values at or above total return an empty page.
+  uint32 offset = 4;
+  // Maximum resources to return. Zero uses the server default; values above 500 are rejected.
+  uint32 limit = 5;
 }
 
 message ListVolumesResponse {
   repeated Volume volumes = 1;
+  // Total matching resources before offset and limit are applied.
+  uint32 total = 2;
 }
 
 message CreateVolumeRequest {
@@ -1450,8 +1778,8 @@ message Volume {
   map<string, string> labels = 4;
   map<string, string> options = 5;
   string project_id = 6;
-  string created_at = 7;
-  string updated_at = 8;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
 }
 
 message Image {
@@ -1465,8 +1793,8 @@ message Image {
   ImagePlatform platform = 8;
   uint64 size_bytes = 9;
   uint64 virtual_size_bytes = 10;
-  string created_at = 11;
-  string inspected_at = 12;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp inspected_at = 12;
   bool dangling = 13;
   uint64 container_count = 14;
   DockerImageStatus docker = 15;
@@ -1522,11 +1850,11 @@ message RunJupyterSpec {
   bool expose = 3;
 }
 
-message StartRunRequest {
+message StartAgentRunRequest {
   RunAgentRequest run = 1;
 }
 
-message StartRunResponse {
+message StartAgentRunResponse {
   RunSummary run = 1;
   repeated string warnings = 2;
   bool started = 3;
@@ -1534,13 +1862,33 @@ message StartRunResponse {
 
 message SkillSpec {
   string name = 1;
-  string source = 2;
+  string provider = 2;
   string url = 3;
   string path = 4;
   string ref = 5;
   string username = 6;
   string password = 7;
   string token = 8;
+  string format = 9;
+}
+
+message ResolveResourceIDRequest {
+  string id = 1;
+  repeated ResourceKind kinds = 2;
+}
+
+message ResolveResourceIDResponse {
+  repeated ResourceTarget targets = 1;
+  repeated string warnings = 2;
+}
+
+message ResourceTarget {
+  ResourceKind kind = 1;
+  string id = 2;
+  string short_id = 3;
+  string project_id = 4;
+  string project_name = 5;
+  string agent_name = 6;
 }
 
 message GetDashboardOverviewRequest {}
@@ -1565,7 +1913,13 @@ message WatchDashboardOverviewResponse {
 
 message GetGlobalEnvRequest {}
 message GetGlobalEnvResponse { repeated EnvVarSpec env = 1; }
-message UpdateGlobalEnvRequest { repeated EnvVarUpdateSpec env = 1; }
+message UpdateGlobalEnvRequest {
+  // Complete replacement keyed by EnvVarUpdateSpec.name. An empty list clears
+  // all global environment variables; omitted existing names are deleted.
+  // For a secret entry only, an absent value preserves the existing secret
+  // value with the same name. An explicitly empty value clears it.
+  repeated EnvVarUpdateSpec env = 1;
+}
 message UpdateGlobalEnvResponse { repeated EnvVarSpec env = 1; }
 
 message GetCapabilityGatewayConfigRequest {}
@@ -1575,7 +1929,9 @@ message CapabilityGatewayConfig {
 }
 message GetCapabilityGatewayConfigResponse { CapabilityGatewayConfig config = 1; }
 message UpdateCapabilityGatewayConfigRequest {
+  // Field patch: absent is no-op; present empty explicitly clears the address.
   optional string addr = 1;
+  // Field patch: absent is no-op; present empty explicitly clears the token.
   optional string token = 2;
 }
 message UpdateCapabilityGatewayConfigResponse { CapabilityGatewayConfig config = 1; }
@@ -1589,8 +1945,17 @@ message WorkspacePreset {
   google.protobuf.Timestamp created_at = 6;
   google.protobuf.Timestamp updated_at = 7;
 }
-message ListWorkspacePresetsRequest {}
-message ListWorkspacePresetsResponse { repeated WorkspacePreset presets = 1; }
+message ListWorkspacePresetsRequest {
+  // Number of matching resources to skip. Values at or above total return an empty page.
+  uint32 offset = 1;
+  // Maximum resources to return. Zero uses the server default; values above 500 are rejected.
+  uint32 limit = 2;
+}
+message ListWorkspacePresetsResponse {
+  repeated WorkspacePreset presets = 1;
+  // Total matching resources before offset and limit are applied.
+  uint32 total = 2;
+}
 message CreateWorkspacePresetRequest {
   string name = 1;
   string type = 2;
@@ -1598,10 +1963,16 @@ message CreateWorkspacePresetRequest {
   string comment = 4;
 }
 message UpdateWorkspacePresetRequest {
+  // Required stable preset ID.
   string preset_id = 1;
+  // Required replacement value.
   string name = 2;
+  // Required replacement value.
   string type = 3;
+  // Replacement value. Empty is normalized to the provider default rather than
+  // treated as no-op.
   string config_json = 4;
+  // Replacement value. Empty explicitly clears the comment.
   string comment = 5;
 }
 message DeleteWorkspacePresetRequest { string preset_id = 1; }
@@ -1619,14 +1990,23 @@ message CapabilityStatusResponse {
   bool proxy_listen_configured = 7;
   bool proxy_target_configured = 8;
 }
-message ListCapabilitySetsRequest {}
+message ListCapabilitySetsRequest {
+  // Number of matching resources to skip. Values at or above total return an empty page.
+  uint32 offset = 1;
+  // Maximum resources to return. Zero uses the server default; values above 500 are rejected.
+  uint32 limit = 2;
+}
 message CapabilitySet {
   string id = 1;
   string name = 2;
   string description = 3;
   bool enabled = 4;
 }
-message ListCapabilitySetsResponse { repeated CapabilitySet capsets = 1; }
+message ListCapabilitySetsResponse {
+  repeated CapabilitySet capsets = 1;
+  // Total matching resources before offset and limit are applied.
+  uint32 total = 2;
+}
 message GetCapabilityCatalogRequest { string capset_id = 1; }
 message CapabilityEndpoint {
   string protocol = 1;
@@ -1657,6 +2037,10 @@ message GetCapabilityCatalogResponse {
 
 message ListSandboxHistoryRequest {
   string sandbox_id = 1;
+  // Number of matching history entries to skip in the newest-first merged cells/events timeline. Values at or above total return an empty page.
+  uint32 offset = 2;
+  // Maximum history entries to return across cells and events. Zero uses the server default; values above 500 are rejected.
+  uint32 limit = 3;
 }
 
 message SandboxHistoryCell {
@@ -1687,6 +2071,8 @@ message ListSandboxHistoryResponse {
   repeated SandboxHistoryCell cells = 1;
   repeated SandboxHistoryEvent events = 2;
   bool legacy_history = 3;
+  // Total matching history entries across cells and events before offset and limit are applied.
+  uint32 total = 4;
 }
 
 message WatchSandboxRequest {
@@ -1710,4 +2096,76 @@ message WatchSandboxResponse {
   string cell_id = 5;
   string chunk = 6;
   StdioStream stream = 7;
+}
+
+message GenerateLLMRequest {
+  string prompt = 1;
+  string model = 2;
+  string output_schema = 3;
+}
+
+message GenerateLLMResponse {
+  string text = 1;
+  string model = 2;
+  string response_id = 3;
+  string finish_reason = 4;
+  string json = 5;
+}
+
+// StreamProjectSchedulerEventsRequest describes a finite scan of scheduler
+// trigger-run events. A zero tail returns the complete matching
+// history; callers that want no events should avoid starting the stream.
+message StreamProjectSchedulerEventsRequest {
+  ProjectRef project = 1;
+  string agent_name = 2;
+  string trigger_id = 3;
+  string run_id = 4;
+  uint32 batch_size = 5;
+  uint32 tail = 6;
+}
+
+message StreamProjectSchedulerEventsResponse {
+  repeated SchedulerEvent events = 1;
+  string checkpoint = 2;
+  bool complete = 3;
+  uint64 emitted_count = 4;
+}
+
+// StreamSchedulerRunsRequest describes a finite scan of scheduler trigger runs.
+// limit is the final result limit; zero means all.
+message StreamSchedulerRunsRequest {
+  ProjectRef project = 1;
+  string agent_name = 2;
+  string trigger_id = 3;
+  SchedulerRunStatus status = 4;
+  uint32 batch_size = 5;
+  uint32 limit = 6;
+}
+
+message StreamSchedulerRunsResponse {
+  repeated SchedulerRun runs = 1;
+  string checkpoint = 2;
+  bool complete = 3;
+  uint64 emitted_count = 4;
+  bool truncated = 5;
+}
+
+// BatchGetLatestSchedulerRunsRequest selects scheduler runs by sandbox. A
+// request accepts at most 500 sandbox IDs.
+message BatchGetLatestSchedulerRunsRequest {
+  ProjectRef project = 1;
+  repeated string sandbox_ids = 2;
+}
+
+// SandboxSchedulerRun is the latest scheduler run linked to one sandbox. Run
+// is absent when the sandbox has no scheduler run in the selected project.
+message SandboxSchedulerRun {
+  string sandbox_id = 1;
+  SchedulerRun run = 2;
+}
+
+// BatchGetLatestSchedulerRunsResponse contains one result for each distinct,
+// non-empty requested sandbox ID, ordered by its first request occurrence.
+message BatchGetLatestSchedulerRunsResponse {
+  repeated SandboxSchedulerRun results = 1;
 }

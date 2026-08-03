@@ -45,6 +45,23 @@ func TestStorageRejectsUnmanagedSourceAndWorkspaceTraversal(t *testing.T) {
 	}
 }
 
+func TestStorageAcceptsDotWorkspacePath(t *testing.T) {
+	storage := NewStorage(t.TempDir(), "")
+	binding, err := storage.CreateBinding(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// "." means the workspace is the project root itself; the daemon accepts it
+	// (cleanComposeLocalWorkspacePath), so the gateway must too.
+	root, err := storage.WorkspaceRoot(binding.ProjectKey, ".", false)
+	if err != nil {
+		t.Fatalf("rejected workspace path %q: %v", ".", err)
+	}
+	if want := filepath.Join(storage.root, binding.ProjectKey); root != want {
+		t.Fatalf("root = %q, want %q", root, want)
+	}
+}
+
 func TestStorageRejectsWorkspaceSymlink(t *testing.T) {
 	storage := NewStorage(t.TempDir(), "")
 	binding, err := storage.CreateBinding(false)

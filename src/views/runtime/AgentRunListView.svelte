@@ -3,7 +3,7 @@
   import { projectService, runService, runtimeProjectService } from '../../lib/rpc';
   import { store } from '../../lib/stores.svelte';
   import RuntimeBreadcrumb from './RuntimeBreadcrumb.svelte';
-  import { GetProjectRequest, ListRunsRequest, ListSchedulerEventsRequest, RunSource, RunStatus, type RunSummary, type SchedulerEvent } from '../../gen/agentcompose/v2/agentcompose_pb';
+  import { ProjectRef, GetProjectRequest, ListRunsRequest, ListSchedulerEventsRequest, RunSource, RunStatus, type RunSummary, type SchedulerEvent } from '../../gen/agentcompose/v2/agentcompose_pb';
   import { buildRunDateRange, consumeRunWindow } from '../../lib/run-history';
   import { filterAgentOwnedExecutions, groupSchedulerExecutions, mergeAgentOwnedExecutions, type AgentOwnedExecution } from '../../lib/agent-owned-executions';
   import RunAgentModal from '../../modals/RunAgentModal.svelte';
@@ -15,7 +15,7 @@
   let loading = $state(true);
   let loadingMore = $state(false);
   let hasMore = $state(false);
-  let schedulerCursor = $state('');
+  let schedulerOffset = $state(0); let schedulerTotal = $state(0);
   let serverOffset = $state(0);
   const PAGE_SIZE = 50;
   let requestGeneration = 0;
@@ -48,7 +48,7 @@
     projectRuns = [];
     schedulerEvents = [];
     executions = [];
-    schedulerCursor = '';
+    schedulerOffset = 0; schedulerTotal = 0;
     serverOffset = 0;
     (async () => {
       const [projectResult, schedulerResult] = await Promise.allSettled([
@@ -62,12 +62,12 @@
         }), { signal: controller.signal });
         })(),
         (async () => {
-          const project = await runtimeProjectService.getProject(new GetProjectRequest({ project: { projectId }, includeSpec: true }), { signal: controller.signal, timeoutMs: 30_000 });
+          const project = await runtimeProjectService.getProject(new GetProjectRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), includeSpec: true }), { signal: controller.signal, timeoutMs: 30_000 });
           const configuredAgent = project.project?.spec?.agents.find((agent) => agent.name === requestedAgent);
           if (generation === requestGeneration) agentSystemPrompt = configuredAgent?.systemPrompt ?? '';
           const hasScheduler = !!configuredAgent?.scheduler;
           return hasScheduler
-            ? projectService.listSchedulerEvents(new ListSchedulerEventsRequest({ project: { projectId }, agentName: requestedAgent, limit: 500 }), { signal: controller.signal })
+            ? projectService.listSchedulerEvents(new ListSchedulerEventsRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName: requestedAgent, limit: 500 }), { signal: controller.signal })
             : undefined;
         })(),
       ]);
@@ -79,14 +79,14 @@
       } else store.addToast(projectResult.reason?.message || '加载 Agent Run 历史失败', 'error');
       if (schedulerResult.status === 'fulfilled' && schedulerResult.value) {
         schedulerEvents = schedulerResult.value.events;
-        schedulerCursor = schedulerResult.value.nextCursor;
+        schedulerOffset = schedulerResult.value.events.length; schedulerTotal = schedulerResult.value.total;
       } else if (schedulerResult.status === 'rejected') {
         store.addToast(schedulerResult.reason?.message || '加载 Scheduler 历史失败', 'error');
       }
       executions = filterAgentOwnedExecutions(
         await mergeAgentOwnedExecutions(projectRuns, groupSchedulerExecutions(schedulerEvents), { projectId, agentName: requestedAgent }), filters,
       );
-      hasMore = projectHasMore || Boolean(schedulerCursor);
+      hasMore = projectHasMore || schedulerOffset < schedulerTotal;
       if (generation === requestGeneration) loading = false;
     })();
     return () => {
@@ -131,8 +131,8 @@
         runService.listRuns(new ListRunsRequest({ projectId, agentName: requestedAgent,
           status: applied.status, source: applied.source,
           ...range, sandboxId: applied.sandboxId.trim(), offset: 0, limit: target + 1 })),
-        schedulerCursor
-          ? projectService.listSchedulerEvents(new ListSchedulerEventsRequest({ project: { projectId }, agentName: requestedAgent, limit: 500, cursor: schedulerCursor }))
+        schedulerOffset < schedulerTotal
+          ? projectService.listSchedulerEvents(new ListSchedulerEventsRequest({ project: new ProjectRef({ selector: { case: "projectId", value: projectId } }), agentName: requestedAgent, limit: 500, offset: schedulerOffset }))
           : Promise.resolve(undefined),
       ]);
       if (generation === requestGeneration) {
@@ -142,12 +142,12 @@
         } else store.addToast(projectResult.reason?.message || '加载更多 Agent Run 失败', 'error');
         if (schedulerResult.status === 'fulfilled' && schedulerResult.value) {
           schedulerEvents = [...schedulerEvents, ...schedulerResult.value.events];
-          schedulerCursor = schedulerResult.value.nextCursor;
+          schedulerOffset += schedulerResult.value.events.length; schedulerTotal = schedulerResult.value.total;
         } else if (schedulerResult.status === 'rejected') store.addToast(schedulerResult.reason?.message || '加载更多 Scheduler 历史失败', 'error');
         executions = filterAgentOwnedExecutions(
           await mergeAgentOwnedExecutions(projectRuns, groupSchedulerExecutions(schedulerEvents), { projectId, agentName: requestedAgent }), applied,
         );
-        hasMore = projectHasMore || Boolean(schedulerCursor);
+        hasMore = projectHasMore || schedulerOffset < schedulerTotal;
       }
     } catch (error: any) { if (generation === requestGeneration) store.addToast(error?.message || '加载更多运行历史失败', 'error'); }
     finally { if (generation === requestGeneration) loadingMore = false; }
@@ -169,8 +169,6 @@
     if (status === 'succeeded') return 'status-succeeded';
     if (status === 'failed') return 'status-failed';
     if (status === 'running') return 'status-running';
-    if (status === 'canceled') return 'status-canceled';
-    if (status === 'skipped') return 'status-skipped';
     return '';
   }
 
@@ -287,7 +285,7 @@
 {/if}
 
 <style>
-  .root{height:100%;overflow:auto;padding:0 14px 14px;background:var(--bg-primary)}.breadcrumb-wrap{margin:0 -14px 14px}button,select,input{border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);padding:5px 9px;border-radius:4px}.filters input[type="date"]{cursor:pointer}.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}.filters label{display:grid;gap:3px;color:var(--text-muted);font-size:var(--font-size-xs)}.state{padding:32px;text-align:center;color:var(--text-muted)}.runs{display:grid;gap:6px}.run{display:grid;grid-template-columns:minmax(0,1fr) 76px 20px;gap:12px;align-items:center;padding:11px 12px;border-radius:5px;text-align:left}.run:hover{border-color:var(--accent-blue)}.run:focus-visible{outline:2px solid var(--accent-blue);outline-offset:2px}.run-info{display:grid;min-width:0;gap:6px}.run-heading{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap}.run-source{flex:0 0 auto;padding:2px 6px;border:1px solid var(--border-color);border-radius:999px;color:var(--text-secondary);font-size:var(--font-size-xs)}.diagnostic-grid{display:grid;grid-template-columns:minmax(190px,1fr) minmax(140px,.7fr) minmax(90px,.35fr);gap:6px 14px;align-items:center;min-width:0;color:var(--text-muted);font-size:var(--font-size-xs)}.datum{display:flex;gap:6px;align-items:baseline;min-width:0}.label{color:var(--text-muted);font-size:var(--font-size-xs)}code,time,.error-summary{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}code{color:var(--text-secondary)}time{color:var(--text-secondary);font-size:var(--font-size-xs)}.error-summary{display:block;padding-top:5px;border-top:1px solid var(--border-color);color:var(--accent-red);font-size:var(--font-size-xs)}.status{justify-self:end;color:var(--accent-yellow)}.status-succeeded{color:var(--accent-green)}.status-failed{color:var(--accent-red)}.status-running{color:var(--accent-green)}.status-canceled{color:var(--accent-orange)}.status-skipped{color:var(--text-muted)}.arrow{color:var(--text-muted)}.load-more{width:100%;margin-top:8px}@media (max-width:700px){.run{grid-template-columns:minmax(0,1fr) 64px 16px}.diagnostic-grid{grid-template-columns:1fr;gap:4px}.datum{justify-content:space-between}}
+  .root{height:100%;overflow:auto;padding:0 14px 14px;background:var(--bg-primary)}.breadcrumb-wrap{margin:0 -14px 14px}button,select,input{border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);padding:5px 9px;border-radius:4px}.filters input[type="date"]{cursor:pointer}.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}.filters label{display:grid;gap:3px;color:var(--text-muted);font-size:var(--font-size-xs)}.state{padding:32px;text-align:center;color:var(--text-muted)}.runs{display:grid;gap:6px}.run{display:grid;grid-template-columns:minmax(0,1fr) 76px 20px;gap:12px;align-items:center;padding:11px 12px;border-radius:5px;text-align:left}.run:hover{border-color:var(--accent-blue)}.run:focus-visible{outline:2px solid var(--accent-blue);outline-offset:2px}.run-info{display:grid;min-width:0;gap:6px}.run-heading{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap}.run-source{flex:0 0 auto;padding:2px 6px;border:1px solid var(--border-color);border-radius:999px;color:var(--text-secondary);font-size:var(--font-size-xs)}.diagnostic-grid{display:grid;grid-template-columns:minmax(190px,1fr) minmax(140px,.7fr) minmax(90px,.35fr);gap:6px 14px;align-items:center;min-width:0;color:var(--text-muted);font-size:var(--font-size-xs)}.datum{display:flex;gap:6px;align-items:baseline;min-width:0}.label{color:var(--text-muted);font-size:var(--font-size-xs)}code,time,.error-summary{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}code{color:var(--text-secondary)}time{color:var(--text-secondary);font-size:var(--font-size-xs)}.error-summary{display:block;padding-top:5px;border-top:1px solid var(--border-color);color:var(--accent-red);font-size:var(--font-size-xs)}.status{justify-self:end;color:var(--accent-blue)}.status-succeeded{color:var(--accent-green)}.status-failed{color:var(--accent-red)}.status-running{color:var(--accent-blue)}.arrow{color:var(--text-muted)}.load-more{width:100%;margin-top:8px}@media (max-width:700px){.run{grid-template-columns:minmax(0,1fr) 64px 16px}.diagnostic-grid{grid-template-columns:1fr;gap:4px}.datum{justify-content:space-between}}
   .filters{flex-wrap:nowrap;align-items:center;gap:12px;overflow-x:auto;padding-bottom:2px}
   .filters label{display:flex;flex:0 0 auto;align-items:center;gap:6px;white-space:nowrap}
   .filters button{flex:0 0 auto}

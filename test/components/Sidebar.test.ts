@@ -173,12 +173,12 @@ describe('Sidebar', () => {
     );
   });
 
-  it('服务端还有下一页时显示加载更多并用 nextOffset 续载', async () => {
+  it('服务端还有下一页时显示加载更多并用 offset 续载', async () => {
     const projects = Array.from({ length: 12 }, (_, i) => makeProject(`p${i}`, `proj${i}`));
     rpcMocks.projectService.listProjects.mockImplementation((request) => Promise.resolve(
       request.offset === 10
-        ? { projects: projects.slice(10), hasMore: false, nextOffset: 0 }
-        : { projects: projects.slice(0, 10), hasMore: true, nextOffset: 10 },
+        ? { projects: projects.slice(10), total: 12 }
+        : { projects: projects.slice(0, 10), total: 12 },
     ));
     render(Sidebar);
     await waitFor(() => expect(screen.getByText('proj0')).toBeInTheDocument());

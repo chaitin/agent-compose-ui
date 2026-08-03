@@ -66,7 +66,7 @@ test('uses the reference modal instead of browser prompts', () => {
 });
 
 test('does not subscribe the Monaco initialization effect to editor content', () => {
-  expect(source).toMatch(/editor = e;\s*untrack\(\(\) => \{\s*updateScriptActionContext\(\);\s*refreshScriptPresentation\(e\);\s*refreshWorkspacePresentation\(e\);\s*\}\);/);
+  expect(source).toMatch(/editor = e;\s*untrack\(\(\) => \{\s*updateScriptActionContext\(\);\s*refreshScriptPresentation\(e\);\s*refreshWorkspacePresentation\(e\);\s*refreshEnvPresentation\(e\);\s*refreshSkillPresentation\(e\);\s*\}\);/);
 });
 
 test('restores only viewport primitives after external content replacement', () => {

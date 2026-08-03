@@ -7,30 +7,6 @@ const source = readFileSync(
   'utf8',
 );
 
-test('provides an accessible persistent icon-rail toggle', () => {
-  assert.match(source, /class:collapsed=\{sidebarCollapsed\}/);
-  assert.match(source, /aria-label="折叠左侧菜单"/);
-  assert.match(source, /aria-label="展开左侧菜单"/);
-  assert.match(source, /localStorage\.setItem\(SIDEBAR_COLLAPSED_KEY/);
-  assert.match(source, /\.sidebar\.collapsed\s*\{[^}]*width:\s*44px[^}]*min-width:\s*44px/s);
-  assert.match(source, /class="expand-handle" aria-hidden="true">›<\/span>/);
-  assert.match(source, /\.expand-handle\s*\{[^}]*position:\s*absolute[^}]*right:\s*-10px/s);
-});
-
-test('uses the AC lettermark and orchestration icon', () => {
-  assert.match(source, /<span class="ac-mark" aria-hidden="true">AC<\/span>/);
-  assert.doesNotMatch(source, /class="ac-[ac]"/);
-  assert.match(source, /class="smart-agent-icon"/);
-  assert.match(source, /aria-hidden="true"[^>]*viewBox="0 0 24 24"/);
-  assert.match(source, /\.smart-agent-icon\s*\{[^}]*stroke:\s*currentColor/);
-});
-
-test('keeps only global icon actions in the collapsed rail', () => {
-  assert.match(source, /\{#if sidebarCollapsed\}[\s\S]*class="rail-app-button"[\s\S]*\{:else\}[\s\S]*class="nav-section project-section"/);
-  assert.match(source, /\{#if !sidebarCollapsed\}<span class="nav-label">系统管理<\/span>\{\/if\}/);
-  assert.match(source, /\{#if !sidebarCollapsed\}<span class="nav-label">反馈<\/span>\{\/if\}/);
-});
-
 test('deletes a project from a separate button without selecting it', () => {
   assert.match(source, /class="project-delete"/);
   assert.match(source, /<svg[^>]*class="delete-icon"[\s\S]*<path/);
@@ -75,8 +51,7 @@ test('paginates the list through ListProjects offset and limit', () => {
   assert.match(source, /const PAGE_SIZE = 10/);
   assert.match(source, /offset: reset \? 0 : projectOffset/);
   assert.match(source, /limit: PAGE_SIZE/);
-  assert.match(source, /resp\.hasMore/);
-  assert.match(source, /resp\.nextOffset/);
+  assert.match(source, /resp\.total/);
   assert.match(source, /加载更多/);
 });
 
@@ -103,13 +78,6 @@ test('opens unified system management at daemon images', () => {
   assert.match(source, /store\.goTo\('images'\)/);
 });
 
-test('shows an external feedback entry below system management', () => {
-  assert.match(source, /系统管理[\s\S]*反馈/);
-  assert.match(source, /href="https:\/\/devboard\.chaitin\.net\/devboard\/issues\?product_id=6a5f3c14839f64bb543f172d"/);
-  assert.match(source, /target="_blank"/);
-  assert.match(source, /rel="noopener noreferrer"/);
-});
-
 test('uses the approved compact high-density dimensions', () => {
   assert.match(source, /\.brand\s*\{[\s\S]*?min-height:\s*46px/);
   assert.match(source, /\.section-header\s*\{[^}]*font-size:\s*var\(--font-size-md\)/);
@@ -117,7 +85,7 @@ test('uses the approved compact high-density dimensions', () => {
   assert.match(source, /\.filter-box\s*\{[\s\S]*?padding:\s*0 0 6px/);
   assert.match(source, /\.project-row\s*\{[\s\S]*?min-height:\s*30px/);
   assert.match(source, /\.project-name\s*\{[\s\S]*?font-family:\s*var\(--font-mono\)/);
-  assert.match(source, /border:\s*1px solid color-mix\(in srgb, var\(--accent-blue\) 10%, var\(--border-color\)\)/);
+  assert.match(source, /border:\s*1px solid color-mix\(in srgb, var\(--accent-green\) 10%, var\(--border-color\)\)/);
   assert.match(source, /\.new-project-btn\s*\{[\s\S]*?text-align:\s*center/);
 });
 
@@ -137,6 +105,6 @@ test('renders equally sized load-more and create buttons', () => {
   assert.match(source, /class="project-actions"[\s\S]*class="load-more-btn"[\s\S]*class="new-project-btn"/);
   assert.match(source, /\.load-more-btn,[\s\S]*?\.new-project-btn\s*\{[\s\S]*?width:\s*100%[\s\S]*?min-height:\s*30px/);
   assert.match(source, /\.load-more-btn\s*\{[\s\S]*?border:\s*1px solid var\(--border-color\)/);
-  assert.match(source, /\.new-project-btn:hover[\s\S]*?border-color:\s*color-mix\(in srgb, var\(--accent-blue\) 30%, var\(--border-color\)\)/);
+  assert.match(source, /\.new-project-btn:hover[\s\S]*?border-color:\s*color-mix\(in srgb, var\(--accent-green\) 30%, var\(--border-color\)\)/);
   assert.match(source, /\.project-actions\s*\{[\s\S]*?border-top:\s*1px solid var\(--border-color\)/);
 });

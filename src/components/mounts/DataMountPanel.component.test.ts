@@ -61,6 +61,21 @@ test('creates an isolated managed local volume and one mount in a single callbac
   expect(result.agents.alpha.volumes).toEqual([{ type: 'volume', source: 'memory', target: '/data/memory', read_only: false }]);
 });
 
+test('closes the create dialog and shows creation status inline after the mount action', async () => {
+  const onYamlChange = setup();
+  await fireEvent.click(screen.getByRole('button', { name: '创建数据卷' }));
+  await fireEvent.input(screen.getByLabelText('逻辑名称'), { target: { value: 'memory' } });
+  await fireEvent.click(screen.getByRole('button', { name: '创建并挂载' }));
+
+  await waitFor(() => expect(onYamlChange).toHaveBeenCalledOnce());
+  expect(screen.queryByRole('dialog', { name: '创建数据卷' })).not.toBeInTheDocument();
+  const toolbar = screen.getByRole('toolbar', { name: '数据与挂载操作' });
+  const mountAction = within(toolbar).getByRole('button', { name: '挂载资源' });
+  const status = within(toolbar).getByRole('status');
+  expect(status).toHaveTextContent('已创建 memory');
+  expect(mountAction.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
 test('styles mount modal actions by intent', async () => {
   setup();
   await fireEvent.click(screen.getByRole('button', { name: '创建数据卷' }));
@@ -252,6 +267,25 @@ agents:
   alpha:
     volumes: [{ type: volume, source: managed, target: /data }]
 `;
+
+test('reloads the selected volume files after an explicit apply succeeds', async () => {
+  let volumeRequests = 0;
+  const fetch = vi.fn(async (input: string | URL | Request) => {
+    const url = String(input);
+    if (!url.startsWith('/api/volume-files?')) return new Response(JSON.stringify([]), { headers: { 'content-type': 'application/json' } });
+    volumeRequests += 1;
+    if (volumeRequests === 1) return new Response(JSON.stringify({ error: { code: 'not_found', message: 'volume not found' } }), { status: 404, headers: { 'content-type': 'application/json' } });
+    return new Response(JSON.stringify({ entries: [{ name: 'ready.txt', path: 'ready.txt', dir: false, size: 1, mtimeMs: 1 }] }), { headers: { 'content-type': 'application/json' } });
+  });
+  vi.stubGlobal('fetch', fetch);
+  render(DataMountPanel, { yaml: MANAGED, projectKey: KEY, onYamlChange: vi.fn(), onApply: vi.fn().mockResolvedValue(undefined) });
+  expect(await screen.findByText('实体卷尚未创建。请点击上方“应用 YAML”；成功后会自动加载。')).toBeInTheDocument();
+
+  await fireEvent.click(screen.getByRole('button', { name: '应用 YAML' }));
+
+  expect(await screen.findByRole('button', { name: 'ready.txt' })).toBeInTheDocument();
+  expect(volumeRequests).toBe(2);
+});
 
 test('deletes managed data only after YAML detach and actual apply succeed', async () => {
   const order: string[] = [];

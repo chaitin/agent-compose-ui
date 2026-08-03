@@ -21,7 +21,7 @@
   let existingKey = $state(''); let existingAgent = $state(''); let existingTarget = $state('');
   let sharedId = $state(''); let sharedAgent = $state(''); let sharedTarget = $state(''); let sharedReadOnly = $state(true);
   let catalog = $state<SharedDirectory[]>([]); let catalogLoading = $state(false); let catalogError = $state(''); let catalogGeneration = 0;
-  let busy = $state(false); let applyBusy = $state(false); let status = $state(''); let error = $state(''); let applyStatus = $state('');
+  let busy = $state(false); let applyBusy = $state(false); let status = $state(''); let error = $state(''); let applyStatus = $state(''); let volumeBrowserRevision = $state(0);
   let observedKey: string | undefined; let contextGeneration = 0;
   let deletion = $state<{ resource: ProjectDataResource; refs: string[]; revision: string } | null>(null); let deleteTrigger = $state<HTMLButtonElement>(); let cancelDelete = $state<HTMLButtonElement>(); let confirmDelete = $state<HTMLButtonElement>();
   type CleanupState = { projectKey: string; volume: string; declaration: string; error: string; inFlight: boolean; attempt: number; sequence: number; observedYaml: string };
@@ -184,7 +184,11 @@
       let next = upsertProjectVolume(yaml, declaration, { name: systemName, driver: 'local', labels: { 'agent-compose-ui.logical-name': declaration, 'agent-compose-ui.project-key': key } });
       if (duplicateTarget(agent, target, next)) throw new Error('该 Agent 的挂载目标已被使用');
       next = upsertAgentMount(next, agent, { type: 'volume', source: declaration, target, read_only: false });
-      await onYamlChange(next); if (generation === contextGeneration && key === projectKey) status = `已创建 ${declaration}`;
+      await onYamlChange(next);
+      if (generation === contextGeneration && key === projectKey) {
+        status = `已创建 ${declaration}`;
+        operationModal = '';
+      }
     } catch (value) { if (generation === contextGeneration && key === projectKey) error = message(value); }
     finally { busy = false; }
   }
@@ -287,7 +291,7 @@
   async function apply() {
     if (locked) return; const generation = contextGeneration; const key = projectKey;
     applyBusy = true; applyStatus = ''; error = '';
-    try { await onApply(); if (generation === contextGeneration && key === projectKey) applyStatus = '应用成功'; }
+    try { await onApply(); if (generation === contextGeneration && key === projectKey) { applyStatus = '应用成功'; volumeBrowserRevision += 1; } }
     catch (value) {
       const cancelled = value && typeof value === 'object' && (value as { code?: unknown }).code === 'apply_cancelled';
       if (!cancelled && generation === contextGeneration && key === projectKey) error = `应用失败：${message(value)}`;
@@ -303,13 +307,13 @@
 </script>
 
 <section class="mount-panel" aria-label="数据与挂载" aria-hidden={deletion ? 'true' : undefined} inert={deletion ? true : undefined}>
-  {#if error}<p role="alert">{error}</p>{/if}{#if currentCleanup?.inFlight}<p role={currentCleanup.error ? 'alert' : 'status'}>{currentCleanup.error || '正在删除卷数据…'}</p>{:else if currentCleanup?.error}<p role="alert">YAML 已应用，但卷数据删除失败：{currentCleanup.error} <button class="ui-button secondary" type="button" disabled={locked} onclick={retryCleanup}>重试删除数据</button></p>{/if}{#if status}<p role="status">{status}</p>{/if}{#if applyStatus}<p role="status">{applyStatus}</p>{/if}
-  <div class="toolbar" role="toolbar" aria-label="数据与挂载操作"><button class="primary" type="button" disabled={!validKey || locked} onclick={() => operationModal = 'create'}>创建数据卷</button><button class="secondary" type="button" disabled={!validKey || locked} onclick={() => operationModal = 'mount'}>挂载资源</button><span></span><button class="ghost" type="button" disabled={!validKey || locked} onclick={apply}>{applyBusy ? '正在应用…' : '应用 YAML'}</button></div>
+  {#if error}<p role="alert">{error}</p>{/if}{#if currentCleanup?.inFlight}<p role={currentCleanup.error ? 'alert' : 'status'}>{currentCleanup.error || '正在删除卷数据…'}</p>{:else if currentCleanup?.error}<p role="alert">YAML 已应用，但卷数据删除失败：{currentCleanup.error} <button class="ui-button secondary" type="button" disabled={locked} onclick={retryCleanup}>重试删除数据</button></p>{/if}
+  <div class="toolbar" role="toolbar" aria-label="数据与挂载操作"><button class="primary" type="button" disabled={!validKey || locked} onclick={() => operationModal = 'create'}>创建数据卷</button><button class="secondary" type="button" disabled={!validKey || locked} onclick={() => operationModal = 'mount'}>挂载资源</button>{#if status}<span class="inline-status" role="status">{status}</span>{/if}{#if applyStatus}<span class="inline-status" role="status">{applyStatus}</span>{/if}<span class="toolbar-spacer"></span><button class="ghost" type="button" disabled={!validKey || locked} onclick={apply}>{applyBusy ? '正在应用…' : '应用 YAML'}</button></div>
   <div class="resource-browser">
     <MountResourceList volumes={resources} {cacheKeys} shares={binds} selected={selection} onSelect={(value) => { selection = value; }} />
     <div class="resource-detail">
       <MountResourceDetail resource={selectedResource} share={selectedBind} {locked} canBrowse={!!selectedBrowsableVolume} onUnmount={(mount) => { void unmount(mount); }} onRemove={(resource, trigger) => requestRemove(resource, trigger)} />
-      {#if selectedBrowsableVolume}<VolumeFileBrowser projectKey={projectKey} volume={selectedBrowsableVolume} />{/if}
+      {#if selectedBrowsableVolume}{#key `${projectKey}\0${selectedBrowsableVolume}\0${volumeBrowserRevision}`}<VolumeFileBrowser projectKey={projectKey} volume={selectedBrowsableVolume} />{/key}{/if}
     </div>
   </div>
   {#if operationModal === 'create'}<div class="resource-modal-backdrop"><dialog class="resource-modal-card command-modal" open aria-label="创建数据卷"><form class="command-modal-form" onsubmit={(e) => { e.preventDefault(); void createVolume(); }}><div class="command-header"><div class="command-title"><h3>创建隔离持久卷</h3><span class="command-context">VOLUME / CREATE</span></div></div>
@@ -338,5 +342,5 @@
 {/if}
 
 <style>
-  .mount-panel{box-sizing:border-box;display:grid;flex:1;grid-template-rows:auto minmax(0,1fr);gap:12px;width:100%;min-width:0;min-height:0;padding:12px;overflow:hidden}.toolbar{display:flex;min-height:38px;align-items:center;gap:6px;margin:-12px -12px 0;padding:6px 10px;border-bottom:1px solid var(--border-color);background:var(--bg-secondary)}.toolbar span{flex:1}.toolbar button{height:27px;padding:3px 10px;border:1px solid var(--border-color);border-radius:4px;color:var(--text-primary);background:var(--bg-tertiary);font-size:var(--font-size-sm);cursor:pointer}.toolbar button:hover:not(:disabled){border-color:var(--accent-blue);color:var(--accent-blue)}.toolbar button:focus-visible{outline:2px solid var(--accent-blue);outline-offset:1px}.toolbar button:disabled{cursor:not-allowed;opacity:.5}.toolbar .primary{border-color:var(--accent-blue-emphasis);color:var(--text-on-accent);background:var(--accent-blue-emphasis);font-weight:600}.toolbar .primary:hover:not(:disabled){border-color:var(--accent-blue-emphasis);background:color-mix(in srgb,var(--accent-blue-emphasis) 88%,var(--bg-primary))}.toolbar .secondary{background:var(--bg-tertiary)}.toolbar .ghost{padding-inline:8px;border-color:transparent;color:var(--text-secondary);background:transparent}.toolbar .ghost:hover:not(:disabled){border-color:var(--border-color);color:var(--text-primary);background:var(--bg-tertiary)}.resource-browser{display:grid;grid-template-columns:minmax(210px,28%) minmax(0,1fr);height:100%;min-height:0;overflow:hidden;border:1px solid var(--border-color)}.resource-detail{min-width:0;min-height:0;overflow:auto}dialog{width:min(620px,100%)}form,section section{border:1px solid var(--border-color);padding:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}h3{width:100%;margin:0}label{display:grid;gap:3px}.command-modal .command-modal-form{display:grid;gap:10px;padding:0;border:0}.command-modal .command-field{display:flex;gap:7px}.command-modal .command-presets{display:grid}.command-modal .command-presets fieldset{display:flex;padding:7px}button,input,select{font:inherit}.backdrop{position:fixed;inset:0;background:#0008;display:grid;place-items:center;z-index:100}.backdrop>[role=dialog]{background:var(--bg-primary);padding:20px;max-width:520px;border:1px solid var(--border-color)}
+  .mount-panel{box-sizing:border-box;display:grid;flex:1;grid-template-rows:auto minmax(0,1fr);gap:12px;width:100%;min-width:0;min-height:0;padding:12px;overflow:hidden}.toolbar{display:flex;min-height:38px;align-items:center;gap:6px;margin:-12px -12px 0;padding:6px 10px;border-bottom:1px solid var(--border-color);background:var(--bg-secondary)}.toolbar-spacer{flex:1}.inline-status{overflow:hidden;color:var(--accent-green);font-size:var(--font-size-sm);text-overflow:ellipsis;white-space:nowrap}.toolbar button{height:27px;padding:3px 10px;border:1px solid var(--border-color);border-radius:4px;color:var(--text-primary);background:var(--bg-tertiary);font-size:var(--font-size-sm);cursor:pointer}.toolbar button:hover:not(:disabled){border-color:var(--accent-blue);color:var(--accent-blue)}.toolbar button:focus-visible{outline:2px solid var(--accent-blue);outline-offset:1px}.toolbar button:disabled{cursor:not-allowed;opacity:.5}.toolbar .primary{border-color:var(--accent-blue-emphasis);color:var(--text-on-accent);background:var(--accent-blue-emphasis);font-weight:600}.toolbar .primary:hover:not(:disabled){border-color:var(--accent-blue-emphasis);background:color-mix(in srgb,var(--accent-blue-emphasis) 88%,var(--bg-primary))}.toolbar .secondary{background:var(--bg-tertiary)}.toolbar .ghost{padding-inline:8px;border-color:transparent;color:var(--text-secondary);background:transparent}.toolbar .ghost:hover:not(:disabled){border-color:var(--border-color);color:var(--text-primary);background:var(--bg-tertiary)}.resource-browser{display:grid;grid-template-columns:minmax(210px,28%) minmax(0,1fr);height:100%;min-height:0;overflow:hidden;border:1px solid var(--border-color)}.resource-detail{min-width:0;min-height:0;overflow:auto}dialog{width:min(620px,100%)}form,section section{border:1px solid var(--border-color);padding:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}h3{width:100%;margin:0}label{display:grid;gap:3px}.command-modal .command-modal-form{display:grid;gap:10px;padding:0;border:0}.command-modal .command-field{display:flex;gap:7px}.command-modal .command-presets{display:grid}.command-modal .command-presets fieldset{display:flex;padding:7px}button,input,select{font:inherit}.backdrop{position:fixed;inset:0;background:#0008;display:grid;place-items:center;z-index:100}.backdrop>[role=dialog]{background:var(--bg-primary);padding:20px;max-width:520px;border:1px solid var(--border-color)}
 </style>

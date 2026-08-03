@@ -6,7 +6,7 @@
 
   let caches: CacheItem[] = $state([]); let warnings: string[] = $state([]); let loading = $state(true); let error = $state('');
   let driver = $state(''); let domain: CacheDomain = $state(CacheDomain.UNSPECIFIED); let type = $state(''); let status: CacheStatus = $state(CacheStatus.UNSPECIFIED); let ageDays = $state('');
-  let showDangerousOptions = $state(false); let includeReferenced = $state(false);
+  let showDangerousOptions = $state(false);
   let inspected: InspectCacheResponse | undefined = $state(); let inspecting = $state(false);
   let result: PruneCachesResponse | RemoveCacheResponse | undefined = $state(); let resultTitle = $state(''); let pending: 'prune' | 'remove' | undefined = $state(); let targetId = $state(''); let operating = $state(false); let operationError = $state('');
   let pruneSnapshot: PruneCachesRequest | undefined; let removeSnapshot: RemoveCacheRequest | undefined;
@@ -18,7 +18,7 @@
   function toggleDangerousOptions() {
     if (operating) return;
     showDangerousOptions = !showDangerousOptions;
-    if (!showDangerousOptions) { includeReferenced = false; clearPreview(); }
+    if (!showDangerousOptions) { clearPreview(); }
   }
   async function load() { const generation = ++listGeneration; loading = true; error = ''; try { const response = await cacheService.listCaches(new ListCachesRequest({ filter: filter() })); if (generation !== listGeneration) return; caches = response.caches; warnings = response.warnings; } catch (cause: any) { if (generation === listGeneration) error = cause?.message || '加载缓存失败'; } finally { if (generation === listGeneration) loading = false; } }
   async function inspect(item: CacheItem) { const generation = ++inspectGeneration; inspecting = true; operationError = ''; try { const response = await cacheService.inspectCache(new InspectCacheRequest({ cacheId: item.cacheId })); if (generation === inspectGeneration) inspected = response; } catch (cause: any) { if (generation === inspectGeneration) operationError = cause?.message || '检查缓存失败'; } finally { if (generation === inspectGeneration) inspecting = false; } }
@@ -28,12 +28,12 @@
     const generation = ++operationGeneration;
     if (!force) clearPreview();
     const request = force
-      ? (pruneSnapshot && new PruneCachesRequest({ filter: pruneSnapshot.filter && new CacheFilter(pruneSnapshot.filter), includeReferenced: pruneSnapshot.includeReferenced, force: true }))
-      : new PruneCachesRequest({ filter: filter(), includeReferenced, force: false });
+      ? (pruneSnapshot && new PruneCachesRequest({ filter: pruneSnapshot.filter && new CacheFilter(pruneSnapshot.filter), force: true }))
+      : new PruneCachesRequest({ filter: filter(), force: false });
     if (!request) return;
     if (force) { pending = undefined; pruneSnapshot = undefined; removeSnapshot = undefined; }
     operating = true; operationError = '';
-    try { const response = await cacheService.pruneCaches(request); if (generation !== operationGeneration) return; result = response; resultTitle = force ? '清理执行结果' : '清理预览'; if (!force) { pruneSnapshot = new PruneCachesRequest({ filter: request.filter && new CacheFilter(request.filter), includeReferenced: request.includeReferenced, force: false }); pending = 'prune'; } if (force) await load(); }
+    try { const response = await cacheService.pruneCaches(request); if (generation !== operationGeneration) return; result = response; resultTitle = force ? '清理执行结果' : '清理预览'; if (!force) { pruneSnapshot = new PruneCachesRequest({ filter: request.filter && new CacheFilter(request.filter), force: false }); pending = 'prune'; } if (force) await load(); }
     catch (cause: any) { if (generation === operationGeneration) operationError = cause?.message || '清理缓存失败'; }
     finally { if (generation === operationGeneration) operating = false; }
   }
@@ -53,8 +53,8 @@
 </script>
 
 <div class="root"><header><div><div class="scope">daemon 资源</div><h1>缓存</h1><p>管理 daemon 全局缓存，不进入项目 YAML 或 Runtime。</p></div><div class="actions"><button onclick={load} disabled={loading}>刷新</button><button class="danger" onclick={() => prune(false)} disabled={operating}>预览清理</button></div></header>
-  <div class="filters"><input aria-label="缓存驱动" bind:value={driver} placeholder="驱动"/><select aria-label="缓存域" value={domain} onchange={(event) => domain = Number(event.currentTarget.value) as CacheDomain}><option value={CacheDomain.UNSPECIFIED}>全部域</option><option value={CacheDomain.OCI_IMAGE_STORE}>OCI 镜像存储</option><option value={CacheDomain.MATERIALIZED_IMAGE_CACHE}>物化镜像</option><option value={CacheDomain.RUNTIME_DERIVED_CACHE}>运行时派生</option><option value={CacheDomain.SANDBOX_EPHEMERAL_STATE}>沙箱临时</option></select><input aria-label="缓存类型" bind:value={type} placeholder="类型"/><select aria-label="缓存状态" value={status} onchange={(event) => status = Number(event.currentTarget.value) as CacheStatus}><option value={CacheStatus.UNSPECIFIED}>全部状态</option><option value={CacheStatus.ACTIVE}>活跃</option><option value={CacheStatus.REFERENCED}>被引用</option><option value={CacheStatus.UNUSED}>未使用</option><option value={CacheStatus.EXPIRED}>过期</option><option value={CacheStatus.ORPHANED}>孤立</option></select><input aria-label="超过天数未使用" type="number" min="0" bind:value={ageDays} placeholder="未使用天数"/><button onclick={load}>应用筛选</button></div>
-  <section class="danger-options"><button onclick={toggleDangerousOptions} disabled={operating}>{showDangerousOptions ? '隐藏危险选项' : '显示危险选项'}</button>{#if showDangerousOptions}<label><input type="checkbox" bind:checked={includeReferenced} disabled={operating}/>清理仍被引用的缓存</label><span>高风险：可能破坏仍引用这些缓存的任务或沙箱。执行前必须先用相同选项成功预览。</span>{/if}</section>
+  <div class="filters"><input aria-label="缓存驱动" bind:value={driver} placeholder="驱动"/><select aria-label="缓存域" value={domain} onchange={(event) => domain = Number(event.currentTarget.value) as CacheDomain}><option value={CacheDomain.UNSPECIFIED}>全部域</option><option value={CacheDomain.OCI_IMAGE_STORE}>OCI 镜像存储</option><option value={CacheDomain.MATERIALIZED_IMAGE_CACHE}>物化镜像</option><option value={CacheDomain.RUNTIME_DERIVED_CACHE}>运行时派生</option><option value={CacheDomain.SKILL_ARTIFACT_CACHE}>技能产物</option></select><input aria-label="缓存类型" bind:value={type} placeholder="类型"/><select aria-label="缓存状态" value={status} onchange={(event) => status = Number(event.currentTarget.value) as CacheStatus}><option value={CacheStatus.UNSPECIFIED}>全部状态</option><option value={CacheStatus.ACTIVE}>活跃</option><option value={CacheStatus.REFERENCED}>被引用</option><option value={CacheStatus.UNUSED}>未使用</option><option value={CacheStatus.EXPIRED}>过期</option><option value={CacheStatus.ORPHANED}>孤立</option></select><input aria-label="超过天数未使用" type="number" min="0" bind:value={ageDays} placeholder="未使用天数"/><button onclick={load}>应用筛选</button></div>
+  <section class="danger-options"><button onclick={toggleDangerousOptions} disabled={operating}>{showDangerousOptions ? '隐藏危险选项' : '显示危险选项'}</button>{#if showDangerousOptions}<span>高风险：清理缓存可能破坏依赖这些缓存的任务或沙箱。执行前必须先成功预览。</span>{/if}</section>
   {#if warnings.length}<section class="notice warning"><strong>部分结果</strong>{#each warnings as warning}<div>{warning}</div>{/each}</section>{/if}
   {#if error}<section class="state error">加载失败：{error}<button onclick={load}>重试</button></section>{:else if loading && caches.length === 0}<section class="state">正在读取 daemon 缓存…</section>{:else if caches.length === 0}<section class="state">没有匹配的缓存</section>{:else}<div class="table"><div class="row head"><span>ID</span><span>驱动 / 类型</span><span>域</span><span>状态</span><span>大小</span><span>操作</span></div>{#each caches as item (item.cacheId)}<div class="row"><span class="mono">{cacheId(item)}</span><span>{item.driver || '未提供'} / {item.kind || '未提供'}</span><span>{cacheDomainLabel(item.domain)}</span><span>{cacheStatusLabel(item.status)}</span><span>{formatBytes(item.sizeBytes)}</span><span class="actions"><button aria-label={`检查 ${cacheId(item)}`} onclick={() => inspect(item)}>检查</button><button class="danger" aria-label={`删除 ${cacheId(item)}`} onclick={() => remove(item.cacheId, false)} disabled={operating}>删除</button></span></div>{/each}</div>{/if}
   {#if inspecting}<aside class="panel">正在检查缓存…</aside>{:else if inspected?.cache}<aside class="panel"><h2>缓存详情：{cacheId(inspected.cache)}</h2><div>路径：{inspected.cache.path || '后端未提供'}</div><div>最后使用：{inspected.cache.lastUsedAt || '后端未提供'}</div>{#each inspected.cache.blockedReasons as reason}<div class="blocked">阻止原因：{reason}</div>{/each}{#each inspected.warnings as warning}<div class="warning">{warning}</div>{/each}</aside>{/if}

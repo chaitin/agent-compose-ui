@@ -3,7 +3,7 @@
   import { runService, sandboxService } from '../lib/rpc';
   import { store } from '../lib/stores.svelte';
   import {
-    StartRunRequest,
+    StartAgentRunRequest,
     RunSandboxCleanupPolicy,
   } from '../gen/agentcompose/v2/agentcompose_pb';
   import { buildRunAgentRequest, type RunRequestInput } from '../lib/run-controls';
@@ -83,7 +83,7 @@
     running = true;
 
     try {
-      const response = await runService.startRun(new StartRunRequest({ run: req }));
+      const response = await runService.startAgentRun(new StartAgentRunRequest({ run: req }));
       const runId = response.run?.runId || '';
       running = false;
       if (!runId) {
@@ -257,8 +257,8 @@
   }
   .run-btn {
     padding: 5px 20px;
-    background: var(--accent-blue-emphasis);
-    color: var(--text-on-accent);
+    background: var(--accent-blue);
+    color: #fff;
     border: none;
     border-radius: 4px;
     font-size: var(--font-size-md);

@@ -2,7 +2,8 @@
   import { Code, ConnectError } from '@connectrpc/connect';
   import { untrack } from 'svelte';
   import { execService, projectService, runService, sandboxService } from '../../lib/rpc';
-  import { GetRunRequest, GetSchedulerRunRequest, ListSandboxHistoryRequest, ListSandboxRunEventsRequest, RunStatus, RunSource, type RunDetail, type RunEvent, type SandboxHistoryCell, type SchedulerEvent } from '../../gen/agentcompose/v2/agentcompose_pb';
+  import { ProjectRef, SandboxStatus, GetRunRequest, GetSchedulerRunRequest, ListSandboxHistoryRequest, ListSandboxRunEventsRequest, RunStatus, RunSource, type RunDetail, type RunEvent, type SandboxHistoryCell, type SchedulerEvent } from '../../gen/agentcompose/v2/agentcompose_pb';
+  import { timestampToIso } from '../../lib/proto-helpers';
   import {
     listAllRunEvents,
     mapRunEventsToTranscript,
@@ -156,7 +157,7 @@
         void fetchWorkspaceArtifacts(generation, projectId, requestedRunId, requestedAgent, runDetail);
       }
       if (runDetail?.summary && isTerminalStatus(runDetail.summary.status)) {
-        onSettled(runDetail.summary.status, runDetail.summary.completedAt || '');
+        onSettled(runDetail.summary.status, timestampToIso(runDetail.summary.completedAt));
       }
       const followEnabled = runDetail?.summary?.status === RunStatus.RUNNING;
       if (followEnabled !== logFollowEnabled) {
@@ -190,11 +191,20 @@
     const summary = detail.summary!;
     const result = await discoverWorkspaceArtifacts({
       sandboxId: summary.sandboxId,
-      startedAt: summary.startedAt,
-      completedAt: summary.completedAt,
+      startedAt: timestampToIso(summary.startedAt),
+      completedAt: timestampToIso(summary.completedAt),
       now: () => new Date(),
-      getSandbox: (request, options) => sandboxService.getSandbox(request, options),
-      execStream: (request, options) => execService.execStream(request, options),
+      getSandbox: async (request, options) => {
+        const response = await sandboxService.getSandbox(request, options);
+        const status = response.sandbox?.status;
+        const statusString = status === SandboxStatus.RUNNING ? 'RUNNING'
+          : status === SandboxStatus.STOPPED ? 'STOPPED'
+          : status === SandboxStatus.DELETING ? 'DESTROYED'
+          : status === SandboxStatus.FAILED ? 'FAILED'
+          : '';
+        return { sandbox: response.sandbox ? { status: statusString } : undefined };
+      },
+      streamExec: (request, options) => execService.streamExec(request, options),
       signal: identitySignal(),
     });
     if (!isCurrentDetail(generation, projectId, requestedRunId, requestedAgent)) return;
@@ -234,7 +244,7 @@
         if (evidence.loaderRunId) {
           try {
             const response = await projectService.getSchedulerRun(new GetSchedulerRunRequest({
-              project: { projectId },
+              project: new ProjectRef({ selector: { case: "projectId", value: projectId } }),
               runId: evidence.loaderRunId,
             }), { signal: identitySignal() });
             if (isCurrentDetail(generation, projectId, requestedRunId, requestedAgent)) {
@@ -266,15 +276,12 @@
       }
       try {
         const events: RunEvent[] = [];
-        const seenCursors = new Set<string>();
-        let cursor = '';
+        let offset = 0;
         while (true) {
-          const page = await runService.listSandboxRunEvents(new ListSandboxRunEventsRequest({ sandboxId: summary.sandboxId, limit: 500, cursor }), { signal: identitySignal() });
+          const page = await runService.listSandboxRunEvents(new ListSandboxRunEventsRequest({ sandboxId: summary.sandboxId, limit: 500, offset }), { signal: identitySignal() });
           events.push(...page.events);
-          if (!page.nextCursor) break;
-          if (seenCursors.has(page.nextCursor)) throw new Error('Sandbox Run event pagination returned repeated cursor');
-          seenCursors.add(page.nextCursor);
-          cursor = page.nextCursor;
+          if (page.events.length === 0 || offset + page.events.length >= page.total) break;
+          offset += page.events.length;
         }
         sandboxRunEvents = confirmedSandboxRunEvents(events, requestedRunId);
       } catch (error: any) {
@@ -296,9 +303,9 @@
       resultJson: detail.resultJson,
       logsPath: detail.logsPath,
       artifactsDir: detail.artifactsDir,
-      completedAt: summary.completedAt,
-      updatedAt: summary.updatedAt,
-      startedAt: summary.startedAt,
+      completedAt: timestampToIso(summary.completedAt),
+      updatedAt: timestampToIso(summary.updatedAt),
+      startedAt: timestampToIso(summary.startedAt),
     });
   }
 
@@ -440,7 +447,7 @@
   function timelineFor(detail: RunDetail | null) {
     let base: RuntimeTimelineEntry[];
     if (historyAvailable !== false) {
-      const startTimestamp = detail?.summary?.startedAt ?? '';
+      const startTimestamp = timestampToIso(detail?.summary?.startedAt);
       base = structuredEvents.map((event, index) => ({
         id: event.id,
         timestamp: event.timestamp || startTimestamp,
@@ -465,7 +472,17 @@
       }));
     } else {
       base = buildRuntimeTimeline({
-        summary: detail?.summary ?? {},
+        summary: detail?.summary ? {
+          startedAt: timestampToIso(detail.summary.startedAt),
+          completedAt: timestampToIso(detail.summary.completedAt),
+          createdAt: timestampToIso(detail.summary.createdAt),
+          updatedAt: timestampToIso(detail.summary.updatedAt),
+          exitCode: detail.summary.exitCode,
+          error: detail.summary.error,
+          schedulerId: detail.summary.schedulerId,
+          triggerId: detail.summary.triggerId,
+          sandboxId: detail.summary.sandboxId,
+        } : {},
         terminal: isTerminalStatus(detail?.summary?.status ?? RunStatus.UNSPECIFIED),
         sourceText: sourceLabel(detail?.summary?.source ?? RunSource.UNSPECIFIED),
         statusText: statusLabel(detail?.summary?.status ?? RunStatus.UNSPECIFIED),
@@ -583,7 +600,7 @@
         {#if eventsError}<div class="process-error" role="alert">结构化运行事件加载失败：{eventsError}</div>{/if}
         {#if evidenceError}<div class="process-error" role="alert">运行证据加载失败：{evidenceError}</div>{/if}
         {#if workspaceArtifactNotice}<div class="workspace-artifact-notice">{workspaceArtifactNotice}</div>{/if}
-        <div class="section-heading" class:embedded><span>执行过程</span><span class="heading-time">{formatTime(runDetail.summary?.startedAt ?? '')} → {formatTime(runDetail.summary?.completedAt ?? '')}</span></div>
+        <div class="section-heading" class:embedded><span>执行过程</span><span class="heading-time">{formatTime(timestampToIso(runDetail.summary?.startedAt))} → {formatTime(timestampToIso(runDetail.summary?.completedAt))}</span></div>
         <section class="timeline-panel" class:embedded>
         <header class="timeline-toolbar">
           <div class="timeline-filters" aria-label="时间线类型筛选">
@@ -602,7 +619,7 @@
           {#each visibleTimelineEntries as entry (entry.id)}
             <div class="timeline-entry-growth">
             <article class="timeline-entry {entry.kind} {entry.level}">
-              <time title={entry.timestamp}><span>{formatTime(entry.timestamp)}</span><small>{formatElapsed(runDetail.summary?.startedAt ?? '', entry.timestamp)}</small></time>
+              <time title={entry.timestamp}><span>{formatTime(entry.timestamp)}</span><small>{formatElapsed(timestampToIso(runDetail.summary?.startedAt), entry.timestamp)}</small></time>
               <RunExecutionTimelineEntry {entry} onOpenArtifact={openWorkspaceArtifact}>
                 {#snippet lead()}{#if entry.timestampInferred}<small class="te-lead-note">{timestampBasisLabel(entry.timestampBasis)}</small>{/if}{/snippet}
                 {#snippet trailing()}{#if entry.kind === 'error' && entry.source === 'log'}<div class="te-entry-actions"><button onclick={retryLogs}>重试日志加载</button></div>{/if}{/snippet}
@@ -629,7 +646,7 @@
   .timeline-list { display: grid; }.timeline-entry-growth { display: grid; grid-template-rows: 1fr; min-width: 0; animation: timeline-grow 180ms ease-out both; }.timeline-entry { display: grid; min-height: 0; overflow: hidden; grid-template-columns: 145px minmax(0, 1fr); border-bottom: 1px solid var(--border-color); }.timeline-entry-growth:last-child .timeline-entry { border-bottom: 0; }.timeline-entry > time { display: grid; align-content: start; gap: 3px; padding: 10px; color: var(--text-muted); font-family: var(--font-mono); font-size: var(--font-size-xs); }.timeline-entry > time small { color: var(--text-secondary); font-size: var(--font-size-xs); }
   .timeline-empty { padding: 18px; color: var(--text-muted); font-size: var(--font-size-xs); text-align: center; }
   .loading { display: grid; flex: 1; place-items: center; color: var(--text-muted); font-size: var(--font-size-md); }
-  .process-error { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px; color: var(--accent-red); font-size: var(--font-size-sm); }
+  .process-error { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px; color: var(--danger, #ef4444); font-size: var(--font-size-sm); }
   @keyframes timeline-grow { from { grid-template-rows: 0fr; opacity: 0; transform: translateY(-4px); } to { grid-template-rows: 1fr; opacity: 1; transform: translateY(0); } }
   @media (max-width: 760px) { .timeline-entry { grid-template-columns: 100px minmax(0, 1fr); }.heading-time { display: none; } }
   @media (prefers-reduced-motion: reduce) { .timeline-entry-growth { animation: none; } }

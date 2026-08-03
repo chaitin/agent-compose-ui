@@ -23,7 +23,7 @@ COPY . ./
 RUN npm run build
 
 # ---- Stage 2: test and build the loopback authentication gateway ----
-FROM golang:1.24-alpine AS gateway-build
+FROM golang:1.25-alpine AS gateway-build
 ENV GOPROXY=https://goproxy.cn,direct
 WORKDIR /src
 
@@ -45,6 +45,11 @@ FROM nginx:1.27-alpine
 
 ARG TARGETARCH
 ARG S6_VERSION=v3.2.0.2
+
+# libstdc++ (+ libgcc via dependency): the Bun binary copied below is
+# dynamically linked against libstdc++.so.6 / libgcc_s.so.1, which
+# nginx:1.27-alpine does not ship by default.
+RUN apk add --no-cache libstdc++
 
 # Install s6-overlay: noarch + arch-specific tarball. Map docker's TARGETARCH
 # to s6-overlay's arch naming (amd64 -> x86_64, arm64 -> aarch64).

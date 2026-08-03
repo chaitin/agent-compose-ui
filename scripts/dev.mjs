@@ -40,7 +40,7 @@ async function startDevelopment() {
     scriptServiceURL: process.env.SCRIPT_SERVICE_URL || 'http://127.0.0.1:7420',
     agentComposeDBPath: process.env.AGENT_COMPOSE_DB_PATH || path.resolve(projectRoot, '../agent-compose/.dev-data/data.db'),
     uiStateDBPath: process.env.UI_STATE_DB_PATH || path.resolve(projectRoot, '.cache/project-env.db'),
-    localVolumeRoot: process.env.LOCAL_VOLUME_ROOT || path.resolve(projectRoot, '../agent-compose/.dev-data/volumes/local'),
+    localVolumeRoot: process.env.LOCAL_VOLUME_ROOT || path.resolve(projectRoot, '.cache/volumes/local'),
     goCache: process.env.GOCACHE || path.resolve(projectRoot, '.cache/go-build'),
     goModCache: process.env.GOMODCACHE || path.resolve(projectRoot, '../agent-compose/.cache/go-mod'),
   });

@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { childSpecs } from './dev.mjs';
 import viteConfig from '../vite.config.ts';
 
@@ -43,6 +44,12 @@ test('passes project environment database paths only to the gateway', () => {
   expect(specs[2].env.UI_STATE_DB_PATH).toBeUndefined();
   expect(specs[1].env.LOCAL_VOLUME_ROOT).toBeUndefined();
   expect(specs[2].env.LOCAL_VOLUME_ROOT).toBeUndefined();
+});
+
+test('keeps the default local volume root outside daemon database storage', () => {
+  const source = readFileSync(new URL('./dev.mjs', import.meta.url), 'utf8');
+  expect(source).toContain("path.resolve(projectRoot, '.cache/volumes/local')");
+  expect(source).not.toContain("path.resolve(projectRoot, '../agent-compose/.dev-data/volumes/local')");
 });
 
 test('childSpecs is a pure function and does not mutate inputs', () => {

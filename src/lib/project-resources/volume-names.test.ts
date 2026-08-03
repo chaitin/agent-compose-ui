@@ -1,5 +1,7 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { assertProjectVolumeKey, MAX_PROJECT_KEY_UTF8_BYTES, managedVolumeName } from './volume-names';
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe('assertProjectVolumeKey', () => {
   test.each(['cache', 'Cache_2', 'a.b-c'])('accepts daemon-compatible key %j', (key) => {
@@ -29,6 +31,13 @@ describe('managedVolumeName', () => {
     ['项目-上海', 'ac-8c099eb7d8f9-project-memory'],
   ])('uses the first 12 lowercase hex characters of the UTF-8 SHA-256 digest for %s', async (key, expected) => {
     expect(await managedVolumeName(key, 'project-memory')).toBe(expected);
+  });
+
+  test('falls back when the page context does not expose crypto.subtle', async () => {
+    vi.stubGlobal('crypto', {});
+
+    await expect(managedVolumeName(projectKey, 'project-memory'))
+      .resolves.toBe('ac-b84f28823e85-project-memory');
   });
 
   test('normalizes safe logical names conservatively', async () => {

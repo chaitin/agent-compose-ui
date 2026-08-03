@@ -166,7 +166,8 @@ func (s *Storage) WorkspaceRoot(key, workspacePath string, create bool) (string,
 	if _, err := s.ResolveBinding(key, false); err != nil {
 		return "", err
 	}
-	clean, err := validateRelativePath(workspacePath, "workspace path", false)
+	// Allow "." (workspace = project root): the daemon's cleanComposeLocalWorkspacePath accepts it.
+	clean, err := validateRelativePath(workspacePath, "workspace path", true)
 	if err != nil {
 		return "", err
 	}
@@ -218,7 +219,8 @@ func (s *Storage) MigrateLegacy(legacyKey, workspacePath string) (Binding, error
 	if !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(legacyKey) {
 		return Binding{}, storageErr("unsafe_path", "invalid legacy project identifier")
 	}
-	workspace, err := validateRelativePath(workspacePath, "workspace path", false)
+	// Allow "." (workspace = project root): the daemon's cleanComposeLocalWorkspacePath accepts it.
+	workspace, err := validateRelativePath(workspacePath, "workspace path", true)
 	if err != nil {
 		return Binding{}, err
 	}

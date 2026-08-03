@@ -5,8 +5,9 @@
     ExecCommand, ExecRequest, GetSandboxRequest, GetSandboxStatsRequest, ListRunsRequest,
     ListSandboxHistoryRequest, ListSandboxHistoryResponse, ListSandboxRunEventsRequest, ListSandboxRunEventsResponse, MetricStatus, RemoveSandboxRequest,
     ResumeSandboxRequest, RunAgentRequest, RunSandboxCleanupPolicy, RunSource, RunStatus, StopSandboxRequest, WatchSandboxRequest,
-    type MetricValue, type RunSummary, type SandboxStats,
+    type MetricValue, type RunSummary, type SandboxStats, SandboxStatus,
   } from '../../gen/agentcompose/v2/agentcompose_pb';
+  import { sandboxStatusString, timestampToIso } from '../../lib/proto-helpers';
   import SessionTerminal from '../../pages/session/SessionTerminal.svelte';
   import FileBrowser from '../../pages/session/FileBrowser.svelte';
   import { buildSandboxDetailSnapshot, buildSandboxTimeline, type SandboxDetailSnapshot } from '../../lib/sandbox-detail';
@@ -103,24 +104,14 @@
   function runStatusLabel(status?: RunStatus) {
     return ({ [RunStatus.PENDING]: '等待中', [RunStatus.RUNNING]: '运行中', [RunStatus.SUCCEEDED]: '成功', [RunStatus.FAILED]: '失败', [RunStatus.CANCELED]: '已取消' } as Record<number, string>)[status ?? 0] || '未知';
   }
-  function runStatusClass(status?: RunStatus | 'skipped') {
-    if (status === RunStatus.PENDING) return 'status-pending';
-    if (status === RunStatus.RUNNING) return 'status-running';
-    if (status === RunStatus.SUCCEEDED) return 'status-succeeded';
-    if (status === RunStatus.FAILED) return 'status-failed';
-    if (status === RunStatus.CANCELED) return 'status-canceled';
-    if (status === 'skipped') return 'status-skipped';
-    return 'status-unknown';
-  }
-  function lifecycle(status = snapshot?.sandbox.status || '') {
-    const normalized = status.toUpperCase();
-    if (normalized === 'RUNNING') return 'running';
-    if (normalized === 'STOPPED') return 'stopped';
-    if (normalized === 'REMOVED' || normalized === 'DESTROYED') return 'destroyed';
+  function lifecycle(status: SandboxStatus = snapshot?.sandbox.status ?? SandboxStatus.UNSPECIFIED) {
+    if (status === SandboxStatus.RUNNING) return 'running';
+    if (status === SandboxStatus.STOPPED) return 'stopped';
+    if (status === SandboxStatus.DELETING) return 'destroyed';
     return 'unknown';
   }
   function lifecycleLabel() {
-    return ({ running: '运行中', stopped: '已停止 · 可恢复', destroyed: '已销毁', unknown: snapshot?.sandbox.status || '状态未知' })[lifecycle()];
+    return ({ running: '运行中', stopped: '已停止 · 可恢复', destroyed: '已销毁', unknown: sandboxStatusString(snapshot?.sandbox.status) || '状态未知' })[lifecycle()];
   }
   function targetIsCurrent(projectId: string, sandboxId: string, current: number) {
     if (destroyed) return false;
@@ -146,14 +137,12 @@
 
   async function loadRunEvents(sandboxId: string) {
     const events = [];
-    const seenCursors = new Set<string>();
-    let cursor = '';
+    let offset = 0;
     while (true) {
-      const page = await runService.listSandboxRunEvents(new ListSandboxRunEventsRequest({ sandboxId, limit: 500, cursor }));
+      const page = await runService.listSandboxRunEvents(new ListSandboxRunEventsRequest({ sandboxId, limit: 500, offset }));
       events.push(...page.events);
-      if (!page.nextCursor || seenCursors.has(page.nextCursor)) break;
-      seenCursors.add(page.nextCursor);
-      cursor = page.nextCursor;
+      if (page.events.length === 0 || offset + page.events.length >= page.total) break;
+      offset += page.events.length;
     }
     return new ListSandboxRunEventsResponse({ events });
   }
@@ -426,7 +415,7 @@
         title="该 Sandbox 已被删除"
         onBack={navigateBack}
         status="已销毁"
-        statusTone="destroyed"
+        statusTone="danger"
       />{/if}
     <div class="state removed">
       <p class="state-heading">该 Sandbox 已被删除</p>
@@ -438,7 +427,7 @@
         title="加载失败"
         onBack={navigateBack}
         status="加载失败"
-        statusTone="danger"
+        statusTone="warning"
       />{/if}
     <div class="state error">加载失败：{loadError}<button onclick={load}>重试</button></div>
   {:else if !snapshot}
@@ -450,7 +439,7 @@
         title={snapshot.sandbox.title || snapshot.sandbox.sandboxId}
         onBack={navigateBack}
         status={lifecycleLabel()}
-        statusTone={lifecycle() === 'running' ? 'success' : lifecycle() === 'stopped' ? 'stopped' : lifecycle() === 'destroyed' ? 'destroyed' : 'default'}
+        statusTone={lifecycle() === 'running' ? 'success' : lifecycle() === 'stopped' ? 'warning' : lifecycle() === 'destroyed' ? 'danger' : 'default'}
         actions={[{ label: '↻', ariaLabel: '刷新', title: '刷新', onclick: load, variant: 'primary' }]}
       />{/if}
     <main class="console-content">
@@ -461,7 +450,7 @@
           <div class="sandbox-actions">{#if lifecycle() === 'running'}<button onclick={stop} disabled={lifecycleBusy}>停止</button><button class="danger" onclick={remove} disabled={lifecycleBusy}>强制删除</button>
           {:else if lifecycle() === 'stopped'}<button onclick={resume} disabled={lifecycleBusy}>恢复</button><button class="danger" onclick={remove} disabled={lifecycleBusy}>删除 Sandbox</button>{/if}</div>
           {#if stats?.sampledAt}<div class="supplemental-metrics">
-            {#if stats?.sampledAt}<span>采样 <strong title={stats.sampledAt}>{sampledAtText(stats.sampledAt)}</strong></span>{/if}
+            {#if stats?.sampledAt}<span>采样 <strong title={timestampToIso(stats.sampledAt)}>{sampledAtText(timestampToIso(stats.sampledAt))}</strong></span>{/if}
           </div>{/if}
         </section>
         <div class="tabs" role="tablist" aria-label="Sandbox 详情">
@@ -490,7 +479,7 @@
                 <article id="runs" class="related-runs-row">
                   <time>关联 Run 历史</time>
                   <div><header><strong>RUN</strong><code>{runs.length} 条</code></header>
-                    {#if runsError}<div class="notice error">关联 Run 加载失败：{runsError}</div>{:else if !runs.length}<p>暂无关联 Run</p>{:else}<div class="related-run-list">{#each runs as run (run.runId)}<button aria-label={`${run.runId} ${run.agentName}`} onclick={() => store.navigateTo('run-detail', { agentName: run.agentName, runId: run.runId })}><code>{run.runId}</code><span>{run.agentName || '-'}</span><span class={runStatusClass(run.status)}>{runStatusLabel(run.status)}</span><time>{run.updatedAt || run.createdAt || '-'}</time></button>{/each}</div>{/if}
+                    {#if runsError}<div class="notice error">关联 Run 加载失败：{runsError}</div>{:else if !runs.length}<p>暂无关联 Run</p>{:else}<div class="related-run-list">{#each runs as run (run.runId)}<button aria-label={`${run.runId} ${run.agentName}`} onclick={() => store.navigateTo('run-detail', { agentName: run.agentName, runId: run.runId })}><code>{run.runId}</code><span>{run.agentName || '-'}</span><span>{runStatusLabel(run.status)}</span><time>{run.updatedAt || run.createdAt || '-'}</time></button>{/each}</div>{/if}
                   </div>
                 </article>
               {/if}
@@ -517,7 +506,7 @@
 </div>
 
 <style>
-  .root{height:100%;overflow:hidden;display:flex;flex-direction:column}.state{padding:30px;text-align:center;color:var(--text-muted)}.state.removed{padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:10px}.state.removed .state-heading{margin:0;color:var(--text-primary);font-size:var(--font-size-lg);font-weight:600}.state.removed .state-detail{margin:0;max-width:440px;color:var(--text-muted);font-size:var(--font-size-sm);line-height:1.6}.error{color:var(--accent-red)}h3{font-size:var(--font-size-md)}span,time{color:var(--text-muted);font-size:var(--font-size-xs)}button,input{border:1px solid var(--border-color);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary);padding:6px 8px}.danger{color:var(--accent-red)}.console-content{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden;padding:12px 14px}.metadata{display:flex;gap:8px 16px;flex-wrap:wrap;padding-bottom:9px}.metadata span{font-size:var(--font-size-xs)}.tabs{display:flex;flex:0 0 auto;overflow-x:auto;margin-top:10px;border-bottom:1px solid var(--border-color)}.tabs button{flex:0 0 auto;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:var(--text-muted)}.tabs button:hover{color:var(--text-primary);background:var(--bg-secondary)}.tabs button[aria-selected="true"]{border-bottom-color:var(--accent-blue);color:var(--accent-blue)}.tabs button:focus-visible{outline:2px solid var(--accent-blue);outline-offset:-2px}.tab-panel{flex:1;min-height:0;overflow:auto;padding-top:12px}.tab-panel.tool-panel{display:flex;flex-direction:column;overflow:hidden}.tab-panel.tool-panel>:global(*){min-height:0}.notice{margin-top:8px;padding:8px;background:var(--bg-secondary);font-size:var(--font-size-xs);color:var(--text-muted)}pre{max-height:220px;overflow:auto;padding:8px;background:var(--bg-secondary);white-space:pre-wrap}.quick-exec{margin-top:14px;padding-bottom:10px;border:1px solid var(--border-color);background:var(--bg-primary)}.quick-exec h3{margin:0;padding:9px 10px;border-bottom:1px solid var(--border-color);background:var(--bg-secondary)}.quick-exec label{display:grid;gap:4px;padding:10px 10px 6px}.quick-exec input{width:100%;background:var(--bg-primary)}.quick-exec>div{display:flex;justify-content:flex-end;gap:6px;padding:0 10px}.quick-exec>.agent-replying{justify-content:flex-start;align-items:center;margin:10px 10px 0;padding:9px 10px;border-left:2px solid var(--accent-yellow);background:var(--bg-secondary);color:var(--text-secondary);font-size:var(--font-size-sm)}.agent-replying span{width:6px;height:6px;border-radius:50%;background:var(--accent-yellow);animation:reply-pulse 1.1s ease-in-out infinite}.quick-exec>pre{margin:10px}@keyframes reply-pulse{50%{opacity:.25;transform:scale(.75)}}@media(max-width:760px){.console-content{padding:10px}}
+  .root{height:100%;overflow:hidden;display:flex;flex-direction:column}.state{padding:30px;text-align:center;color:var(--text-muted)}.state.removed{padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:10px}.state.removed .state-heading{margin:0;color:var(--text-primary);font-size:var(--font-size-lg);font-weight:600}.state.removed .state-detail{margin:0;max-width:440px;color:var(--text-muted);font-size:var(--font-size-sm);line-height:1.6}.error{color:var(--accent-red)}h3{font-size:var(--font-size-md)}span,time{color:var(--text-muted);font-size:var(--font-size-xs)}button,input{border:1px solid var(--border-color);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary);padding:6px 8px}.danger{color:var(--accent-red)}.console-content{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden;padding:12px 14px}.metadata{display:flex;gap:8px 16px;flex-wrap:wrap;padding-bottom:9px}.metadata span{font-size:var(--font-size-xs)}.tabs{display:flex;flex:0 0 auto;overflow-x:auto;margin-top:10px;border-bottom:1px solid var(--border-color)}.tabs button{flex:0 0 auto;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:var(--text-muted)}.tabs button:hover{color:var(--text-primary);background:var(--bg-secondary)}.tabs button[aria-selected="true"]{border-bottom-color:var(--accent-blue);color:var(--text-primary)}.tabs button:focus-visible{outline:2px solid var(--accent-blue);outline-offset:-2px}.tab-panel{flex:1;min-height:0;overflow:auto;padding-top:12px}.tab-panel.tool-panel{display:flex;flex-direction:column;overflow:hidden}.tab-panel.tool-panel>:global(*){min-height:0}.notice{margin-top:8px;padding:8px;background:var(--bg-secondary);font-size:var(--font-size-xs);color:var(--text-muted)}pre{max-height:220px;overflow:auto;padding:8px;background:var(--bg-secondary);white-space:pre-wrap}.quick-exec{margin-top:14px;padding-bottom:10px;border:1px solid var(--border-color);background:var(--bg-primary)}.quick-exec h3{margin:0;padding:9px 10px;border-bottom:1px solid var(--border-color);background:var(--bg-secondary)}.quick-exec label{display:grid;gap:4px;padding:10px 10px 6px}.quick-exec input{width:100%;background:var(--bg-primary)}.quick-exec>div{display:flex;justify-content:flex-end;gap:6px;padding:0 10px}.quick-exec>.agent-replying{justify-content:flex-start;align-items:center;margin:10px 10px 0;padding:9px 10px;border-left:2px solid var(--accent-blue);background:var(--bg-secondary);color:var(--text-secondary);font-size:var(--font-size-sm)}.agent-replying span{width:6px;height:6px;border-radius:50%;background:var(--accent-blue);animation:reply-pulse 1.1s ease-in-out infinite}.quick-exec>pre{margin:10px}@keyframes reply-pulse{50%{opacity:.25;transform:scale(.75)}}@media(max-width:760px){.console-content{padding:10px}}
   .status-actions{display:grid;grid-template-columns:minmax(0,auto) auto minmax(0,1fr);align-items:center;overflow:hidden;margin-top:0;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-secondary)}
   .primary-metrics,.supplemental-metrics{display:flex;min-width:0;align-items:center}
   .primary-metrics{overflow-x:auto}.primary-metrics>span{flex:0 0 auto;padding:7px 10px;border-right:1px solid var(--border-color);font-size:var(--font-size-xs)}
@@ -537,11 +526,6 @@
   .timeline-loading{padding:12px;text-align:center;color:var(--text-muted);font-size:var(--font-size-xs)}
   .related-run-list{display:grid;margin-top:8px;border-top:1px solid var(--border-color)}
   .related-run-list>button{display:grid;grid-template-columns:minmax(150px,1fr) 110px 70px minmax(120px,160px);gap:10px;width:100%;padding:8px 0;border:0;border-bottom:1px solid var(--border-color);border-radius:0;background:transparent;text-align:left}.related-run-list>button:last-child{border-bottom:0}.related-run-list code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.related-runs-row p{margin:8px 0;color:var(--text-muted);font-size:var(--font-size-xs)}
-  .related-run-list .status-pending,.related-run-list .status-unknown{color:var(--accent-yellow)}
-  .related-run-list .status-running,.related-run-list .status-succeeded{color:var(--accent-green)}
-  .related-run-list .status-failed{color:var(--accent-red)}
-  .related-run-list .status-canceled{color:var(--accent-orange)}
-  .related-run-list .status-skipped{color:var(--text-muted)}
   @keyframes timeline-row-in{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
   @media(max-width:760px){.status-actions{grid-template-columns:minmax(0,1fr) auto}.sandbox-actions{grid-row:3;grid-column:1/-1;border-top:1px solid var(--border-color)}.supplemental-metrics{grid-row:2;grid-column:1/-1}.sandbox-timeline>header,.sandbox-timeline>article{grid-template-columns:100px minmax(0,1fr)}.related-run-list>button{grid-template-columns:1fr 70px}.related-run-list>button time{grid-column:1/-1}}
   @media(prefers-reduced-motion:reduce){.sandbox-timeline>article,.agent-replying span{animation:none}}

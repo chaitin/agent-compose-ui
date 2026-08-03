@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { ProjectChangeAction, RunSource, RunStatus, SchedulerRunStatus, StartRunRequest } from '../gen/agentcompose/v2/agentcompose_pb';
+import { ProjectChangeAction, RunSource, RunStatus, SandboxStatus, SchedulerRunStatus, StartAgentRunRequest } from '../gen/agentcompose/v2/agentcompose_pb';
 import {
   cascadeDeleteProject,
   deleteProject,
@@ -72,7 +72,7 @@ describe('runYamlBatch', () => {
     const events = [];
     const first = deferredStream();
     const client = {
-      startRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}`, status: RunStatus.PENDING } }),
+      startAgentRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}`, status: RunStatus.PENDING } }),
       followRunLogs: ({ runId }) => runId === 'run-a'
         ? first.iterable
         : streamOf({ data: 'B', offset: 1n, runStatus: RunStatus.SUCCEEDED, isFinal: true }),
@@ -90,13 +90,13 @@ describe('runYamlBatch', () => {
     ]);
   });
 
-  test('sends a generated StartRunRequest with the complete manual run input', async () => {
+  test('sends a generated StartAgentRunRequest with the complete manual run input', async () => {
     const requests = [];
     await runYamlBatch({
       projectId: 'project-full', agents: [{ name: 'agent-full', prompt: 'prompt-full' }], isCurrent: () => true,
       ...callbacks([]),
       client: {
-        startRun: async (request) => {
+        startAgentRun: async (request) => {
           requests.push(request);
           return { started: true, run: { runId: 'run-full' } };
         },
@@ -104,7 +104,7 @@ describe('runYamlBatch', () => {
         getRun: runDetails(),
       },
     });
-    expect(requests[0]).toBeInstanceOf(StartRunRequest);
+    expect(requests[0]).toBeInstanceOf(StartAgentRunRequest);
     expect(requests[0].run).toMatchObject({
       projectId: 'project-full',
       agentName: 'agent-full',
@@ -120,7 +120,7 @@ describe('runYamlBatch', () => {
       ...callbacks([]),
       onStartFailed: (_name, error) => errors.push(error),
       client: {
-        startRun: async () => ({ started: false, warnings: ['', 'capacity exhausted', 'retry later'] }),
+        startAgentRun: async () => ({ started: false, warnings: ['', 'capacity exhausted', 'retry later'] }),
         followRunLogs: () => streamOf(),
       },
     });
@@ -136,7 +136,7 @@ describe('runYamlBatch', () => {
       ...callbacks([]),
       onStartFailed: (_name, error) => errors.push(error),
       client: {
-        startRun: async () => ({ started: true, run: {}, warnings: [] }),
+        startAgentRun: async () => ({ started: true, run: {}, warnings: [] }),
         followRunLogs: () => streamOf(),
       },
     });
@@ -148,7 +148,7 @@ describe('runYamlBatch', () => {
     await runYamlBatch({
       projectId: 'p1', agents, isCurrent: () => true, ...callbacks(events),
       client: {
-        startRun: async ({ run }) => run.agentName === 'a' ? { started: true } : { started: true, run: { runId: 'run-b' } },
+        startAgentRun: async ({ run }) => run.agentName === 'a' ? { started: true } : { started: true, run: { runId: 'run-b' } },
         followRunLogs: () => streamOf({ data: '', offset: 1n, isFinal: true, runStatus: RunStatus.SUCCEEDED }),
         getRun: runDetails(),
       },
@@ -156,12 +156,12 @@ describe('runYamlBatch', () => {
     expect(events).toEqual(['starting:a', 'failed:a', 'starting:b', 'started:b:run-b', 'chunk:b:', `finished:b:${RunStatus.SUCCEEDED}`]);
   });
 
-  test('continues to the next agent when startRun rejects', async () => {
+  test('continues to the next agent when startAgentRun rejects', async () => {
     const events = [];
     await runYamlBatch({
       projectId: 'p1', agents, isCurrent: () => true, ...callbacks(events),
       client: {
-        startRun: async ({ run }) => {
+        startAgentRun: async ({ run }) => {
           if (run.agentName === 'a') throw new Error('start unavailable');
           return { started: true, run: { runId: 'run-b' } };
         },
@@ -182,7 +182,7 @@ describe('runYamlBatch', () => {
       const pending = runYamlBatch({
         projectId: 'p1', agents, signal: controller.signal, isCurrent: () => current, ...callbacks(events),
         client: {
-          startRun: async () => ({ started: true, run: { runId: 'run-a' } }),
+          startAgentRun: async () => ({ started: true, run: { runId: 'run-a' } }),
         followRunLogs: () => first.iterable,
           getRun: runDetails(),
         },
@@ -203,7 +203,7 @@ describe('runYamlBatch', () => {
     await runYamlBatch({
       projectId: 'p1', agents: [agents[0]], startOffset: 7n, isCurrent: () => true, ...callbacks(events),
       client: {
-        startRun: async () => ({ started: true, run: { runId: 'run-a' } }),
+        startAgentRun: async () => ({ started: true, run: { runId: 'run-a' } }),
         followRunLogs: (request) => {
           requests.push(request);
           return streamOf(
@@ -228,7 +228,7 @@ describe('runYamlBatch', () => {
         onChunk: (_name, chunk) => chunks.push(chunk),
         onFinished: (_name, status) => finished.push(status),
         client: {
-          startRun: async () => ({ started: true, run: { runId: 'run-a', status: RunStatus.RUNNING } }),
+          startAgentRun: async () => ({ started: true, run: { runId: 'run-a', status: RunStatus.RUNNING } }),
           getRun: runDetails(status),
           followRunLogs: () => streamOf({ data: '', offset: 0n, runStatus: status, isFinal: true }),
         },
@@ -244,7 +244,7 @@ describe('runYamlBatch', () => {
     await runYamlBatch({
       projectId: 'p1', agents, isCurrent: () => true, ...callbacks(events),
       client: {
-        startRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}` } }),
+        startAgentRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}` } }),
         getRun: runDetails(),
         followRunLogs: () => streamOf({ data: 'last', offset: 1n, runStatus: RunStatus.SUCCEEDED, isFinal: false }),
       },
@@ -260,7 +260,7 @@ describe('runYamlBatch', () => {
     await runYamlBatch({
       projectId: 'p1', agents: [agents[0]], isCurrent: () => true, ...callbacks(events),
       client: {
-        startRun: async () => ({ started: true, run: { runId: 'run-a', status: RunStatus.PENDING } }),
+        startAgentRun: async () => ({ started: true, run: { runId: 'run-a', status: RunStatus.PENDING } }),
         getRun: async () => {
           if (getCalls++ === 0) throw new Error('not visible yet');
           return { run: { summary: { runId: 'run-a', status: RunStatus.SUCCEEDED } } };
@@ -278,7 +278,7 @@ describe('runYamlBatch', () => {
     await runYamlBatch({
       projectId: 'p1', agents, isCurrent: () => true, ...callbacks(events),
       client: {
-        startRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}`, status: RunStatus.RUNNING } }),
+        startAgentRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}`, status: RunStatus.RUNNING } }),
         getRun: async (request) => {
           if (getCalls++ % 2 === 0) return { run: { summary: { runId: request.runId, status: RunStatus.RUNNING } } };
           throw new Error('final unavailable');
@@ -298,7 +298,7 @@ describe('runYamlBatch', () => {
     await runYamlBatch({
       projectId: 'p1', agents, isCurrent: () => true, ...callbacks(events),
       client: {
-        startRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}`, status: RunStatus.RUNNING } }),
+        startAgentRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}`, status: RunStatus.RUNNING } }),
         getRun: async () => calls++ === 0
           ? { run: { summary: { runId: 'run-a', status: RunStatus.RUNNING } } }
           : Promise.reject(new Error('final unavailable')),
@@ -314,7 +314,7 @@ describe('runYamlBatch', () => {
     await runYamlBatch({
       projectId: 'p1', agents, isCurrent: () => true, ...callbacks(events),
       client: {
-        startRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}` } }),
+        startAgentRun: async ({ run }) => ({ started: true, run: { runId: `run-${run.agentName}` } }),
         followRunLogs: async function* () { throw new Error('disconnected'); },
         getRun: runDetails(),
       },
@@ -442,14 +442,14 @@ describe('saveProject', () => {
     };
     const options = {
       currentProjectId: 'current',
-      expectedSpecHash: 'hash-before-edit',
+      submittedSpecHash: 'hash-before-edit',
       projects: [{ summary: { projectId: 'current', name: 'demo', sourcePath: '/srv/demo/agent-compose.yml' } }],
     };
 
     const preview = await previewProject(validYaml, client, options);
     expect(requests).toHaveLength(1);
     expect(requests[0].dryRun).toBe(true);
-    expect(requests[0].expectedSpecHash).toBe('');
+    expect(requests[0].submittedSpecHash).toBe('');
     expect(requests[0].source.composePath).toBe('/srv/demo/agent-compose.yml');
     expect(preview.response.changes).toHaveLength(1);
     expect(preview.response.unchanged).toBe(false);
@@ -458,7 +458,7 @@ describe('saveProject', () => {
     await preview.apply();
     expect(requests).toHaveLength(2);
     expect(requests[1].dryRun).toBe(false);
-    expect(requests[1].expectedSpecHash).toBe('hash-after-edit');
+    expect(requests[1].submittedSpecHash).toBe('hash-after-edit');
     expect(requests[1].source.composePath).toBe(requests[0].source.composePath);
     expect(requests[1].spec).toBe(requests[0].spec);
   });
@@ -479,7 +479,7 @@ describe('saveProject', () => {
       applyProject: async () => response,
     }, {
       currentProjectId: 'current',
-      expectedSpecHash: 'same-hash',
+      submittedSpecHash: 'same-hash',
       projects: [{ summary: { projectId: 'current', name: 'demo', specHash: 'same-hash' } }],
     });
 
@@ -793,7 +793,7 @@ describe('deleteProject', () => {
     });
 
     expect(requests).toHaveLength(1);
-    expect(requests[0].project.projectId).toBe('project-1');
+    expect(requests[0].project.selector.value).toBe('project-1');
     expect(requests[0].stopRunningSandboxes).toBe(true);
     expect(requests[0].removeHistory).toBe(false);
   });
@@ -814,14 +814,14 @@ describe('cascadeDeleteProject', () => {
   test('removes every related sandbox before soft-deleting the project while preserving history', async () => {
     const calls = [];
     const result = await cascadeDeleteProject('project-1', {
-      listSandboxes: async ({ cursor }) => cursor === ''
+      listSandboxes: async ({ offset }) => offset === 0
         ? { sandboxes: [
             { sandboxId: 'direct', projectId: 'project-1', tags: [] },
             { sandboxId: 'other', projectId: 'project-2', tags: [] },
-          ], nextCursor: 'page-2' }
+          ], total: 3 }
         : { sandboxes: [
             { sandboxId: 'tagged', projectId: '', tags: [{ name: 'project', value: 'project-1' }] },
-          ], nextCursor: '' },
+          ], total: 3 },
       removeSandbox: async (request) => {
         calls.push(['sandbox', request.sandboxId, request.force]);
         return { sandboxId: request.sandboxId, removed: true };
@@ -845,7 +845,7 @@ describe('cascadeDeleteProject', () => {
   ])('%s aborts before project removal', async (name, sandbox) => {
     let projectCalls = 0;
     await expect(cascadeDeleteProject('project-1', {
-      listSandboxes: async () => ({ sandboxes: [sandbox], nextCursor: '' }),
+      listSandboxes: async () => ({ sandboxes: [sandbox], total: 1 }),
       removeSandbox: async ({ sandboxId }) => ({ sandboxId, removed: name !== 'removed false' }),
       removeProject: async () => { projectCalls += 1; return {}; },
     })).rejects.toThrow();
@@ -855,20 +855,10 @@ describe('cascadeDeleteProject', () => {
   test('removeSandbox failure aborts before project removal', async () => {
     let projectCalls = 0;
     await expect(cascadeDeleteProject('project-1', {
-      listSandboxes: async () => ({ sandboxes: [{ sandboxId: 's1', projectId: 'project-1' }], nextCursor: '' }),
+      listSandboxes: async () => ({ sandboxes: [{ sandboxId: 's1', projectId: 'project-1' }], total: 1 }),
       removeSandbox: async () => { throw new Error('sandbox cleanup failed'); },
       removeProject: async () => { projectCalls += 1; return {}; },
     })).rejects.toThrow('sandbox cleanup failed');
-    expect(projectCalls).toBe(0);
-  });
-
-  test('repeated list cursor aborts before project removal', async () => {
-    let projectCalls = 0;
-    await expect(cascadeDeleteProject('project-1', {
-      listSandboxes: async () => ({ sandboxes: [], nextCursor: 'same-page' }),
-      removeSandbox: async () => ({ removed: true }),
-      removeProject: async () => { projectCalls += 1; return {}; },
-    })).rejects.toThrow('ListSandboxes returned repeated cursor: same-page');
     expect(projectCalls).toBe(0);
   });
 
@@ -880,7 +870,7 @@ describe('cascadeDeleteProject', () => {
           { sandboxId: 'legacy-direct', projectId: 'sha256:project-1' },
           { sandboxId: 'legacy-tag', projectId: '', tags: [{ name: 'project', value: 'sha256:project-1' }] },
         ],
-        nextCursor: '',
+        total: 2,
       }),
       removeSandbox: async (request) => {
         removed.push(request.sandboxId);
@@ -998,7 +988,7 @@ describe('softPauseProject', () => {
     };
   }
 
-  test('exhausts cursor pages and mutates only matching enabled schedulers and running sandboxes', async () => {
+  test('exhausts offset pages and mutates only matching enabled schedulers and running sandboxes', async () => {
     const schedulerRequests = [];
     const sandboxRequests = [];
     const disabled = [];
@@ -1006,21 +996,22 @@ describe('softPauseProject', () => {
     let initialSandboxInventory = true;
     const api = client({
       listSchedulers: async (request) => {
-        schedulerRequests.push({ limit: request.limit, cursor: request.cursor });
-        return request.cursor === '' ? {
+        schedulerRequests.push({ limit: request.limit, offset: request.offset });
+        return request.offset === 0 ? {
           schedulers: [
             { projectId: 'project-1', agentName: 'enabled', enabled: true },
             { projectId: 'project-1', agentName: 'disabled', enabled: false },
             { projectId: 'project-10', agentName: 'unrelated', enabled: true },
           ],
-          nextCursor: 'scheduler-page-2',
+          total: 4,
         } : {
           schedulers: [{ projectId: 'project-1', agentName: 'page-two', enabled: true }],
+          total: 4,
         };
       },
       setSchedulerEnabled: async (request) => {
         disabled.push({
-          projectId: request.project?.projectId,
+          projectId: request.project?.selector?.value,
           agentName: request.agentName,
           enabled: request.enabled,
         });
@@ -1028,17 +1019,18 @@ describe('softPauseProject', () => {
       },
       getScheduler: async ({ agentName }) => ({ scheduler: { enabled: agentName !== 'disabled' } }),
       listSandboxes: async (request) => {
-        sandboxRequests.push({ limit: request.limit, cursor: request.cursor });
-        if (!initialSandboxInventory) return { sandboxes: [] };
-        return request.cursor === '' ? {
+        sandboxRequests.push({ limit: request.limit, offset: request.offset });
+        if (!initialSandboxInventory) return { sandboxes: [], total: 0 };
+        return request.offset === 0 ? {
           sandboxes: [
-            { sandboxId: 'running', projectId: 'project-1', status: ' running ' },
-            { sandboxId: 'stopped', projectId: 'project-1', status: 'STOPPED' },
-            { sandboxId: 'unrelated', projectId: 'project-10', status: 'RUNNING' },
+            { sandboxId: 'running', projectId: 'project-1', status: SandboxStatus.RUNNING },
+            { sandboxId: 'stopped', projectId: 'project-1', status: SandboxStatus.STOPPED },
+            { sandboxId: 'unrelated', projectId: 'project-10', status: SandboxStatus.RUNNING },
           ],
-          nextCursor: 'sandbox-page-2',
+          total: 4,
         } : {
-          sandboxes: [{ sandboxId: 'page-two', projectId: 'project-1', status: 'RUNNING' }],
+          sandboxes: [{ sandboxId: 'page-two', projectId: 'project-1', status: SandboxStatus.RUNNING }],
+          total: 4,
         };
       },
       stopSandbox: async (request) => {
@@ -1050,15 +1042,15 @@ describe('softPauseProject', () => {
     const result = await softPauseProject({ projectId: 'project-1', client: api });
 
     expect(schedulerRequests.slice(0, 2)).toEqual([
-      { limit: 500, cursor: '' },
-      { limit: 500, cursor: 'scheduler-page-2' },
+      { limit: 500, offset: 0 },
+      { limit: 500, offset: 3 },
     ]);
     expect(schedulerRequests).toHaveLength(2);
     expect(sandboxRequests).toEqual([
-      { limit: 500, cursor: '' },
-      { limit: 500, cursor: 'sandbox-page-2' },
-      { limit: 500, cursor: '' },
-      { limit: 500, cursor: '' },
+      { limit: 500, offset: 0 },
+      { limit: 500, offset: 3 },
+      { limit: 500, offset: 0 },
+      { limit: 500, offset: 0 },
     ]);
     expect(disabled).toEqual([
       { projectId: 'project-1', agentName: 'enabled', enabled: false },
@@ -1078,12 +1070,15 @@ describe('softPauseProject', () => {
     const stoppedSandboxes = [];
     let sandboxRunning = true;
     const api = client({
-      listSandboxes: async () => ({ sandboxes: sandboxRunning ? [
-        // webhook/scheduler triggered loader runs expose an empty projectId;
-        // the project id only appears in the `project` tag.
-        { sandboxId: 'tag-only', projectId: '', status: 'RUNNING', tags: [{ name: 'project', value: 'project-1' }] },
-        { sandboxId: 'unrelated', projectId: '', status: 'RUNNING', tags: [{ name: 'project', value: 'project-9' }] },
-      ] : [] }),
+      listSandboxes: async () => sandboxRunning ? {
+        sandboxes: [
+          // webhook/scheduler triggered loader runs expose an empty projectId;
+          // the project id only appears in the `project` tag.
+          { sandboxId: 'tag-only', projectId: '', status: SandboxStatus.RUNNING, tags: [{ name: 'project', value: 'project-1' }] },
+          { sandboxId: 'unrelated', projectId: '', status: SandboxStatus.RUNNING, tags: [{ name: 'project', value: 'project-9' }] },
+        ],
+        total: 2,
+      } : { sandboxes: [], total: 0 },
       stopSandbox: async ({ sandboxId }) => { stoppedSandboxes.push(sandboxId); sandboxRunning = false; },
     });
 
@@ -1100,7 +1095,7 @@ describe('softPauseProject', () => {
       listSchedulers: async () => ({ schedulers: [
         { projectId: 'project-1', agentName: 'bad', enabled: true },
         { projectId: 'project-1', agentName: 'good', enabled: true },
-      ] }),
+      ], total: 2 }),
       setSchedulerEnabled: async ({ agentName }) => {
         if (agentName === 'bad') throw new Error('scheduler mutation failed');
         return { scheduler: { enabled: false }, overridden: true };
@@ -1114,9 +1109,9 @@ describe('softPauseProject', () => {
         if (runId === 'bad-run') throw new Error('run mutation failed');
       },
       listSandboxes: async () => ({ sandboxes: [
-        { sandboxId: 'bad-box', projectId: 'project-1', status: 'RUNNING' },
-        { sandboxId: 'good-box', projectId: 'project-1', status: 'RUNNING' },
-      ] }),
+        { sandboxId: 'bad-box', projectId: 'project-1', status: SandboxStatus.RUNNING },
+        { sandboxId: 'good-box', projectId: 'project-1', status: SandboxStatus.RUNNING },
+      ], total: 2 }),
       stopSandbox: async ({ sandboxId }) => {
         stoppedSandboxes.push(sandboxId);
         if (sandboxId === 'bad-box') throw new Error('sandbox mutation failed');
@@ -1140,38 +1135,36 @@ describe('softPauseProject', () => {
     expect(result.failed).toBe(3);
   });
 
-  test('reports repeated cursors as list failures and continues through all later stages', async () => {
+  test('reports list failures and continues through all later stages', async () => {
     const events = [];
     const api = client({
-      listSchedulers: async ({ cursor }) => {
-        events.push(`schedulers:${cursor}`);
-        return { schedulers: [], nextCursor: 'same-cursor' };
+      listSchedulers: async ({ offset }) => {
+        events.push(`schedulers:${offset}`);
+        return { schedulers: [], total: 0 };
       },
       listRuns: async ({ status }) => {
         events.push(`runs:${status}`);
         throw new Error('run listing failed');
       },
-      listSandboxes: async ({ cursor }) => {
-        events.push(`sandboxes:${cursor}`);
-        return { sandboxes: [], nextCursor: 'sandbox-repeat' };
+      listSandboxes: async ({ offset }) => {
+        events.push(`sandboxes:${offset}`);
+        return { sandboxes: [], total: 0 };
       },
     });
 
     const result = await softPauseProject({ projectId: 'project-1', client: api });
 
     expect(events).toEqual([
-      'schedulers:', 'schedulers:same-cursor',
+      'schedulers:0',
       `runs:${RunStatus.PENDING}`,
-      'sandboxes:', 'sandboxes:sandbox-repeat',
+      'sandboxes:0',
     ]);
-    expect(result.schedulers).toMatchObject({ attempted: 0, failed: 1 });
-    expect(result.schedulers.errors[0]).toContain('same-cursor');
+    expect(result.schedulers).toMatchObject({ attempted: 0, failed: 0 });
     expect(result.schedulerRuns).toMatchObject({ attempted: 0, failed: 0 });
     expect(result.runs).toMatchObject({ attempted: 0, failed: 1 });
     expect(result.runs.errors[0]).toContain('run listing failed');
-    expect(result.sandboxes).toMatchObject({ attempted: 0, failed: 1 });
-    expect(result.sandboxes.errors[0]).toContain('sandbox-repeat');
-    expect(result.failed).toBe(3);
+    expect(result.sandboxes).toMatchObject({ attempted: 0, failed: 0 });
+    expect(result.failed).toBe(1);
   });
 
   test('reports a Scheduler failure when the backend does not confirm it disabled', async () => {
@@ -1180,7 +1173,7 @@ describe('softPauseProject', () => {
       client: client({
         listSchedulers: async () => ({ schedulers: [
           { projectId: 'project-1', agentName: 'worker', enabled: true },
-        ] }),
+        ], total: 1 }),
         getScheduler: async () => ({ scheduler: { enabled: true } }),
         listSchedulerRuns: async () => ({ runs: [] }),
         setSchedulerEnabled: async () => ({ scheduler: { enabled: true }, overridden: false }),
@@ -1199,7 +1192,7 @@ describe('softPauseProject', () => {
       client: client({
         listSchedulers: async () => ({ schedulers: [
           { projectId: 'project-1', agentName: 'collector', enabled: false },
-        ] }),
+        ], total: 1 }),
         getScheduler: async () => ({ scheduler: { enabled: true } }),
         setSchedulerEnabled: async ({ agentName, enabled }) => {
           disabled.push({ agentName, enabled });
@@ -1244,30 +1237,30 @@ describe('softPauseProject', () => {
       client: client({
         listSchedulers: async () => ({ schedulers: [
           { projectId: 'project-1', agentName: 'collector' },
-        ] }),
-        listSchedulerRuns: async ({ project, agentName, cursor }) => {
-          requests.push({ projectId: project?.projectId, agentName, cursor });
-          if (cursor === 'page-2') {
-            return { runs: firstRunActive ? [{ runId: 'first', status: SchedulerRunStatus.RUNNING }] : [] };
+        ], total: 1 }),
+        listSchedulerRuns: async ({ project, agentName, offset }) => {
+          requests.push({ projectId: project?.selector?.value, agentName, offset });
+          if (offset === 1) {
+            return { runs: firstRunActive ? [{ runId: 'first', status: SchedulerRunStatus.RUNNING }] : [], total: 2 };
           }
           rootScans++;
           if (rootScans === 1) return {
             runs: [{ runId: 'finished', status: SchedulerRunStatus.SUCCEEDED }],
-            nextCursor: 'page-2',
+            total: 2,
           };
-          if (rootScans === 2) return { runs: [{ runId: 'late', status: SchedulerRunStatus.RUNNING }] };
-          return { runs: [] };
+          if (rootScans === 2) return { runs: [{ runId: 'late', status: SchedulerRunStatus.RUNNING }], total: 1 };
+          return { runs: [], total: 0 };
         },
         stopSchedulerRun: async ({ project, runId, reason }) => {
-          stopped.push({ projectId: project?.projectId, runId, reason });
+          stopped.push({ projectId: project?.selector?.value, runId, reason });
           if (runId === 'first') firstRunActive = false;
         },
       }),
     });
 
     expect(requests.slice(0, 2)).toEqual([
-      { projectId: 'project-1', agentName: '', cursor: '' },
-      { projectId: 'project-1', agentName: '', cursor: 'page-2' },
+      { projectId: 'project-1', agentName: '', offset: 0 },
+      { projectId: 'project-1', agentName: '', offset: 1 },
     ]);
     expect(stopped).toEqual([
       { projectId: 'project-1', runId: 'first', reason: 'project paused from web console' },
@@ -1276,20 +1269,6 @@ describe('softPauseProject', () => {
     expect(result.schedulerRuns).toEqual({ attempted: 2, succeeded: 2, failed: 0, errors: [] });
     expect(rootScans).toBeGreaterThanOrEqual(4);
     expect(result.failed).toBe(0);
-  });
-
-  test('reports a repeated Scheduler Run cursor as a stage failure', async () => {
-    const result = await softPauseProject({
-      projectId: 'project-1',
-      client: client({
-        listSchedulers: async () => ({ schedulers: [{ projectId: 'project-1', agentName: 'collector' }] }),
-        listSchedulerRuns: async () => ({ runs: [], nextCursor: 'repeat' }),
-      }),
-    });
-
-    expect(result.schedulerRuns.failed).toBe(1);
-    expect(result.schedulerRuns.errors[0]).toContain('repeat');
-    expect(result.failed).toBe(1);
   });
 
   test('reports failure instead of success when project activity never converges', async () => {
@@ -1317,9 +1296,9 @@ describe('probeProjectRuntimeActivity', () => {
     const result = await probeProjectRuntimeActivity({
       projectId: 'project-1',
       client: {
-        listSchedulers: async () => ({ schedulers: [{ projectId: 'project-1', agentName: 'worker' }] }),
+        listSchedulers: async () => ({ schedulers: [{ projectId: 'project-1', agentName: 'worker' }], total: 1 }),
         getScheduler: async () => ({ scheduler: { enabled: false } }),
-        listSchedulerRuns: async () => ({ runs: [{ runId: 'active', status: SchedulerRunStatus.RUNNING }] }),
+        listSchedulerRuns: async () => ({ runs: [{ runId: 'active', status: SchedulerRunStatus.RUNNING }], total: 1 }),
         listRuns: async () => ({ runs: [] }),
         listSandboxes: async () => ({ sandboxes: [] }),
       },
@@ -1331,9 +1310,9 @@ describe('probeProjectRuntimeActivity', () => {
     const scheduler = await probeProjectRuntimeActivity({
       projectId: 'project-1',
       client: {
-        listSchedulers: async ({ cursor }) => cursor
-          ? { schedulers: [{ projectId: 'project-1', agentName: 'worker', enabled: true }] }
-          : { schedulers: [{ projectId: 'other', enabled: true }], nextCursor: 'next' },
+        listSchedulers: async ({ offset }) => offset
+          ? { schedulers: [{ projectId: 'project-1', agentName: 'worker', enabled: true }], total: 2 }
+          : { schedulers: [{ projectId: 'other', enabled: true }], total: 2 },
         getScheduler: async () => ({ scheduler: { enabled: true } }),
         listSchedulerRuns: async () => ({ runs: [] }),
         listRuns: async () => ({ runs: [] }),
@@ -1360,9 +1339,9 @@ describe('probeProjectRuntimeActivity', () => {
         listSchedulerRuns: async () => ({ runs: [] }),
         listRuns: async () => ({ runs: [] }),
         listSandboxes: async () => ({ sandboxes: [
-          { projectId: 'other', status: 'RUNNING' },
-          { projectId: 'project-1', status: ' running ' },
-        ] }),
+          { projectId: 'other', status: SandboxStatus.RUNNING },
+          { projectId: 'project-1', status: SandboxStatus.RUNNING },
+        ], total: 2 }),
       },
     });
     expect(sandbox).toEqual({ scheduler: false, schedulerRun: false, run: false, sandbox: true, active: true });
@@ -1372,11 +1351,11 @@ describe('probeProjectRuntimeActivity', () => {
     const result = await probeProjectRuntimeActivity({
       projectId: 'project-1',
       client: {
-        listSchedulers: async () => ({ schedulers: [{ projectId: 'project-1', enabled: false }] }),
+        listSchedulers: async () => ({ schedulers: [{ projectId: 'project-1', enabled: false }], total: 1 }),
         getScheduler: async () => ({ scheduler: { enabled: false }, overridden: true }),
         listSchedulerRuns: async () => ({ runs: [] }),
         listRuns: async () => ({ runs: [] }),
-        listSandboxes: async () => ({ sandboxes: [{ projectId: 'project-1', status: 'STOPPED' }] }),
+        listSandboxes: async () => ({ sandboxes: [{ projectId: 'project-1', status: SandboxStatus.STOPPED }], total: 1 }),
       },
     });
     expect(result).toEqual({ scheduler: false, schedulerRun: false, run: false, sandbox: false, active: false });
@@ -1386,7 +1365,7 @@ describe('probeProjectRuntimeActivity', () => {
     const result = await probeProjectRuntimeActivity({
       projectId: 'project-1',
       client: {
-        listSchedulers: async () => ({ schedulers: [{ projectId: 'project-1', agentName: 'worker', enabled: true }] }),
+        listSchedulers: async () => ({ schedulers: [{ projectId: 'project-1', agentName: 'worker', enabled: true }], total: 1 }),
         getScheduler: async () => ({ scheduler: { enabled: false }, overridden: true }),
         listSchedulerRuns: async () => ({ runs: [] }),
         listRuns: async () => ({ runs: [] }),

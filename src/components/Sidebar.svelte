@@ -9,6 +9,7 @@
     ProjectRef,
     type ProjectSummary,
   } from '../gen/agentcompose/v2/agentcompose_pb';
+  import { timestampToIso } from '../lib/proto-helpers';
   import { onMount } from 'svelte';
   import type { ProjectEntry } from '../lib/types';
   import { deduplicateProjectEntries } from '../lib/projects';
@@ -94,16 +95,16 @@
           schedulerCount: p.schedulerCount,
           runningRunCount: p.runningRunCount,
           latestRunId: p.latestRunId,
-          createdAt: p.createdAt,
-          updatedAt: p.updatedAt,
+          createdAt: timestampToIso(p.createdAt),
+          updatedAt: timestampToIso(p.updatedAt),
         },
         source: { composePath: p.sourcePath || '', projectDir: '' },
         yamlContent: '',
         dirty: false,
       })) as ProjectEntry[]);
       visibleProjects = reset ? entries : deduplicateProjectEntries([...visibleProjects, ...entries]);
-      projectOffset = resp.nextOffset || visibleProjects.length;
-      hasMore = resp.hasMore;
+      projectOffset = reset ? resp.projects.length : projectOffset + resp.projects.length;
+      hasMore = projectOffset < resp.total;
       store.projects = deduplicateProjectEntries([...store.projects, ...entries]);
       void loadProjectStatuses(entries, generation, reset);
       return entries;
@@ -153,7 +154,7 @@
     // Fall back to loading from backend (expanded values; do not cache).
     try {
       const req = new GetProjectRequest({
-        project: new ProjectRef({ projectId: id }),
+        project: new ProjectRef({ selector: { case: 'projectId', value: id } }),
         includeSpec: true,
       });
       const resp: any = await projectService.getProject(req);
@@ -457,10 +458,10 @@
     width: 24px;
     height: 24px;
     flex: 0 0 24px;
-    border: 1px solid color-mix(in srgb, var(--accent-green) 42%, var(--border-color));
+    border: 1px solid color-mix(in srgb, var(--accent-blue) 42%, var(--border-color));
     border-radius: 4px;
     background: var(--bg-primary);
-    color: var(--accent-green);
+    color: var(--accent-blue);
     font: 700 11px/1 var(--font-mono);
     letter-spacing: -0.8px;
   }
@@ -491,7 +492,7 @@
     background: var(--bg-secondary);
     color: var(--text-secondary);
     font: 15px/1 var(--font-mono);
-    box-shadow: 2px 0 5px rgba(0, 0, 0, .28);
+    box-shadow: 2px 0 5px color-mix(in srgb, var(--bg-primary) 28%, transparent);
   }
   .rail-app-button { width: 36px; height: 36px; margin: 7px auto 0; }
   .rail-expand-button {
@@ -508,15 +509,15 @@
     border-radius: 5px;
     background: var(--bg-secondary);
     color: var(--text-secondary);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, .24);
+    box-shadow: 0 2px 6px color-mix(in srgb, var(--bg-primary) 24%, transparent);
     font: 20px/1 var(--font-mono);
     transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
   }
-  .rail-expand-button:hover { color: var(--accent-green); border-color: var(--accent-green); background: var(--bg-tertiary); }
+  .rail-expand-button:hover { color: var(--accent-blue); border-color: var(--accent-blue); background: var(--bg-tertiary); }
   .collapse-button:hover,
   .brand-expand:hover,
-  .rail-app-button:hover { color: var(--accent-green); background: var(--bg-tertiary); }
-  .brand-expand:hover .expand-handle { border-color: var(--accent-green); color: var(--accent-green); }
+  .rail-app-button:hover { color: var(--accent-blue); background: var(--bg-tertiary); }
+  .brand-expand:hover .expand-handle { border-color: var(--accent-blue); color: var(--accent-blue); }
   .sidebar.collapsed .expand-handle { display: none; }
   .sidebar.collapsed .brand { min-height: 46px; padding: 0 3px; justify-content: center; }
   .smart-agent-icon {
@@ -630,7 +631,7 @@
     inset: 5px auto 5px 0;
     width: 2px;
     border-radius: 2px;
-    background: var(--accent-green);
+    background: var(--accent-blue);
   }
   .project-row .nav-item { min-width: 0; }
   .project-row .nav-item:hover { background: transparent; }
@@ -673,7 +674,7 @@
     display: block;
   }
   .project-delete:hover:not(:disabled) {
-    background: rgba(248, 81, 73, 0.15);
+    background: color-mix(in srgb, var(--accent-red) 15%, transparent);
     color: var(--accent-red);
   }
   .project-delete:disabled { cursor: wait; opacity: 0.6; }
@@ -713,8 +714,8 @@
   }
   .badge {
     margin-left: auto;
-    background: var(--accent-green);
-    color: #000;
+    background: var(--accent-blue-emphasis);
+    color: var(--text-on-accent);
     font-size: var(--font-size-xs);
     font-weight: 600;
     padding: 1px 5px;

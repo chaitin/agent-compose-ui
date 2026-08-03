@@ -42,8 +42,9 @@ test('explains that a missing physical volume must be created by applying the pr
   vi.mocked(volumeFileApi.list).mockRejectedValue(new VolumeFileApiError(404, 'not_found', 'volume not found'));
   render(VolumeFileBrowser, { projectKey: KEY_A, volume: 'managed' });
   const alert = await screen.findByRole('alert');
-  expect(alert).toHaveTextContent('卷尚未创建');
-  expect(alert).toHaveTextContent('请先应用项目');
+  expect(alert).toHaveTextContent('实体卷尚未创建');
+  expect(alert).toHaveTextContent('请点击上方“应用 YAML”');
+  expect(alert).toHaveTextContent('成功后会自动加载');
   expect(screen.queryByText('目录为空')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: '新建文件夹' })).toBeDisabled();
   expect(screen.getByRole('button', { name: '上传文件' })).toBeDisabled();

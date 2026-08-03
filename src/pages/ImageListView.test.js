@@ -13,8 +13,7 @@ test('lists daemon images with server-side filters and pagination', () => {
   assert.match(source, /includeCacheStatus: true/);
   assert.match(source, /offset: requestOffset/);
   assert.match(source, /limit: PAGE_SIZE/);
-  assert.match(source, /resp\.hasMore/);
-  assert.match(source, /resp\.nextOffset/);
+  assert.match(source, /resp\.total/);
 });
 
 test('guards list state against stale responses and reports store availability', () => {

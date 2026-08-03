@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { ExecCommand, ExecRequest, ExecStreamEventType, StdioStream } from '../../gen/agentcompose/v2/agentcompose_pb';
+  import { ExecCommand, ExecRequest, StreamExecEventType, StdioStream } from '../../gen/agentcompose/v2/agentcompose_pb';
   import { execService } from '../../lib/rpc';
   import { BASE64_PREVIEW_BYTES, DIRECTORY_LIST_BYTES, FILE_PREVIEW_BEGIN, FILE_PREVIEW_BYTES, FILE_PREVIEW_END, MAX_DIRECTORY_ENTRIES, MAX_WRITABLE_FILE_BYTES, createLimitedOutput, decodeBase64Preview, extractFramedPreview, formatExecError, isAbortError, mergeLimitedOutput, parseDirectoryListing, resolveWorkspaceFileTarget, writableFileBytes, writeBoundedFile, type FileBrowserEntry } from './file-browser';
   let { sandboxId, initialFilePath = '' }: { sandboxId: string; initialFilePath?: string } = $props();
@@ -12,8 +12,8 @@
   function request(command: string, args: string[], maxOutputBytes: number, cwd = '') { return new ExecRequest({ target: { case: 'sandboxId', value: sandboxId }, command: new ExecCommand({ command, args }), cwd, maxOutputBytes, timeoutMs: 30_000 }); }
   async function stream(command: string, args: string[], cap: number, cwd = '') {
     active?.abort(); active = new AbortController(); let stdout = createLimitedOutput(); let stderr = createLimitedOutput(); let resultError = '';
-    for await (const event of execService.execStream(request(command, args, cap, cwd), { signal: active.signal })) {
-      if (event.eventType === ExecStreamEventType.OUTPUT) { if (event.stream === StdioStream.STDERR) stderr = mergeLimitedOutput(stderr, event.chunk, cap); else stdout = mergeLimitedOutput(stdout, event.chunk, cap); }
+    for await (const event of execService.streamExec(request(command, args, cap, cwd), { signal: active.signal })) {
+      if (event.eventType === StreamExecEventType.OUTPUT) { if (event.stream === StdioStream.STDERR) stderr = mergeLimitedOutput(stderr, event.chunk, cap); else stdout = mergeLimitedOutput(stdout, event.chunk, cap); }
       if (event.result) resultError = event.result.error || '';
     }
     if (resultError || stderr.value) throw new Error(formatExecError(stderr.value, resultError));
