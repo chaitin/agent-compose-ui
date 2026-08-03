@@ -105,6 +105,8 @@ func connectResource(path string, body []byte) (string, string) {
 		if spec := protoBytes(body, 1); len(spec) > 0 {
 			return "project", protoString(spec, 1)
 		}
+	case name == "PatchProject":
+		return projectRefResource(protoBytes(body, 1))
 	case name == "RemoveProject":
 		return projectRefResource(protoBytes(body, 1))
 	}

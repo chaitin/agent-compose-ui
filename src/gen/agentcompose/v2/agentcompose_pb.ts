@@ -1254,6 +1254,74 @@ export class ApplyProjectResponse extends Message<ApplyProjectResponse> {
 }
 
 /**
+ * @generated from message agentcompose.v2.PatchProjectRequest
+ */
+export class PatchProjectRequest extends Message<PatchProjectRequest> {
+  /**
+   * Required. Selects an existing project. PatchProject does not create or
+   * rename projects.
+   *
+   * @generated from field: agentcompose.v2.ProjectRef project = 1;
+   */
+  project?: ProjectRef;
+
+  /**
+   * Required optimistic-concurrency precondition. A mismatch with the current
+   * persisted spec hash fails with ABORTED, including for dry runs.
+   *
+   * @generated from field: string expected_current_spec_hash = 2;
+   */
+  expectedCurrentSpecHash = "";
+
+  /**
+   * Required complete desired project specification. A redacted secret marker
+   * returned by GetProject preserves the secret only at the same stable
+   * location in the current revision. Other fields and collections retain the
+   * complete-replacement semantics documented by ApplyProject.
+   *
+   * @generated from field: agentcompose.v2.ProjectSpec spec = 3;
+   */
+  spec?: ProjectSpec;
+
+  /**
+   * False applies the update; true validates and plans it without side effects.
+   *
+   * @generated from field: bool dry_run = 4;
+   */
+  dryRun = false;
+
+  constructor(data?: PartialMessage<PatchProjectRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.PatchProjectRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "message", T: ProjectRef },
+    { no: 2, name: "expected_current_spec_hash", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "spec", kind: "message", T: ProjectSpec },
+    { no: 4, name: "dry_run", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): PatchProjectRequest {
+    return new PatchProjectRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): PatchProjectRequest {
+    return new PatchProjectRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): PatchProjectRequest {
+    return new PatchProjectRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: PatchProjectRequest | PlainMessage<PatchProjectRequest> | undefined, b: PatchProjectRequest | PlainMessage<PatchProjectRequest> | undefined): boolean {
+    return proto3.util.equals(PatchProjectRequest, a, b);
+  }
+}
+
+/**
  * @generated from message agentcompose.v2.GetProjectRequest
  */
 export class GetProjectRequest extends Message<GetProjectRequest> {

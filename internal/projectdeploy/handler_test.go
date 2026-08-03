@@ -13,15 +13,15 @@ import (
 )
 
 func TestPreviewAndApplyPreserveProjectAndAgentFields(t *testing.T) {
-	var applyBodies []map[string]any
+	var patchBodies []map[string]any
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		switch r.URL.Path {
 		case "/agentcompose.v2.ProjectService/GetProject":
 			writeJSON(w, http.StatusOK, projectFixture(false))
-		case "/agentcompose.v2.ProjectService/ApplyProject":
-			applyBodies = append(applyBodies, body)
+		case "/agentcompose.v2.ProjectService/PatchProject":
+			patchBodies = append(patchBodies, body)
 			writeJSON(w, http.StatusOK, map[string]any{
 				"project":  map[string]any{"summary": map[string]any{"projectId": "project-1", "name": "demo"}},
 				"revision": map[string]any{"projectId": "project-1", "revision": "8", "specHash": "sha256:candidate"},
@@ -52,26 +52,77 @@ func TestPreviewAndApplyPreserveProjectAndAgentFields(t *testing.T) {
 	if !previewBody.Deployable || previewBody.PreviewID == "" {
 		t.Fatalf("preview = %#v", previewBody)
 	}
-	if len(applyBodies) != 1 || !boolValue(applyBodies[0]["dryRun"]) {
-		t.Fatalf("dry run bodies = %#v", applyBodies)
+	if len(patchBodies) != 1 || !boolValue(patchBodies[0]["dryRun"]) {
+		t.Fatalf("dry run bodies = %#v", patchBodies)
 	}
-	assertCandidatePreserved(t, objectValue(applyBodies[0]["spec"]))
-	if stringValue(objectValue(applyBodies[0]["source"])["composePath"]) != "/srv/demo/compose.yaml" {
-		t.Fatalf("source = %#v", applyBodies[0]["source"])
+	assertCandidatePreserved(t, objectValue(patchBodies[0]["spec"]))
+	if stringValue(objectValue(patchBodies[0]["project"])["projectId"]) != "project-1" ||
+		stringValue(patchBodies[0]["expectedCurrentSpecHash"]) != "sha256:base" ||
+		patchBodies[0]["source"] != nil || patchBodies[0]["expectedSpecHash"] != nil {
+		t.Fatalf("patch request = %#v", patchBodies[0])
 	}
 
 	applied := performJSON(t, handler, http.MethodPost, "/api/ui/v1/project-deployment-previews/"+previewBody.PreviewID+"/apply", nil, "local:admin")
 	if applied.Code != http.StatusOK {
 		t.Fatalf("apply = %d: %s", applied.Code, applied.Body.String())
 	}
-	if len(applyBodies) != 2 || boolValue(applyBodies[1]["dryRun"]) || stringValue(applyBodies[1]["expectedSpecHash"]) != "sha256:candidate" {
-		t.Fatalf("apply bodies = %#v", applyBodies)
+	if len(patchBodies) != 2 || boolValue(patchBodies[1]["dryRun"]) ||
+		stringValue(patchBodies[1]["expectedCurrentSpecHash"]) != "sha256:base" {
+		t.Fatalf("patch bodies = %#v", patchBodies)
 	}
-	assertCandidatePreserved(t, objectValue(applyBodies[1]["spec"]))
+	assertCandidatePreserved(t, objectValue(patchBodies[1]["spec"]))
 
 	reused := performJSON(t, handler, http.MethodPost, "/api/ui/v1/project-deployment-previews/"+previewBody.PreviewID+"/apply", nil, "local:admin")
 	if reused.Code != http.StatusGone {
 		t.Fatalf("reused preview = %d: %s", reused.Code, reused.Body.String())
+	}
+}
+
+func TestCreatePreviewAndApplyContinueToUseApplyProject(t *testing.T) {
+	var applyBodies []map[string]any
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		switch r.URL.Path {
+		case "/agentcompose.v2.ProjectService/ListProjects":
+			writeJSON(w, http.StatusOK, map[string]any{"projects": []any{}, "total": 0})
+		case "/agentcompose.v2.ProjectService/ApplyProject":
+			applyBodies = append(applyBodies, body)
+			writeJSON(w, http.StatusOK, map[string]any{
+				"project":  map[string]any{"summary": map[string]any{"projectId": "created-project", "name": "created"}},
+				"revision": map[string]any{"projectId": "created-project", "revision": "1", "specHash": "sha256:created"},
+				"changes":  []any{map[string]any{"action": "PROJECT_CHANGE_ACTION_CREATED", "resourceType": "project"}},
+				"issues":   []any{}, "applied": !boolValue(body["dryRun"]),
+			})
+		default:
+			t.Fatalf("unexpected backend path %s", r.URL.Path)
+		}
+	}))
+	defer backend.Close()
+
+	handler := New(mustURL(t, backend.URL))
+	previewResponse := performJSON(t, handler, http.MethodPost, "/api/ui/v1/project-deployment-previews", map[string]any{
+		"kind": "create_project_with_agent", "projectName": "created", "agentName": "worker",
+		"agent": map[string]any{"provider": "codex", "model": "test", "enabled": true},
+	}, "local:admin")
+	if previewResponse.Code != http.StatusCreated {
+		t.Fatalf("preview = %d: %s", previewResponse.Code, previewResponse.Body.String())
+	}
+	var preview PreviewResponse
+	if err := json.Unmarshal(previewResponse.Body.Bytes(), &preview); err != nil {
+		t.Fatal(err)
+	}
+	if !preview.Deployable || len(applyBodies) != 1 || !boolValue(applyBodies[0]["dryRun"]) {
+		t.Fatalf("preview/apply bodies = %#v / %#v", preview, applyBodies)
+	}
+
+	response := performJSON(t, handler, http.MethodPost, "/api/ui/v1/project-deployment-previews/"+preview.PreviewID+"/apply", nil, "local:admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("apply = %d: %s", response.Code, response.Body.String())
+	}
+	if len(applyBodies) != 2 || boolValue(applyBodies[1]["dryRun"]) ||
+		stringValue(applyBodies[1]["expectedSpecHash"]) != "sha256:created" || applyBodies[1]["project"] != nil {
+		t.Fatalf("apply bodies = %#v", applyBodies)
 	}
 }
 
@@ -190,14 +241,20 @@ func TestPreviewRejectsInvalidStoppedRuntimePolicy(t *testing.T) {
 	}
 }
 
-func TestPreviewBlocksRedactedProjects(t *testing.T) {
-	applyCalls := 0
+func TestPreviewPreservesRedactedProjectSecrets(t *testing.T) {
+	var patchBody map[string]any
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		switch r.URL.Path {
 		case "/agentcompose.v2.ProjectService/GetProject":
 			writeJSON(w, http.StatusOK, projectFixture(true))
-		case "/agentcompose.v2.ProjectService/ApplyProject":
-			applyCalls++
+		case "/agentcompose.v2.ProjectService/PatchProject":
+			patchBody = body
+			writeJSON(w, http.StatusOK, map[string]any{
+				"revision": map[string]any{"projectId": "project-1", "specHash": "sha256:redacted-candidate"},
+				"changes":  []any{}, "issues": []any{}, "applied": false,
+			})
 		default:
 			t.Fatalf("unexpected backend path %s", r.URL.Path)
 		}
@@ -208,11 +265,23 @@ func TestPreviewBlocksRedactedProjects(t *testing.T) {
 	response := performJSON(t, handler, http.MethodPost, "/api/ui/v1/project-deployment-previews", map[string]any{
 		"kind": "delete_agent", "projectId": "project-1", "agentName": "worker",
 	}, "local:admin")
-	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "脱敏凭据") {
+	if response.Code != http.StatusCreated {
 		t.Fatalf("response = %d: %s", response.Code, response.Body.String())
 	}
-	if applyCalls != 0 {
-		t.Fatalf("apply calls = %d", applyCalls)
+	variables := arrayValue(objectValue(patchBody["spec"])["variables"])
+	if len(variables) != 1 || stringValue(objectValue(variables[0])["value"]) != redactedSecret {
+		t.Fatalf("patch body = %#v", patchBody)
+	}
+	if stringValue(objectValue(patchBody["project"])["projectId"]) != "project-1" ||
+		stringValue(patchBody["expectedCurrentSpecHash"]) != "sha256:base" {
+		t.Fatalf("patch metadata = %#v", patchBody)
+	}
+	var preview PreviewResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &preview); err != nil {
+		t.Fatal(err)
+	}
+	if !preview.Deployable || preview.CandidateSpecHash != "sha256:redacted-candidate" {
+		t.Fatalf("preview = %#v", preview)
 	}
 }
 
@@ -224,7 +293,7 @@ func TestSchedulerPreviewOnlyReplacesTargetScheduler(t *testing.T) {
 		switch r.URL.Path {
 		case "/agentcompose.v2.ProjectService/GetProject":
 			writeJSON(w, http.StatusOK, projectFixture(false))
-		case "/agentcompose.v2.ProjectService/ApplyProject":
+		case "/agentcompose.v2.ProjectService/PatchProject":
 			dryRunSpec = objectValue(body["spec"])
 			writeJSON(w, http.StatusOK, map[string]any{
 				"revision": map[string]any{"projectId": "project-1", "specHash": "sha256:scheduler"},
@@ -287,7 +356,7 @@ func TestPreviewNormalizesCurrentDaemonProjectSpec(t *testing.T) {
 			worker := objectValue(arrayValue(objectValue(objectValue(fixture["project"])["spec"])["agents"])[0])
 			worker["driver"] = map[string]any{"name": "docker"}
 			writeJSON(w, http.StatusOK, fixture)
-		case "/agentcompose.v2.ProjectService/ApplyProject":
+		case "/agentcompose.v2.ProjectService/PatchProject":
 			candidate = objectValue(body["spec"])
 			writeJSON(w, http.StatusOK, map[string]any{
 				"revision": map[string]any{"projectId": "project-1", "specHash": "sha256:normalized"},
@@ -374,7 +443,7 @@ func TestProjectVariablePreviewOnlyReplacesVariables(t *testing.T) {
 		switch r.URL.Path {
 		case "/agentcompose.v2.ProjectService/GetProject":
 			writeJSON(w, http.StatusOK, projectFixture(false))
-		case "/agentcompose.v2.ProjectService/ApplyProject":
+		case "/agentcompose.v2.ProjectService/PatchProject":
 			applyCalls++
 			dryRunSpec = objectValue(body["spec"])
 			writeJSON(w, http.StatusOK, map[string]any{
@@ -431,7 +500,7 @@ func TestPreviewDisablesUnchangedProject(t *testing.T) {
 		switch r.URL.Path {
 		case "/agentcompose.v2.ProjectService/GetProject":
 			writeJSON(w, http.StatusOK, projectFixture(false))
-		case "/agentcompose.v2.ProjectService/ApplyProject":
+		case "/agentcompose.v2.ProjectService/PatchProject":
 			writeJSON(w, http.StatusOK, map[string]any{
 				"revision": map[string]any{"projectId": "project-1", "specHash": "sha256:base"},
 				"changes":  []any{map[string]any{"action": "PROJECT_CHANGE_ACTION_CREATED", "resourceType": "project"}},
@@ -467,7 +536,7 @@ func TestApplyRejectsAnotherActorAndChangedProject(t *testing.T) {
 			fixture := projectFixture(false)
 			objectValue(objectValue(fixture["project"])["summary"])["specHash"] = hash
 			writeJSON(w, http.StatusOK, fixture)
-		case "/agentcompose.v2.ProjectService/ApplyProject":
+		case "/agentcompose.v2.ProjectService/PatchProject":
 			writeJSON(w, http.StatusOK, map[string]any{
 				"revision": map[string]any{"projectId": "project-1", "specHash": "sha256:candidate"},
 				"changes":  []any{}, "issues": []any{}, "applied": false,
