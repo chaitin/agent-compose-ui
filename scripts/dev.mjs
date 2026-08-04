@@ -28,10 +28,11 @@ export function childSpecs({ executable, gatewayExecutable = 'go', token, authMo
 
 async function startDevelopment() {
   const executable = process.execPath;
-  const token = randomBytes(32).toString('hex');
+  const token = process.env.SCRIPT_SERVICE_TOKEN || randomBytes(32).toString('hex');
   const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const workspaceGo = path.resolve(projectRoot, '../.tools/go/bin/go');
-  const specs = childSpecs({
+  const skipLocalGateway = process.env.SKIP_LOCAL_GATEWAY === '1' || process.env.SKIP_LOCAL_GATEWAY === 'true';
+  const allSpecs = childSpecs({
     executable,
     gatewayExecutable: process.env.GO_EXECUTABLE || (existsSync(workspaceGo) ? workspaceGo : 'go'),
     token,
@@ -44,6 +45,10 @@ async function startDevelopment() {
     goCache: process.env.GOCACHE || path.resolve(projectRoot, '.cache/go-build'),
     goModCache: process.env.GOMODCACHE || path.resolve(projectRoot, '../agent-compose/.cache/go-mod'),
   });
+  const specs = skipLocalGateway ? allSpecs.filter((s) => s.name !== 'gateway') : allSpecs;
+  if (skipLocalGateway) {
+    process.stdout.write('[dev] SKIP_LOCAL_GATEWAY=1 -- Go gateway is expected to run elsewhere (e.g. Docker)\n');
+  }
 
   const children = specs.map((spec) => {
     const child = spawn(spec.command, spec.args, {

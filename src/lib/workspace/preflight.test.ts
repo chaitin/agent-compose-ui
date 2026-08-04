@@ -21,3 +21,31 @@ test('rejects a missing managed binding before a new run', async () => {
     resolve: async () => { throw new Error('not managed'); },
   })).rejects.toThrow('Workspace 共享存储');
 });
+
+test('requires managed binding when any agent (not just the first) has a file workspace', () => {
+  const multiAgentYaml = `name: demo
+agents:
+  alpha:
+    provider: codex
+  beta:
+    workspace:
+      provider: file
+      path: workspace-beta
+`;
+  expect(requiresManagedWorkspace(multiAgentYaml)).toBe(true);
+});
+
+test('requires managed binding when second agent has file workspace but first has git', () => {
+  const mixedProvidersYaml = `name: demo
+agents:
+  alpha:
+    workspace:
+      provider: git
+      path: https://example.com/repo.git
+  beta:
+    workspace:
+      provider: file
+      path: workspace-beta
+`;
+  expect(requiresManagedWorkspace(mixedProvidersYaml)).toBe(true);
+});

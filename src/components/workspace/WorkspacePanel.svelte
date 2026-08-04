@@ -3,11 +3,23 @@
   import WorkspaceBindingBar from './WorkspaceBindingBar.svelte';
   import WorkspaceFileTree from './WorkspaceFileTree.svelte';
   import WorkspaceFilePreview from './WorkspaceFilePreview.svelte';
-  import { parseWorkspaceBinding, isWorkspaceBindingValid, defaultWorkspacePath } from '../../lib/workspace-binding';
+  import { listWorkspaceBindings, parseWorkspaceBinding, isWorkspaceBindingValid, defaultWorkspacePath } from '../../lib/workspace-binding';
   import { workspaceFiles } from '../../lib/workspace/store.svelte';
   import { workspaceBindings, setProjectBindingOverride, projectStorageErrorMessage, legacyKeyFromSourcePath } from '../../lib/workspace/bindings';
 
-  const binding = $derived(parseWorkspaceBinding(store.editorContent));
+  const bindings = $derived(listWorkspaceBindings(store.editorContent));
+  const agentNames = $derived(bindings.map((b) => b.agentName));
+  let selectedAgent = $state('');
+
+  $effect(() => {
+    if (agentNames.length === 0) {
+      if (selectedAgent !== '') selectedAgent = '';
+      return;
+    }
+    if (!agentNames.includes(selectedAgent)) selectedAgent = agentNames[0];
+  });
+
+  const binding = $derived(parseWorkspaceBinding(store.editorContent, selectedAgent) ?? null);
   const isValid = $derived(isWorkspaceBindingValid(binding));
   const workspacePath = $derived(binding?.path ?? defaultWorkspacePath());
 
@@ -19,6 +31,7 @@
 
   $effect(() => {
     const generation = ++bindingGeneration;
+    const path = workspacePath;
     if (!isValid) {
       workspaceFiles.setWorkspace('', '');
       return;
@@ -46,18 +59,16 @@
         if (generation !== bindingGeneration) return;
         if (!projectId) store.persistActiveDraftBinding(resolved, draftId);
         bindingError = '';
-        workspaceFiles.setWorkspace(resolved.projectKey, workspacePath);
+        workspaceFiles.setWorkspace(resolved.projectKey, path);
       } catch (error) {
         if (generation !== bindingGeneration) return;
         bindingError = projectStorageErrorMessage(error);
-        workspaceFiles.setWorkspace('', workspacePath);
+        workspaceFiles.setWorkspace('', path);
       }
     })();
   });
 
   const loadError = $derived(bindingError ? { message: bindingError } : workspaceFiles.lastError);
-
-  let recreating = $state(false);
 
   async function retryLoad() {
     const result = await workspaceFiles.refresh();
@@ -72,7 +83,23 @@
 </script>
 
 <div class="workspace-panel">
-  <WorkspaceBindingBar {sourcePath} />
+  {#if agentNames.length > 1}
+    <div class="agent-selector">
+      <label class="agent-label" for="workspace-agent-select">智能体</label>
+      <select
+        id="workspace-agent-select"
+        class="agent-select"
+        aria-label="选择智能体 workspace"
+        value={selectedAgent}
+        onchange={(event) => { selectedAgent = (event.currentTarget as HTMLSelectElement).value; }}
+      >
+        {#each agentNames as name (name)}
+          <option value={name}>{name}</option>
+        {/each}
+      </select>
+    </div>
+  {/if}
+  <WorkspaceBindingBar {sourcePath} {binding} agentName={selectedAgent} />
   {#if isValid}
     <div class="workspace-body">
       {#if loadError && workspaceFiles.files.length === 0}
@@ -101,6 +128,8 @@
         <div class="placeholder-desc">
           {#if binding?.provider && binding.provider !== 'file'}
             当前 workspace 类型为 <code>{binding.provider}</code>，文件管理仅支持 <code>file</code> 类型
+          {:else if agentNames.length > 0}
+            请先在 YAML 中为智能体 <code>{selectedAgent}</code> 配置 <code>workspace.path</code>
           {:else}
             请先在 YAML 中配置 <code>agents.&lt;name&gt;.workspace.path</code>
           {/if}
@@ -116,6 +145,42 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
+  }
+  .agent-selector {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+    padding: 4px 10px;
+  }
+  .agent-label {
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-weight: 600;
+  }
+  .agent-select {
+    flex: 1;
+    min-width: 0;
+    max-width: 240px;
+    padding: 3px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: var(--font-size-xs);
+    font-family: var(--font-sans);
+    cursor: pointer;
+  }
+  .agent-select:hover {
+    border-color: var(--accent-blue);
+  }
+  .agent-select:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 1px;
   }
   .workspace-body {
     flex: 1;

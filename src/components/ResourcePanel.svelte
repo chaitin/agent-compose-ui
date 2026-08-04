@@ -34,6 +34,8 @@
   }: Props = $props();
   const instanceId = $props.id();
   const resourceTabs: readonly ResourceTab[] = ['scripts', 'workspace', 'images', 'skills', 'mounts'];
+  const hiddenTabs: ReadonlySet<ResourceTab> = new Set(['images', 'skills']);
+  const visibleTabs = $derived(resourceTabs.filter((tab) => !hiddenTabs.has(tab)));
 
   let panelHeight = $state(240);
   let resizing = false;
@@ -129,14 +131,14 @@
   const tabId = (tab: ResourceTab) => `${instanceId}-resource-tab-${tab}`;
   const panelId = (tab: ResourceTab) => `${instanceId}-resource-panel-${tab}`;
   async function handleTabKeydown(event: KeyboardEvent, currentTab: ResourceTab) {
-    const current = resourceTabs.indexOf(currentTab);
+    const current = visibleTabs.indexOf(currentTab);
     let target = current;
-    if (event.key === 'ArrowRight') target = (current + 1) % resourceTabs.length;
-    else if (event.key === 'ArrowLeft') target = (current - 1 + resourceTabs.length) % resourceTabs.length;
+    if (event.key === 'ArrowRight') target = (current + 1) % visibleTabs.length;
+    else if (event.key === 'ArrowLeft') target = (current - 1 + visibleTabs.length) % visibleTabs.length;
     else if (event.key === 'Home') target = 0;
-    else if (event.key === 'End') target = resourceTabs.length - 1;
+    else if (event.key === 'End') target = visibleTabs.length - 1;
     else return;
-    event.preventDefault(); selectTab(resourceTabs[target]); await tick(); document.getElementById(tabId(resourceTabs[target]))?.focus();
+    event.preventDefault(); selectTab(visibleTabs[target]); await tick(); document.getElementById(tabId(visibleTabs[target]))?.focus();
   }
 </script>
 
@@ -162,7 +164,7 @@
     >
       <span class="chevron">{workspace.panelOpen ? '⌄' : '›'}</span>
     </button>
-    <div class="resource-tablist" role="tablist" aria-label="项目资源标签页">
+    <div class="resource-tablist" role="tablist" aria-label="项目资源标签页" style="grid-template-columns: repeat({visibleTabs.length}, minmax(0, 1fr));">
     <button
       id={tabId('scripts')}
       type="button"
@@ -193,8 +195,8 @@
       <span>Workspace 文件</span>
       <span class="count">{workspaceFileCount}</span>
     </button>
-    <button id={tabId('images')} type="button" class="resource-tab" class:active={workspace.activeTab === 'images'} role="tab" aria-selected={workspace.activeTab === 'images'} aria-controls={panelId('images')} tabindex={workspace.activeTab === 'images' ? 0 : -1} onclick={() => selectTab('images')} onkeydown={(event) => handleTabKeydown(event, 'images')}><span>镜像</span><span class="count">{yamlResourceCounts.images}</span></button>
-    <button id={tabId('skills')} type="button" class="resource-tab" class:active={workspace.activeTab === 'skills'} role="tab" aria-selected={workspace.activeTab === 'skills'} aria-controls={panelId('skills')} tabindex={workspace.activeTab === 'skills' ? 0 : -1} onclick={() => selectTab('skills')} onkeydown={(event) => handleTabKeydown(event, 'skills')}><span>Skills</span><span class="count">{yamlResourceCounts.skills}</span></button>
+    <button id={tabId('images')} type="button" class="resource-tab" class:hidden-tab={hiddenTabs.has('images')} class:active={workspace.activeTab === 'images'} role="tab" aria-selected={workspace.activeTab === 'images'} aria-controls={panelId('images')} tabindex={workspace.activeTab === 'images' ? 0 : -1} onclick={() => selectTab('images')} onkeydown={(event) => handleTabKeydown(event, 'images')}><span>镜像</span><span class="count">{yamlResourceCounts.images}</span></button>
+    <button id={tabId('skills')} type="button" class="resource-tab" class:hidden-tab={hiddenTabs.has('skills')} class:active={workspace.activeTab === 'skills'} role="tab" aria-selected={workspace.activeTab === 'skills'} aria-controls={panelId('skills')} tabindex={workspace.activeTab === 'skills' ? 0 : -1} onclick={() => selectTab('skills')} onkeydown={(event) => handleTabKeydown(event, 'skills')}><span>Skills</span><span class="count">{yamlResourceCounts.skills}</span></button>
     <button id={tabId('mounts')} type="button" class="resource-tab" class:active={workspace.activeTab === 'mounts'} role="tab" aria-selected={workspace.activeTab === 'mounts'} aria-controls={panelId('mounts')} tabindex={workspace.activeTab === 'mounts' ? 0 : -1} onclick={() => selectTab('mounts')} onkeydown={(event) => handleTabKeydown(event, 'mounts')}><span>数据与挂载</span><span class="count">{yamlResourceCounts.mounts}</span></button>
     </div>
     {#if !workspace.serviceAvailable && workspace.activeTab === 'scripts'}
@@ -286,7 +288,6 @@
   .resource-toggle .chevron { font-size: 14px; }
   .resource-tablist {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
     min-height: 32px;
     height: auto;
     min-width: 0;
@@ -294,6 +295,7 @@
     white-space: normal;
     align-items: stretch;
   }
+  .resource-tab.hidden-tab { display: none; }
   .resource-tab {
     display: flex;
     align-items: center;

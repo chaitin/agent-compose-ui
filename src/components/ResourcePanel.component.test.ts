@@ -35,7 +35,7 @@ function installResourcePanelStyles(): () => void {
   return () => style.remove();
 }
 
-test('keeps five complete resource labels in a single non-clipping grid row at a narrow width', () => {
+test('keeps three visible resource labels in a three-column grid row while hiding images and skills tabs', () => {
   const removeStyles = installResourcePanelStyles();
   const { container } = render(ResourcePanel, { workspace: createWorkspace(), yaml: '' });
   const panel = container.querySelector('.resource-panel') as HTMLElement;
@@ -45,20 +45,24 @@ test('keeps five complete resource labels in a single non-clipping grid row at a
   const headerStyle = getComputedStyle(header);
   const tablistStyle = getComputedStyle(tablist);
 
-  expect(screen.getAllByRole('tab')).toHaveLength(5);
+  expect(screen.getAllByRole('tab')).toHaveLength(3);
   expect(headerStyle.height).toBe('auto');
   expect(headerStyle.minHeight).toBe('32px');
   expect(tablistStyle.height).toBe('auto');
   expect(tablistStyle.minHeight).toBe('32px');
   expect(tablistStyle.display).toBe('grid');
-  expect(tablistStyle.gridTemplateColumns).toMatch(/repeat\(5,\s*minmax\(0,\s*1fr\)\)/);
-  for (const [tab, label] of screen.getAllByRole('tab').map((tab, index) => [tab, ['脚本文件', 'Workspace 文件', '镜像', 'Skills', '数据与挂载'][index]] as const)) {
+  expect(tablistStyle.gridTemplateColumns).toMatch(/repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
+  for (const [tab, label] of screen.getAllByRole('tab').map((tab, index) => [tab, ['脚本文件', 'Workspace 文件', '数据与挂载'][index]] as const)) {
     const style = getComputedStyle(tab);
     expect(tab).toHaveTextContent(label);
     expect(style.whiteSpace).toBe('normal');
     expect(style.overflow).not.toBe('hidden');
     expect(style.textOverflow).not.toBe('ellipsis');
   }
+  const hiddenTabs = screen.getAllByRole('tab', { hidden: true });
+  expect(hiddenTabs).toHaveLength(5);
+  const hiddenLabels = hiddenTabs.map((t) => t.textContent?.replace(/\d+$/, '').trim());
+  expect(hiddenLabels).toEqual(expect.arrayContaining(['镜像', 'Skills']));
   removeStyles();
 });
 
@@ -84,13 +88,13 @@ volumes:
 `;
   const view = render(ResourcePanel, { workspace, yaml: firstYaml });
 
-  expect(screen.getByRole('tab', { name: '镜像 1' })).toBeInTheDocument();
-  expect(screen.getByRole('tab', { name: 'Skills 3' })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: '镜像 1', hidden: true })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Skills 3', hidden: true })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: '数据与挂载 5' })).toBeInTheDocument();
 
   await view.rerender({ workspace, yaml: 'agents:\n  gamma:\n    build: { context: images/gamma }\n    skills: [{ name: deploy, source: file }]\n' });
-  expect(screen.getByRole('tab', { name: '镜像 1' })).toBeInTheDocument();
-  expect(screen.getByRole('tab', { name: 'Skills 1' })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: '镜像 1', hidden: true })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Skills 1', hidden: true })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: '数据与挂载 0' })).toBeInTheDocument();
 });
 
@@ -99,12 +103,12 @@ test('shows zero YAML resource counts when YAML is empty or invalid', async () =
   const view = render(ResourcePanel, { workspace, yaml: '' });
 
   for (const label of ['镜像 0', 'Skills 0', '数据与挂载 0']) {
-    expect(screen.getByRole('tab', { name: label })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: label, hidden: true })).toBeInTheDocument();
   }
 
   await view.rerender({ workspace, yaml: 'agents: [' });
   for (const label of ['镜像 0', 'Skills 0', '数据与挂载 0']) {
-    expect(screen.getByRole('tab', { name: label })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: label, hidden: true })).toBeInTheDocument();
   }
 });
 
@@ -119,7 +123,7 @@ volumes:
 ` });
 
   for (const label of ['镜像 0', 'Skills 0', '数据与挂载 0']) {
-    expect(screen.getByRole('tab', { name: label })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: label, hidden: true })).toBeInTheDocument();
   }
 });
 
@@ -132,20 +136,22 @@ volumes:
   has/slash: {}
 ` });
 
-  expect(screen.getByRole('tab', { name: '镜像 1' })).toBeInTheDocument();
-  expect(screen.getByRole('tab', { name: 'Skills 1' })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: '镜像 1', hidden: true })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Skills 1', hidden: true })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: '数据与挂载 0' })).toBeInTheDocument();
 });
 
-test('keeps all five resource tabs and renders the images empty state', async () => {
-  render(ResourcePanel, { workspace: createWorkspace(), yaml: '' });
+test('keeps three visible resource tabs and renders the images empty state via direct activation', async () => {
+  const removeStyles = installResourcePanelStyles();
+  const workspace = createWorkspace();
+  render(ResourcePanel, { workspace, yaml: '' });
 
   const tabs = screen.getAllByRole('tab');
-  expect(tabs).toHaveLength(5);
+  expect(tabs).toHaveLength(3);
   expect(screen.queryByText('项目资源')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: '折叠资源面板' })).toBeInTheDocument();
   expect(tabs.map((tab) => tab.textContent?.replace(/\d+$/, '').trim())).toEqual([
-    '脚本文件', 'Workspace 文件', '镜像', 'Skills', '数据与挂载',
+    '脚本文件', 'Workspace 文件', '数据与挂载',
   ]);
 
   expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
@@ -155,36 +161,35 @@ test('keeps all five resource tabs and renders the images empty state', async ()
   expect(tabs[1]).toHaveAttribute('aria-selected', 'true');
   expect(screen.getByText('文件管理不可用')).toBeInTheDocument();
 
-  await fireEvent.click(tabs[2]);
-  expect(tabs[2]).toHaveAttribute('aria-selected', 'true');
-  expect(screen.getByText('暂无镜像构建配置')).toBeInTheDocument();
+  workspace.activeTab = 'images';
+  await waitFor(() => expect(screen.getByText('暂无镜像构建配置')).toBeInTheDocument());
+  removeStyles();
 });
 
 test('reopens a collapsed panel when a tab is selected', async () => {
   const workspace = createWorkspace(false);
   render(ResourcePanel, { workspace, yaml: '' });
 
-  await fireEvent.click(screen.getByRole('tab', { name: /镜像/ }));
+  await fireEvent.click(screen.getByRole('tab', { name: /数据与挂载/ }));
   expect(workspace.panelOpen).toBe(true);
-  expect(screen.getByText('暂无镜像构建配置')).toBeInTheDocument();
 });
 
 test('shows images placeholder when no build config exists', async () => {
-  render(ResourcePanel, { workspace: createWorkspace(), yaml: 'name: test\n' });
+  const workspace = createWorkspace();
+  render(ResourcePanel, { workspace, yaml: 'name: test\n' });
 
-  const tabs = screen.getAllByRole('tab');
-  await fireEvent.click(tabs[2]);
-
-  expect(screen.getByText('暂无镜像构建配置')).toBeInTheDocument();
+  workspace.activeTab = 'images';
+  await waitFor(() => expect(screen.getByText('暂无镜像构建配置')).toBeInTheDocument());
 });
 
 test('opens the existing Skills and data-and-mount panels with a valid direct binding', async () => {
   vi.mocked(skillApi.list).mockResolvedValue([]);
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ entries: [] }), { headers: { 'content-type': 'application/json' } })));
   const projectKey = 'ws_0123456789abcdef0123456789abcdef';
-  render(ResourcePanel, { workspace: createWorkspace(), projectKey, yaml: 'agents:\n  alpha: {}\n', onYamlChange: vi.fn(), onApply: vi.fn().mockResolvedValue(undefined) });
+  const workspace = createWorkspace();
+  render(ResourcePanel, { workspace, projectKey, yaml: 'agents:\n  alpha: {}\n', onYamlChange: vi.fn(), onApply: vi.fn().mockResolvedValue(undefined) });
 
-  await fireEvent.click(screen.getByRole('tab', { name: /Skills/ }));
+  workspace.activeTab = 'skills';
   expect(await screen.findByText('暂无 Skills')).toBeInTheDocument();
 
   await fireEvent.click(screen.getByRole('tab', { name: /数据与挂载/ }));
@@ -207,19 +212,22 @@ test('uses the agent targeted by the YAML skills action', async () => {
   expect(screen.getByLabelText('目标 Agent')).toHaveValue('beta');
 });
 
-test('moves focus across all five tabs with arrows, Home, and End', async () => {
+test('moves focus across visible tabs with arrows, Home, and End', async () => {
+  const removeStyles = installResourcePanelStyles();
   render(ResourcePanel, { workspace: createWorkspace(), yaml: '' });
   const tabs = screen.getAllByRole('tab');
+  // visible tabs: scripts, workspace, mounts
 
   tabs[1].focus();
   await fireEvent.keyDown(tabs[1], { key: 'ArrowRight' });
-  expect(tabs[2]).toHaveFocus();
+  await waitFor(() => expect(tabs[2]).toHaveFocus());
   expect(tabs[2]).toHaveAttribute('aria-selected', 'true');
 
-  await fireEvent.keyDown(tabs[2], { key: 'End' });
-  expect(tabs[4]).toHaveFocus();
-  expect(tabs[4]).toHaveAttribute('aria-selected', 'true');
+  await fireEvent.keyDown(tabs[2], { key: 'Home' });
+  await waitFor(() => expect(tabs[0]).toHaveFocus());
+  expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
 
-  await fireEvent.keyDown(tabs[4], { key: 'Home' });
-  expect(tabs[0]).toHaveFocus();
+  await fireEvent.keyDown(tabs[0], { key: 'End' });
+  await waitFor(() => expect(tabs[2]).toHaveFocus());
+  removeStyles();
 });

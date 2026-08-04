@@ -45,7 +45,7 @@
   import { checkProjectDependencies } from '../lib/project-dependency-preflight';
   import { checkProjectImageFiles } from '../lib/project-image-files';
   import { llmConfigWarning } from '../lib/llm-config-preflight';
-  import { parseWorkspaceBinding, isWorkspaceBindingValid } from '../lib/workspace-binding';
+  import { requiresManagedWorkspace } from '../lib/workspace/preflight';
   import { workspaceBindings, getProjectBindingOverride, setProjectBindingOverride, clearProjectBindingOverride, legacyKeyFromSourcePath } from '../lib/workspace/bindings';
 
   let specHash = $state('');
@@ -99,8 +99,7 @@
   }
 
   async function ensureCanonicalSourcePath(yamlText: string): Promise<string> {
-    const workspace = parseWorkspaceBinding(yamlText);
-    const needsWorkspace = isWorkspaceBindingValid(workspace);
+    const needsWorkspace = requiresManagedWorkspace(yamlText);
     const projectId = store.activeProjectId;
     if (projectId) {
       const override = getProjectBindingOverride(projectId);
