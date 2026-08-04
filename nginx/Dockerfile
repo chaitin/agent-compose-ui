@@ -7,6 +7,7 @@ WORKDIR /app
 COPY package.json package-lock.json tsconfig.json vite.config.ts index.html ./
 RUN npm ci
 COPY src ./src
+COPY public ./public
 RUN AGENT_COMPOSE_BASE=${AGENT_COMPOSE_BASE} npm run build:ui
 
 FROM ${REGISTRY_MIRROR}/library/golang:${GO_VERSION}-bookworm AS ui-server-build
