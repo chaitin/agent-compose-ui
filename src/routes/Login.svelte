@@ -44,7 +44,7 @@
 <main class="flex min-h-dvh items-center justify-center bg-background p-4 text-foreground sm:p-6">
   <section class="w-full max-w-sm rounded-xl border border-border bg-card p-7 shadow-lg">
     <div class="mb-6 flex flex-col items-start gap-3">
-      <div class="w-fit max-w-full rounded-md bg-[#0b0d0c] px-3 py-2">
+      <div class="w-fit max-w-full px-3 py-2">
         <BrandLogo class="h-auto w-56 max-w-full" />
       </div>
       <div>

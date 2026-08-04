@@ -29,11 +29,11 @@
   <!-- 品牌 -->
   <div class="flex h-12 items-center gap-2 border-b border-sidebar-border px-3">
     {#if collapsed}
-      <div class="mx-auto flex h-7 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-[#0b0d0c]">
+      <div class="mx-auto flex h-7 w-9 shrink-0 items-center justify-center overflow-hidden">
         <BrandLogo compact class="h-5 w-8" />
       </div>
     {:else}
-      <div class="min-w-0 rounded-md bg-[#0b0d0c] px-2 py-1">
+      <div class="min-w-0 px-2 py-1">
         <BrandLogo class="h-auto w-full max-w-[180px]" />
       </div>
     {/if}
