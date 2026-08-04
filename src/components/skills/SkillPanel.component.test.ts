@@ -128,6 +128,22 @@ test('uploads one UTF-8 SKILL.md through existing folder and upload APIs', async
   expect(onYamlChange).toHaveBeenCalledWith(expect.stringContaining('./skills/review'));
 });
 
+test('shows upload failures inside the open upload dialog', async () => {
+  vi.mocked(skillApi.list).mockResolvedValue([]);
+  vi.mocked(skillApi.mkdir).mockRejectedValue(new Error('folder exists'));
+  render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'beta', onYamlChange: vi.fn() });
+  await screen.findByText('暂无 Skills');
+  await fireEvent.click(screen.getByRole('button', { name: '上传 Skill' }));
+  const dialog = screen.getByRole('dialog', { name: '上传 Skill' });
+  const upload = new File(['---\nname: review\ndescription: review\n---\n'], 'SKILL.md', { type: 'text/markdown' });
+  await fireEvent.change(within(dialog).getByLabelText('选择 SKILL.md'), { target: { files: [upload] } });
+  await fireEvent.click(within(dialog).getByRole('button', { name: '确认上传' }));
+
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('上传失败');
+  expect(within(dialog).getByRole('alert')).toHaveTextContent('folder exists');
+  expect(screen.getByRole('dialog', { name: '上传 Skill' })).toBeInTheDocument();
+});
+
 test('rejects unsupported Skill upload names before API calls', async () => {
   render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'alpha', onYamlChange: vi.fn() });
   await fireEvent.click(screen.getByRole('button', { name: '上传 Skill' }));

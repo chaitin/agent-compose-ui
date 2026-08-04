@@ -34,6 +34,7 @@
   let conflict = $state(false);
   let newName = $state('');
   let targetAgent = $state('');
+  let uploadError = $state('');
   let loadGeneration = 0;
   let readGeneration = 0;
   let contextGeneration = 0;
@@ -234,11 +235,11 @@
       if (context !== contextGeneration || key !== projectKey) throw new Error('项目上下文已变化');
       await onYamlChange(upsertAgentSkill(yaml, agent, { name, provider: 'file', path: `./skills/${name}` }));
       if (operation !== createGeneration || context !== contextGeneration || key !== projectKey) return;
-      status = `已上传 ${name}`; modal = '';
+      status = `已上传 ${name}`; uploadError = ''; modal = '';
       if (await loadList(key)) await openSkill(name, key);
     } catch (value) {
       if (folder) await skillApi.remove(key, name, true).catch(() => undefined);
-      if (operation === createGeneration && context === contextGeneration) error = `上传失败，已回滚：${message(value)}`;
+      if (operation === createGeneration && context === contextGeneration) uploadError = `上传失败，已回滚：${message(value)}`;
     } finally { if (operation === createGeneration) createBusy = false; }
   }
 
@@ -389,7 +390,7 @@
   <SkillToolbar
     busy={createBusy || saveBusy || deleteBusy || !validProjectKey}
     onCreate={() => { modal = 'create'; }}
-    onUpload={() => { modal = 'upload'; }}
+    onUpload={() => { uploadError = ''; modal = 'upload'; }}
     onSync={requestSync}
     syncDisabled={!selected || !targetAgent}
     onRefresh={() => { void loadList(); }}
@@ -421,7 +422,7 @@
 {#if modal === 'create'}
   <SkillCreateModal {agents} busy={createBusy} name={newName} agent={targetAgent} onName={(value) => { newName = value; }} onAgent={(value) => { targetAgent = value; }} onSubmit={() => { void createSkill(); }} onClose={() => { modal = ''; }} />
 {:else if modal === 'upload'}
-  <SkillUploadModal {agents} busy={createBusy} agent={targetAgent} onAgent={(value) => { targetAgent = value; }} onSubmit={(name, file) => { void uploadSkill(name, file); }} onClose={() => { modal = ''; }} />
+  <SkillUploadModal {agents} busy={createBusy} agent={targetAgent} submitError={uploadError} onAgent={(value) => { targetAgent = value; }} onSubmit={(name, file) => { uploadError = ''; void uploadSkill(name, file); }} onClose={() => { uploadError = ''; modal = ''; }} onClearError={() => { uploadError = ''; }} />
 {/if}
 
 {#if syncPreview}
