@@ -35,10 +35,15 @@ beforeEach(() => {
 test('presents Skills as a toolbar, navigation list and editor', async () => {
   render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'alpha', onYamlChange: vi.fn() });
 
-  expect(screen.getByRole('toolbar', { name: 'Skill 操作' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: '新建 Skill' })).toHaveClass('primary');
-  expect(screen.getByRole('button', { name: '上传 Skill' })).toHaveClass('secondary');
-  expect(screen.getByRole('button', { name: '刷新' })).toHaveClass('ghost');
+  const toolbar = screen.getByRole('toolbar', { name: 'Skill 操作' });
+  expect(toolbar).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '刷新' })).toBeNull();
+  expect(within(toolbar).getByRole('button', { name: '同步配置' })).toHaveClass('upload-btn');
+  expect(within(toolbar).getByRole('button', { name: '新建 Skill' })).toHaveClass('upload-btn');
+  expect(within(toolbar).getByRole('button', { name: '上传 Skill' })).toHaveClass('upload-btn');
+  expect(within(toolbar).getByRole('button', { name: '同步配置' }).querySelector('.btn-label')).toHaveTextContent('同步配置');
+  expect(within(toolbar).getByRole('button', { name: '新建 Skill' }).querySelector('.btn-icon')).toHaveTextContent('+');
+  expect(within(toolbar).getByRole('button', { name: '上传 Skill' }).querySelector('.btn-icon')).toHaveTextContent('📄');
   expect(screen.getByRole('navigation', { name: 'Skills 列表' })).toBeInTheDocument();
   expect(screen.getByRole('region', { name: 'Skill 编辑器' })).toBeInTheDocument();
 
@@ -107,7 +112,7 @@ test('does not request project files before receiving a canonical storage key', 
 test('opens creation from the toolbar instead of showing a persistent form', async () => {
   render(SkillPanel, { projectKey: KEY_A, yaml, selectedAgent: 'alpha', onYamlChange: vi.fn() });
   expect(screen.queryByRole('textbox', { name: 'Skill 名称' })).not.toBeInTheDocument();
-  await fireEvent.click(screen.getByRole('button', { name: '新建 Skill' }));
+  await fireEvent.click(within(screen.getByRole('toolbar', { name: 'Skill 操作' })).getByRole('button', { name: '新建 Skill' }));
   expect(screen.getByRole('dialog', { name: '新建 Skill' })).toBeInTheDocument();
   expect(screen.getByRole('textbox', { name: 'Skill 名称' })).toHaveFocus();
 });

@@ -393,7 +393,6 @@
     onUpload={() => { uploadError = ''; modal = 'upload'; }}
     onSync={requestSync}
     syncDisabled={!selected || !targetAgent}
-    onRefresh={() => { void loadList(); }}
   />
   <div class="skill-panel" inert={deletion || pendingSelection || modal ? true : undefined} aria-hidden={deletion || pendingSelection || modal ? 'true' : undefined}>
   <aside>
