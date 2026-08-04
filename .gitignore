@@ -2,10 +2,8 @@
 .worktrees/
 node_modules/
 dist/
-.cache/
 /data/scripts/
 /e2e/reports/
-/e2e/fixtures/e2e-yml10-*/
 .env
 test-results/
 docker/.env

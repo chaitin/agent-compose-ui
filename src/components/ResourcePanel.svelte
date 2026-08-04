@@ -1,20 +1,104 @@
 <script lang="ts">
-  import type { ScriptWorkspace } from '../lib/scripts/workspace.svelte';
+  import { tick } from 'svelte';
+  import type { ResourceTab, ScriptWorkspace } from '../lib/scripts/workspace.svelte';
   import { countScriptFiles } from '../lib/scripts/tree';
+  import { yamlToSpec } from '../lib/yaml';
+  import { buildFileSources } from '../lib/project-image-files';
+  import { deriveProjectResourceSummary } from '../lib/project-resources/model';
   import ScriptPanel from './scripts/ScriptPanel.svelte';
   import WorkspacePanel from './workspace/WorkspacePanel.svelte';
+  import ImageBuildPanel from './images/ImageBuildPanel.svelte';
+  import SkillPanel from './skills/SkillPanel.svelte';
+  import DataMountPanel from './mounts/DataMountPanel.svelte';
   import { workspaceFiles } from '../lib/workspace/store.svelte';
+  import { getProjectBindingOverride, projectStorageErrorMessage, workspaceBindings, type ProjectStorageBinding } from '../lib/workspace/bindings';
+
+  const VALID_PROJECT_KEY = /^ws_[0-9a-f]{32}$/;
 
   interface Props {
     workspace: ScriptWorkspace;
+    projectKey?: string;
+    projectIdentity?: string;
+    bindingProjectKey?: string;
+    bindingSourcePath?: string;
+    bindingLegacyKey?: string;
+    onBindingResolved?: (binding: ProjectStorageBinding, identity: string) => void;
+    yaml?: string;
+    selectedAgent?: string;
+    onYamlChange?: (yaml: string) => void | Promise<void>;
+    onApply?: () => Promise<void>;
   }
-  let { workspace }: Props = $props();
+  let {
+    workspace, projectKey = '', projectIdentity = '', bindingProjectKey = '', bindingSourcePath = '', bindingLegacyKey = '',
+    onBindingResolved = () => {}, yaml = '', selectedAgent = '', onYamlChange = () => {}, onApply = async () => {},
+  }: Props = $props();
+  const instanceId = $props.id();
+  const resourceTabs: readonly ResourceTab[] = ['scripts', 'workspace', 'images', 'skills', 'mounts'];
+  const hiddenTabs: ReadonlySet<ResourceTab> = new Set(['images', 'skills']);
+  const visibleTabs = $derived(resourceTabs.filter((tab) => !hiddenTabs.has(tab)));
 
   let panelHeight = $state(240);
   let resizing = false;
+  let skillProjectKey = $state('');
+  let bindingLoading = $state(false);
+  let bindingError = $state('');
+  let bindingGeneration = 0;
+  let observedBindingContext = '';
 
   const scriptFileCount = $derived(workspace.tree ? countScriptFiles(workspace.tree) : 0);
   const workspaceFileCount = $derived(workspaceFiles.files.filter((f) => !f.dir).length);
+  const yamlResourceCounts = $derived.by(() => countYamlResources(yaml));
+
+  function countYamlResources(text: string): { images: number; skills: number; mounts: number } {
+    const parsed = yamlToSpec(text);
+    if (parsed.error) return { images: 0, skills: 0, mounts: 0 };
+    const imageAndSkillCounts = {
+      images: buildFileSources(parsed.spec).length,
+      skills: parsed.spec.agents.reduce((total, agent) => total + agent.skills.length, 0),
+    };
+    try {
+      const summary = deriveProjectResourceSummary(text);
+      return { ...imageAndSkillCounts, mounts: summary.resources.length + summary.mounts.length };
+    } catch {
+      return { ...imageAndSkillCounts, mounts: 0 };
+    }
+  }
+
+  $effect(() => {
+    const shouldResolve = workspace.panelOpen && (workspace.activeTab === 'skills' || workspace.activeTab === 'mounts');
+    const context = [shouldResolve, projectIdentity, bindingProjectKey, bindingSourcePath, bindingLegacyKey, projectKey].join('\0');
+    if (context === observedBindingContext) return;
+    observedBindingContext = context;
+    if (!shouldResolve) { bindingGeneration += 1; bindingLoading = false; return; }
+    void resolveSkillBinding();
+  });
+
+  async function resolveSkillBinding(): Promise<void> {
+    const generation = ++bindingGeneration;
+    skillProjectKey = ''; bindingError = '';
+    if (!projectIdentity) {
+      skillProjectKey = VALID_PROJECT_KEY.test(projectKey) ? projectKey : '';
+      bindingLoading = false; return;
+    }
+    const identity = projectIdentity;
+    bindingLoading = true;
+    try {
+      const projectId = identity.startsWith('project:') ? identity.slice('project:'.length) : '';
+      const override = projectId ? getProjectBindingOverride(projectId) : undefined;
+      const binding = override ?? await workspaceBindings.ensure(identity, {
+        projectKey: bindingProjectKey || undefined,
+        sourcePath: bindingSourcePath || undefined,
+        legacyKey: bindingLegacyKey || undefined,
+        ensureWorkspace: false,
+      });
+      if (generation !== bindingGeneration || identity !== projectIdentity) return;
+      if (!VALID_PROJECT_KEY.test(binding.projectKey)) throw new Error('项目存储返回了无效 projectKey');
+      skillProjectKey = binding.projectKey; onBindingResolved(binding, identity);
+    } catch (value) {
+      if (generation !== bindingGeneration || identity !== projectIdentity) return;
+      bindingError = projectStorageErrorMessage(value);
+    } finally { if (generation === bindingGeneration) bindingLoading = false; }
+  }
 
   function startVerticalResize(event: MouseEvent) {
     event.preventDefault();
@@ -39,9 +123,22 @@
     window.addEventListener('mouseup', onUp);
   }
 
-  function selectTab(tab: 'scripts' | 'workspace') {
+  function selectTab(tab: ResourceTab) {
     workspace.activeTab = tab;
     if (!workspace.panelOpen) workspace.panelOpen = true;
+  }
+
+  const tabId = (tab: ResourceTab) => `${instanceId}-resource-tab-${tab}`;
+  const panelId = (tab: ResourceTab) => `${instanceId}-resource-panel-${tab}`;
+  async function handleTabKeydown(event: KeyboardEvent, currentTab: ResourceTab) {
+    const current = visibleTabs.indexOf(currentTab);
+    let target = current;
+    if (event.key === 'ArrowRight') target = (current + 1) % visibleTabs.length;
+    else if (event.key === 'ArrowLeft') target = (current - 1 + visibleTabs.length) % visibleTabs.length;
+    else if (event.key === 'Home') target = 0;
+    else if (event.key === 'End') target = visibleTabs.length - 1;
+    else return;
+    event.preventDefault(); selectTab(visibleTabs[target]); await tick(); document.getElementById(tabId(visibleTabs[target]))?.focus();
   }
 </script>
 
@@ -66,41 +163,65 @@
       onclick={() => (workspace.panelOpen = !workspace.panelOpen)}
     >
       <span class="chevron">{workspace.panelOpen ? '⌄' : '›'}</span>
-      <span class="title">项目资源</span>
     </button>
+    <div class="resource-tablist" role="tablist" aria-label="项目资源标签页" style="grid-template-columns: repeat({visibleTabs.length}, minmax(0, 1fr));">
     <button
+      id={tabId('scripts')}
       type="button"
       class="resource-tab"
       class:active={workspace.activeTab === 'scripts'}
       role="tab"
       aria-selected={workspace.activeTab === 'scripts'}
+      aria-controls={panelId('scripts')}
+      tabindex={workspace.activeTab === 'scripts' ? 0 : -1}
       onclick={() => selectTab('scripts')}
+      onkeydown={(event) => handleTabKeydown(event, 'scripts')}
     >
       <span>脚本文件</span>
       <span class="count">{scriptFileCount}</span>
     </button>
     <button
+      id={tabId('workspace')}
       type="button"
       class="resource-tab"
       class:active={workspace.activeTab === 'workspace'}
       role="tab"
       aria-selected={workspace.activeTab === 'workspace'}
+      aria-controls={panelId('workspace')}
+      tabindex={workspace.activeTab === 'workspace' ? 0 : -1}
       onclick={() => selectTab('workspace')}
+      onkeydown={(event) => handleTabKeydown(event, 'workspace')}
     >
       <span>Workspace 文件</span>
       <span class="count">{workspaceFileCount}</span>
     </button>
+    <button id={tabId('images')} type="button" class="resource-tab" class:hidden-tab={hiddenTabs.has('images')} class:active={workspace.activeTab === 'images'} role="tab" aria-selected={workspace.activeTab === 'images'} aria-controls={panelId('images')} tabindex={workspace.activeTab === 'images' ? 0 : -1} onclick={() => selectTab('images')} onkeydown={(event) => handleTabKeydown(event, 'images')}><span>镜像</span><span class="count">{yamlResourceCounts.images}</span></button>
+    <button id={tabId('skills')} type="button" class="resource-tab" class:hidden-tab={hiddenTabs.has('skills')} class:active={workspace.activeTab === 'skills'} role="tab" aria-selected={workspace.activeTab === 'skills'} aria-controls={panelId('skills')} tabindex={workspace.activeTab === 'skills' ? 0 : -1} onclick={() => selectTab('skills')} onkeydown={(event) => handleTabKeydown(event, 'skills')}><span>Skills</span><span class="count">{yamlResourceCounts.skills}</span></button>
+    <button id={tabId('mounts')} type="button" class="resource-tab" class:active={workspace.activeTab === 'mounts'} role="tab" aria-selected={workspace.activeTab === 'mounts'} aria-controls={panelId('mounts')} tabindex={workspace.activeTab === 'mounts' ? 0 : -1} onclick={() => selectTab('mounts')} onkeydown={(event) => handleTabKeydown(event, 'mounts')}><span>数据与挂载</span><span class="count">{yamlResourceCounts.mounts}</span></button>
+    </div>
     {#if !workspace.serviceAvailable && workspace.activeTab === 'scripts'}
       <span class="header-status" title="脚本服务不可用">●</span>
     {/if}
   </div>
 
   {#if workspace.panelOpen}
-    <div class="panel-body">
+    <div class="panel-body" id={panelId(workspace.activeTab)} role="tabpanel" aria-labelledby={tabId(workspace.activeTab)}>
       {#if workspace.activeTab === 'scripts'}
         <ScriptPanel {workspace} />
-      {:else}
+      {:else if workspace.activeTab === 'workspace'}
         <WorkspacePanel />
+      {:else if workspace.activeTab === 'images'}
+        <ImageBuildPanel {yaml} {projectIdentity} {bindingProjectKey} {bindingSourcePath} {bindingLegacyKey} {onBindingResolved} />
+      {:else if workspace.activeTab === 'skills'}
+        {#if bindingLoading}<div class="resource-placeholder" role="status">正在解析项目存储…</div>
+        {:else if bindingError}<div class="resource-placeholder" role="alert">项目存储不可用：{bindingError}<button type="button" onclick={resolveSkillBinding}>重试</button></div>
+        {:else if !skillProjectKey}<div class="resource-placeholder" role="status">请先建立项目存储绑定</div>
+        {:else}<SkillPanel projectKey={skillProjectKey} {yaml} selectedAgent={workspace.skillTargetAgent || selectedAgent} {onYamlChange} />{/if}
+      {:else}
+        {#if bindingLoading}<div class="resource-placeholder" role="status">正在解析项目存储…</div>
+        {:else if bindingError}<div class="resource-placeholder" role="alert">项目存储不可用：{bindingError}<button type="button" onclick={resolveSkillBinding}>重试</button></div>
+        {:else if !skillProjectKey}<div class="resource-placeholder" role="status">请先建立项目存储绑定</div>
+        {:else}<DataMountPanel projectKey={skillProjectKey} {yaml} {selectedAgent} {onYamlChange} {onApply} />{/if}
       {/if}
     </div>
   {/if}
@@ -116,7 +237,8 @@
     position: relative;
   }
   .resource-panel:not(.open) {
-    height: 32px;
+    min-height: 32px;
+    height: auto;
   }
   .resource-panel.open {
     min-height: 120px;
@@ -137,55 +259,74 @@
   }
   .resource-tabs {
     display: flex;
-    align-items: center;
-    gap: 4px;
+    align-items: stretch;
+    gap: 2px;
     background: var(--bg-tertiary);
     border-bottom: 1px solid var(--border-color);
-    padding: 0 8px;
-    height: 32px;
+    padding: 0 4px;
+    min-height: 32px;
+    height: auto;
     flex-shrink: 0;
   }
   .resource-toggle {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 8px;
-    border: none;
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: var(--font-size-md);
-    font-family: var(--font-sans);
-    cursor: pointer;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .resource-toggle:hover { color: var(--text-primary); }
-  .resource-toggle .chevron { font-size: 10px; }
-  .resource-toggle .title { font-weight: 600; }
-  .resource-tab {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
+    gap: 3px;
+    padding: 4px;
     border: none;
     background: transparent;
     color: var(--text-secondary);
     font-size: var(--font-size-sm);
     font-family: var(--font-sans);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0;
+    flex: 0 0 auto;
+    align-self: stretch;
+  }
+  .resource-toggle:hover { color: var(--text-primary); }
+  .resource-toggle .chevron { font-size: 14px; }
+  .resource-tablist {
+    display: grid;
+    min-height: 32px;
+    height: auto;
+    min-width: 0;
+    flex: 1;
+    white-space: normal;
+    align-items: stretch;
+  }
+  .resource-tab.hidden-tab { display: none; }
+  .resource-tab {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 3px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: max(10px, var(--font-size-xs));
+    font-family: var(--font-sans);
     border-bottom: 2px solid transparent;
     margin-bottom: -1px;
     cursor: pointer;
+    min-width: 0;
+    justify-content: center;
+    white-space: normal;
+    line-height: 1.1;
+    align-self: stretch;
   }
+  .resource-tab > span:first-child { min-width: 0; overflow-wrap: anywhere; }
   .resource-tab:hover { color: var(--text-primary); }
   .resource-tab.active { color: var(--text-primary); border-bottom-color: var(--accent-blue); }
   .resource-tab .count {
     background: var(--bg-secondary);
     color: var(--text-secondary);
     border: 1px solid var(--border-color);
-    padding: 0 6px;
+    padding: 0 3px;
     border-radius: 10px;
     font-size: 10px;
     font-family: var(--font-mono);
+    flex: 0 0 auto;
   }
   .resource-tab.active .count {
     background: var(--bg-primary);
@@ -196,11 +337,15 @@
     color: var(--accent-red);
     font-size: var(--font-size-xs);
     margin-left: auto;
+    align-self: center;
   }
   .panel-body {
+    position: relative;
+    isolation: isolate;
     display: flex;
     flex: 1;
     min-height: 0;
     overflow: hidden;
   }
+  .resource-placeholder { display: flex; flex: 1; align-items: center; justify-content: center; padding: 24px; color: var(--text-muted); background: var(--bg-secondary); font-size: var(--font-size-sm); }
 </style>

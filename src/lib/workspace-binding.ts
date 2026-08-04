@@ -2,7 +2,7 @@ import { dumpYamlObject, parseYamlObject } from './yaml';
 
 export interface WorkspaceBinding {
   path: string;
-  agentName: string | null;
+  agentName: string;
   provider: string | null;
 }
 
@@ -18,17 +18,18 @@ function publishedProvider(value: string | null): string | null {
   return value === 'local' ? 'file' : value;
 }
 
-export function parseWorkspaceBinding(yamlText: string): WorkspaceBinding | null {
+export function listWorkspaceBindings(yamlText: string): WorkspaceBinding[] {
   let root: ReturnType<typeof parseYamlObject>;
   try {
     root = parseYamlObject(yamlText);
   } catch {
-    return null;
+    return [];
   }
 
   const agents = root.agents;
-  if (!agents || typeof agents !== 'object' || Array.isArray(agents)) return null;
+  if (!agents || typeof agents !== 'object' || Array.isArray(agents)) return [];
 
+  const result: WorkspaceBinding[] = [];
   for (const [agentName, def] of Object.entries(agents as Record<string, unknown>)) {
     if (!def || typeof def !== 'object') continue;
     const workspace = (def as Record<string, unknown>).workspace;
@@ -36,15 +37,20 @@ export function parseWorkspaceBinding(yamlText: string): WorkspaceBinding | null
     const ws = workspace as Record<string, unknown>;
     const provider = publishedProvider(normalizeProvider(ws.provider));
     const path = typeof ws.path === 'string' ? ws.path.trim() : '';
-
-    return {
+    result.push({
       path,
       agentName,
       provider: provider ?? 'file',
-    };
+    });
   }
+  return result;
+}
 
-  return null;
+export function parseWorkspaceBinding(yamlText: string, agentName?: string): WorkspaceBinding | null {
+  const bindings = listWorkspaceBindings(yamlText);
+  if (bindings.length === 0) return null;
+  if (!agentName) return bindings[0];
+  return bindings.find((b) => b.agentName === agentName) ?? null;
 }
 
 export function migrateLegacyWorkspaceProviders(yamlText: string): string {
@@ -122,6 +128,46 @@ export function setWorkspacePathForFirstAgent(
     return dumpYamlObject(root);
   }
   throw new Error('无法定位 workspace 配置位置');
+}
+
+// Inject a default workspace.path into a specific agent's workspace block.
+// - Creates a workspace block on the named agent if none exists.
+// - If an existing block has provider other than file/local, throws unless `force: true`.
+// - Existing local is normalized to the daemon's canonical file provider.
+// - Other agents are left untouched.
+// Returns the new YAML text.
+export function setWorkspacePathForAgent(
+  yamlText: string,
+  agentName: string,
+  options?: { force?: boolean },
+): string {
+  const root = parseYamlObject(yamlText);
+  const agents = root.agents;
+  if (!agents || typeof agents !== 'object' || Array.isArray(agents)) {
+    throw new Error('YAML 中没有 agents 配置');
+  }
+  const def = (agents as Record<string, unknown>)[agentName];
+  if (!def || typeof def !== 'object' || Array.isArray(def)) {
+    throw new Error(`YAML 中没有 agent ${agentName}`);
+  }
+  const defObj = def as Record<string, unknown>;
+  const path = DEFAULT_WORKSPACE_PATH;
+  const existing = defObj.workspace;
+  if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
+    const existingWs = existing as Record<string, unknown>;
+    const providerRaw = existingWs.provider;
+    const provider = typeof providerRaw === 'string' ? providerRaw.trim().toLowerCase() : '';
+    if (provider && provider !== 'local' && provider !== 'file') {
+      if (!options?.force) {
+        throw new Error(`当前 workspace provider 是 ${provider}，无法自动改为 file（会覆盖已有配置）`);
+      }
+    }
+    existingWs.provider = 'file';
+    existingWs.path = path;
+  } else {
+    defObj.workspace = { provider: 'file', path };
+  }
+  return dumpYamlObject(root);
 }
 
 // Find the 1-indexed line number of the first agent's `workspace:` block.

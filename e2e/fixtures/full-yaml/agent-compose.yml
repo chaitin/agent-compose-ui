@@ -21,7 +21,7 @@ agents:
     workspace:
       name: fixture-workspace
     build:
-      context: build-context
+      context: /root/agent/agent-compose-web/web/e2e/fixtures/full-yaml/build-context
       dockerfile: Dockerfile
       target: runtime
       args:

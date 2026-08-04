@@ -1,6 +1,6 @@
 <script lang="ts">
   import { store } from '../../lib/stores.svelte';
-  import { workspaceFiles } from '../../lib/workspace/store.svelte';
+  import { workspaceFiles, type WorkspaceFileStore } from '../../lib/workspace/store.svelte';
   import { LocalWorkspaceApiError } from '../../lib/workspace/local-api';
   import { formatFileSize } from '../../lib/workspace/tree';
   import { sanitizeTarPath } from '../../lib/workspace/tar';
@@ -9,6 +9,18 @@
   // Design doc §4.1: actual limit should come from GET /api/agent-compose/config/workspace (not yet implemented).
   // Until then, use the default 1 GiB. Backend will still enforce its own limit and 413 if smaller.
   const DEFAULT_UPLOAD_LIMIT_BYTES = 1 << 30;
+
+  type UploadFileStore = Pick<WorkspaceFileStore, 'hasFile' | 'upload'>;
+
+  let {
+    files = workspaceFiles,
+    locationLabel = 'workspace',
+    stripFolderRoot = false,
+  }: {
+    files?: UploadFileStore;
+    locationLabel?: string;
+    stripFolderRoot?: boolean;
+  } = $props();
 
   type OverwritePrompt =
     | null
@@ -37,6 +49,25 @@
     const files = input.files ? Array.from(input.files) : [];
     input.value = '';
     if (files.length > 0) void handleSelectedFiles(files);
+  }
+
+  function onFolderChange(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const selectedFiles = input.files ? Array.from(input.files) : [];
+    input.value = '';
+    if (selectedFiles.length > 0) {
+      if (stripFolderRoot) {
+        const roots = new Set(selectedFiles.map((file) => {
+          const path = (file as File & { webkitRelativePath?: string }).webkitRelativePath ?? '';
+          return path.includes('/') ? path.slice(0, path.indexOf('/')) : '';
+        }));
+        if (roots.size !== 1 || roots.has('')) {
+          store.addToast('请选择同一个顶层目录中的文件', 'error');
+          return;
+        }
+      }
+      void startArchiveUpload(selectedFiles.map((file) => fileToTarEntry(file, stripFolderRoot)));
+    }
   }
 
   async function handleSelectedFiles(files: File[]) {
@@ -85,9 +116,10 @@
     }
   }
 
-  function fileToTarEntry(file: File): TarEntryInput {
+  function fileToTarEntry(file: File, removeFolderRoot = false): TarEntryInput {
     const relPath = (file as File & { webkitRelativePath?: string }).webkitRelativePath;
-    const path = relPath && relPath.length > 0 ? relPath : file.name;
+    let path = relPath && relPath.length > 0 ? relPath : file.name;
+    if (removeFolderRoot && path.includes('/')) path = path.slice(path.indexOf('/') + 1);
     return {
       path,
       file,
@@ -102,7 +134,7 @@
       return;
     }
     const target = file.name;
-    if (workspaceFiles.hasFile(target)) {
+    if (files.hasFile(target)) {
       prompt = { kind: 'single', file, path: target };
       return;
     }
@@ -112,6 +144,7 @@
   async function startArchiveUpload(entries: TarEntryInput[]) {
     if (uploading || entries.length === 0) return;
     const sanitizedEntries: TarEntryInput[] = [];
+    const targetPaths = new Set<string>();
     let totalBytes = 0;
     for (const entry of entries) {
       const sanitized = sanitizeTarPath(entry.path);
@@ -119,6 +152,11 @@
         store.addToast(`跳过非法路径：${entry.path}`, 'error');
         continue;
       }
+      if (targetPaths.has(sanitized)) {
+        store.addToast(`目标路径重复：${sanitized}`, 'error');
+        return;
+      }
+      targetPaths.add(sanitized);
       sanitizedEntries.push({ ...entry, path: sanitized });
       totalBytes += entry.file.size;
     }
@@ -136,7 +174,7 @@
     // Check overwrite: any sanitized path that already exists as a file.
     const existing = sanitizedEntries
       .map((e) => e.path)
-      .filter((p) => workspaceFiles.hasFile(p));
+      .filter((p) => files.hasFile(p));
     if (existing.length > 0) {
       prompt = { kind: 'archive-overwrite', entries: sanitizedEntries, totalBytes, existing };
       return;
@@ -165,7 +203,7 @@
     uploading = true;
     progress = { loaded: 0, total: file.size, phase: 'uploading' };
     try {
-      await workspaceFiles.upload(file, targetPath, (p) => (progress = { ...p, phase: 'uploading' }));
+      await files.upload(file, targetPath, (p) => (progress = { ...p, phase: 'uploading' }));
       store.addToast(`已上传 ${targetPath}`, 'success');
     } catch (error) {
       handleUploadError(error);
@@ -184,7 +222,7 @@
         const file = entry.file instanceof File
           ? entry.file
           : new File([entry.file], entry.path.split('/').at(-1) || 'upload');
-        await workspaceFiles.upload(file, entry.path, (p) => {
+        await files.upload(file, entry.path, (p) => {
           progress = { loaded: completedBytes + p.loaded, total: totalBytes, phase: 'uploading' };
         });
         completedBytes += entry.file.size;
@@ -236,7 +274,7 @@
     multiple
     webkitdirectory
     bind:this={folderInput}
-    onchange={onFileChange}
+    onchange={onFolderChange}
     style="display:none"
     aria-hidden="true"
     tabindex="-1"
@@ -274,7 +312,7 @@
       {#if prompt.kind === 'single'}
         <div class="confirm-title">文件已存在</div>
         <div class="confirm-desc">
-          <code>{prompt.path}</code> 已存在于 workspace，是否覆盖？
+          <code>{prompt.path}</code> 已存在于 {locationLabel}，是否覆盖？
         </div>
         <div class="confirm-actions">
           <button type="button" onclick={cancelPrompt} disabled={uploading}>取消</button>
@@ -292,7 +330,7 @@
       {:else if prompt.kind === 'archive-overwrite'}
         <div class="confirm-title">将覆盖 {prompt.existing.length} 个文件</div>
         <div class="confirm-desc">
-          以下文件已存在，归档解压将覆盖它们：
+          以下文件已存在于 {locationLabel}，归档解压将覆盖它们：
           <ul class="overwrite-list">
             {#each prompt.existing.slice(0, 6) as p}
               <li><code>{p}</code></li>
@@ -373,7 +411,7 @@
   }
   .progress-fill {
     height: 100%;
-    background: var(--accent-blue);
+    background: var(--accent-blue-emphasis);
     transition: width 0.15s;
   }
   .confirm-overlay {
@@ -441,9 +479,9 @@
     cursor: pointer;
   }
   .confirm-actions button.primary {
-    background: var(--accent-blue);
-    color: #0d1117;
-    border-color: var(--accent-blue);
+    background: var(--accent-blue-emphasis);
+    color: var(--text-on-accent);
+    border-color: var(--accent-blue-emphasis);
     font-weight: 600;
   }
   .confirm-actions button:disabled {

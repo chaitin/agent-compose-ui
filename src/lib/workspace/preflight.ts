@@ -1,8 +1,8 @@
-import { isWorkspaceBindingValid, parseWorkspaceBinding } from '../workspace-binding';
+import { isWorkspaceBindingValid, listWorkspaceBindings } from '../workspace-binding';
 import { projectStorageApi, projectStorageErrorMessage, type ProjectStorageBinding } from './bindings';
 
 export function requiresManagedWorkspace(yaml: string): boolean {
-  return isWorkspaceBindingValid(parseWorkspaceBinding(yaml));
+  return listWorkspaceBindings(yaml).some((binding) => isWorkspaceBindingValid(binding));
 }
 
 export async function assertManagedWorkspace(options: {
