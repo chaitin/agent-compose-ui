@@ -238,6 +238,26 @@ agents:
   expect(screen.queryByRole('region', { name: /卷文件 \/srv\/shared/ })).not.toBeInTheDocument();
 });
 
+test('browses a re-keyed managed volume using its own owner key instead of the current project key', async () => {
+  const source = `volumes:
+  managed:
+    name: ui-managed
+    driver: local
+    labels:
+      agent-compose-ui.managed: 'true'
+      agent-compose-ui.project-key: ws_fedcba9876543210fedcba9876543210
+agents:
+  alpha:
+    volumes: [{ type: volume, source: managed, target: /data }]
+`;
+  const fetch = vi.fn(async () => new Response(JSON.stringify({ entries: [] }), { headers: { 'content-type': 'application/json' } }));
+  vi.stubGlobal('fetch', fetch);
+  render(DataMountPanel, { yaml: source, projectKey: KEY, onYamlChange: vi.fn(), onApply: vi.fn().mockResolvedValue(undefined) });
+  expect(await screen.findByRole('region', { name: '卷文件 ui-managed' })).toBeInTheDocument();
+  expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/api/volume-files?projectKey=ws_fedcba9876543210fedcba9876543210'), expect.anything());
+  expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining(`/api/volume-files?projectKey=${KEY}`), expect.anything());
+});
+
 test('hides a collision-shaped external volume even when managed ownership labels and local driver match', async () => {
   const source = `volumes:
   collision:

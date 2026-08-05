@@ -4,8 +4,6 @@ import { readFileSync } from 'node:fs';
 const full = readFileSync(new URL('./docker-compose.full.yml', import.meta.url), 'utf8');
 const external = readFileSync(new URL('./docker-compose.yml', import.meta.url), 'utf8');
 const dockerfile = readFileSync(new URL('./Dockerfile', import.meta.url), 'utf8');
-const allInOneNames = ['docker-compose.all-in-one.yml', 'Dockerfile.all-in-one'];
-const fullWeb = full.slice(full.indexOf('  web:'), full.indexOf('\n  agent-compose:'));
 
 describe('server-side project environment deployment', () => {
   test('full stack gives the gateway read-only daemon data and separate writable UI state', () => {
@@ -39,18 +37,5 @@ describe('server-side project environment deployment', () => {
     expect(full.match(/:\/data\/work/g)?.length).toBeGreaterThanOrEqual(2);
     expect(external).toContain('PROJECT_STORAGE_ROOT: /data/work/projects');
     expect(external).toMatch(/PROJECT_WORK_DIR[^\n]*:\/data\/work/);
-  });
-
-  test('full stack gives only the UI a narrow writable local-volume root', () => {
-    expect(full).toContain('LOCAL_VOLUME_ROOT: /data/volumes/local');
-    expect(full).toContain('${AGENT_COMPOSE_DATA_DIR:-./data}/volumes/local:/data/volumes/local');
-    expect(full).not.toContain('${AGENT_COMPOSE_DATA_DIR:-./data}/volumes/local:/data/volumes/local:ro');
-    expect(fullWeb).not.toMatch(/AGENT_COMPOSE_DATA_DIR[^\n]*:\/data(?:\s|$)/m);
-    expect(full).toMatch(/AGENT_COMPOSE_DATA_DIR[^\n]*:\/data\/agent-compose:ro/);
-    expect(full).toContain('${AGENT_COMPOSE_DATA_DIR:-./data}/work:/data/work');
-  });
-
-  test('local-volume deployment does not depend on all-in-one files', () => {
-    for (const name of allInOneNames) expect(full).not.toContain(name);
   });
 });

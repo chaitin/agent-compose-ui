@@ -16,7 +16,8 @@
 
   interface Props { yaml: string; projectKey: string; selectedAgent?: string; onYamlChange: (yaml: string) => void | Promise<void>; onApply: () => Promise<void> }
   let { yaml, projectKey, selectedAgent = '', onYamlChange, onApply }: Props = $props();
-  const validKey = $derived(/^ws_[0-9a-f]{32}$/.test(projectKey));
+  const PROJECT_KEY_PATTERN = /^ws_[0-9a-f]{32}$/;
+  const validKey = $derived(PROJECT_KEY_PATTERN.test(projectKey));
   let logicalName = $state(''); let targetAgent = $state(''); let createTarget = $state(''); let targetTouched = $state(false);
   let existingKey = $state(''); let existingAgent = $state(''); let existingTarget = $state('');
   let sharedId = $state(''); let sharedAgent = $state(''); let sharedTarget = $state(''); let sharedReadOnly = $state(true);
@@ -42,6 +43,7 @@
   const selectedResource = $derived.by(() => { const current = selection; return current?.kind === 'volume' ? resources.find((item) => item.key === current.key) : undefined; });
   const selectedBind = $derived.by(() => { const current = selection; return current?.kind === 'share' ? binds.find((item) => item.source === current.source && item.agent === current.agent && item.target === current.target) : undefined; });
   const selectedBrowsableVolume = $derived(selectedResource && validKey && fileBrowsable(selectedResource) ? selectedResource.systemName : '');
+  const selectedBrowseKey = $derived.by(() => { const resource = selectedResource; if (!resource) return projectKey; return volumeOwnerKey(resource) || projectKey; });
 
   $effect(() => {
     const key = projectKey;
@@ -138,6 +140,15 @@
       if (!response.removed) throw new Error('daemon 未确认删除卷，数据仍待清理');
     } finally { release(); }
   }
+  function volumeOwnerKey(resource: ProjectDataResource): string {
+    try {
+      const declarations = parseYamlObject(yaml).volumes;
+      const declaration = declarations && typeof declarations === 'object' && !Array.isArray(declarations) ? (declarations as Record<string, unknown>)[resource.key] : undefined;
+      const labels = declaration && typeof declaration === 'object' && !Array.isArray(declaration) ? (declaration as Record<string, unknown>).labels : undefined;
+      const ownerKey = labels && typeof labels === 'object' && !Array.isArray(labels) ? (labels as Record<string, unknown>)['agent-compose-ui.project-key'] : undefined;
+      return typeof ownerKey === 'string' && PROJECT_KEY_PATTERN.test(ownerKey) ? ownerKey : '';
+    } catch { return ''; }
+  }
   function fileBrowsable(resource: ProjectDataResource): boolean {
     try {
       const declarations = parseYamlObject(yaml).volumes;
@@ -147,7 +158,7 @@
       const value = declaration as Record<string, unknown>; const labels = value.labels;
       return value.external !== true && value.driver === 'local' && !!labels && typeof labels === 'object' && !Array.isArray(labels)
         && (labels as Record<string, unknown>)['agent-compose-ui.managed'] === 'true'
-        && (labels as Record<string, unknown>)['agent-compose-ui.project-key'] === projectKey;
+        && PROJECT_KEY_PATTERN.test(String((labels as Record<string, unknown>)['agent-compose-ui.project-key'] ?? ''));
     } catch { return false; }
   }
   function assertReusable(text: string, key: string, expectedName: string): void {
@@ -313,14 +324,14 @@
     <MountResourceList volumes={resources} {cacheKeys} shares={binds} selected={selection} onSelect={(value) => { selection = value; }} />
     <div class="resource-detail">
       <MountResourceDetail resource={selectedResource} share={selectedBind} {locked} canBrowse={!!selectedBrowsableVolume} onUnmount={(mount) => { void unmount(mount); }} onRemove={(resource, trigger) => requestRemove(resource, trigger)} />
-      {#if selectedBrowsableVolume}{#key `${projectKey}\0${selectedBrowsableVolume}\0${volumeBrowserRevision}`}<VolumeFileBrowser projectKey={projectKey} volume={selectedBrowsableVolume} />{/key}{/if}
+      {#if selectedBrowsableVolume}{#key `${selectedBrowseKey}\0${selectedBrowsableVolume}\0${volumeBrowserRevision}`}<VolumeFileBrowser projectKey={selectedBrowseKey} volume={selectedBrowsableVolume} />{/key}{/if}
     </div>
   </div>
   {#if operationModal === 'create'}<div class="resource-modal-backdrop"><dialog class="resource-modal-card command-modal" open aria-label="创建数据卷"><form class="command-modal-form" onsubmit={(e) => { e.preventDefault(); void createVolume(); }}><div class="command-header"><div class="command-title"><h3>创建隔离持久卷</h3><span class="command-context">VOLUME / CREATE</span></div></div>
     <div class="command-fields"><label class="command-field">逻辑名称 <input aria-label="逻辑名称" bind:value={logicalName} /></label><label class="command-field">目标 Agent <select aria-label="创建卷目标 Agent" bind:value={targetAgent}>{#each agents as a}<option value={a}>{a}</option>{/each}</select></label>
     <label class="command-field">挂载目标 <input class="command-path" aria-label="创建卷挂载目标" bind:value={createTarget} oninput={() => targetTouched = true} /></label></div><div class="command-footer"><button class="ui-button ghost" type="button" onclick={() => operationModal = ''}>取消</button><button class="ui-button primary" disabled={!validKey || locked}>创建并挂载</button></div>
   </form></dialog></div>{/if}
-  {#if operationModal === 'mount'}<div class="resource-modal-backdrop"><dialog class="resource-modal-card command-modal" open aria-label="挂载资源"><div class="command-header"><div class="command-title"><h3>挂载资源</h3><span class="command-context">VOLUME / MOUNT</span></div><label class="command-field">资源类型 <select aria-label="资源类型" value={resourceType} onchange={(event) => { resourceType = event.currentTarget.value as typeof resourceType; }}><option value="volume">持久数据</option><option value="cache">依赖缓存</option><option value="share">共享目录</option></select></label></div>
+  {#if operationModal === 'mount'}<div class="resource-modal-backdrop"><dialog class="resource-modal-card command-modal" open aria-label="挂载资源"><div class="command-header"><div class="command-title"><h3>挂载资源</h3><span class="command-context">VOLUME / MOUNT</span></div><label class="command-field">资源类型 <select aria-label="资源类型" value={resourceType} onchange={(event) => { resourceType = event.currentTarget.value as typeof resourceType; }}><option value="volume">持久数据</option><option hidden value="cache">依赖缓存</option><option hidden value="share">共享目录</option></select></label></div>
   {#if resourceType === 'volume'}<form class="command-modal-form" onsubmit={(e) => { e.preventDefault(); void mountExisting(); }}>
     <div class="command-fields"><label class="command-field">卷 <select aria-label="现有卷" bind:value={existingKey}><option value="">请选择</option>{#each resources as r}<option value={r.key}>{r.key}</option>{/each}</select></label>
     <label class="command-field">目标 Agent <select aria-label="现有卷目标 Agent" bind:value={existingAgent}>{#each agents as a}<option value={a}>{a}</option>{/each}</select></label><label class="command-field">挂载目标 <input class="command-path" aria-label="现有卷挂载目标" bind:value={existingTarget} /></label></div><div class="command-footer"><button class="ui-button ghost" type="button" onclick={() => operationModal = ''}>关闭</button><button class="ui-button primary" disabled={!validKey || locked}>挂载</button></div>

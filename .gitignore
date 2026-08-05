@@ -10,3 +10,4 @@ docker/.env
 # Full-stack compose runtime data/config (self-contained under docker/)
 docker/data/
 docker/agent-compose.env
+release_amd
