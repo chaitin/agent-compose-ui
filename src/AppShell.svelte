@@ -60,7 +60,8 @@
     const path = router.path.replace(/\/+$/, '') || '/';
     let target = '';
     if (path === '/ui' || path === '/workbench') target = '/';
-    else if (path === '/automation-tasks') target = '/automations';
+    else if (path === '/automation-tasks' || path.startsWith('/automations')) target = '/projects';
+    else if (path.startsWith('/automation-runs')) target = '/projects';
     else if (path === '/agents') target = '/projects';
     else if (path.startsWith('/debug/runs/')) target = `/runs/${path.slice('/debug/runs/'.length)}/terminal`;
     if (target) router.replace(target);
@@ -117,6 +118,11 @@
   const p = $derived(router.path);
   const runDetailId = $derived(matchDetail('/runs', p));
   const sandboxDetailId = $derived(matchDetail('/sandboxes', p));
+
+  function projectSubroute(path: string, segment: 'automations' | 'automation-runs'): boolean {
+    const parts = path.split('/').filter(Boolean);
+    return parts[0] === 'projects' && Boolean(parts[1]) && parts[2] === segment;
+  }
 
   $effect(() => {
     void p;
@@ -190,25 +196,25 @@
         class="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]"
       >
         {#if p === '/'}
-          <Overview />
+          <Overview canWrite={auth.enabled} />
+        {:else if projectSubroute(p, 'automation-runs')}
+          <AutomationRunDetail />
+        {:else if projectSubroute(p, 'automations')}
+          <Automations />
         {:else if p.startsWith('/projects') || p.startsWith('/agents')}
           <Projects />
-        {:else if p.startsWith('/automation-runs/')}
-          <AutomationRunDetail />
-        {:else if p.startsWith('/automations')}
-          <Automations />
         {:else if p.startsWith('/events/')}
-          <EventDetail />
+          <EventDetail canWrite={auth.enabled} />
         {:else if p.startsWith('/events')}
           <Events />
         {:else if sandboxDetailId}
-          <SandboxDetail />
+          <SandboxDetail canWrite={auth.enabled} />
         {:else if p.startsWith('/sandboxes')}
           <Sandboxes />
         {:else if p === '/runs/unlinked'}
           <UnlinkedRuns />
         {:else if runDetailId}
-          <RunDetail />
+          <RunDetail canWrite={auth.enabled} />
         {:else if p.startsWith('/settings/caches')}
           <Caches />
         {:else if p.startsWith('/audit')}
@@ -226,7 +232,7 @@
         {:else if p.startsWith('/skills')}
           <SpecResources kind="skills" />
         {:else}
-          <Overview />
+          <Overview canWrite={auth.enabled} />
         {/if}
       </main>
     </div>

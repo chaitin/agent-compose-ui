@@ -7,9 +7,9 @@ import {
   SchedulerRunStatus,
   TriggerSpec,
   type Project,
+  type ProjectScheduler,
   type ResolvedTrigger,
   type SchedulerRun,
-  type SchedulerSummary,
 } from '../gen/agentcompose/v2/agentcompose_pb.js';
 import { toLegacySessionPolicy, toProjectSandboxPolicy, type LegacySessionPolicy } from '../model/sandbox-policy';
 import { timestampToISOString as timestampString } from '../model/timestamps';
@@ -219,19 +219,79 @@ export type TopicEventTrace = {
   descendantsTruncated: boolean;
 };
 
-export async function listAutomationTasks(): Promise<AutomationTask[]> {
-  return (await listAllSchedulers()).map(taskFromV2);
+export async function listAutomationTasks(projectId: string): Promise<AutomationTask[]> {
+  const project = await loadProject(projectId);
+  return Promise.all(
+    project.schedulers.map(async (scheduler) => {
+      const response = await projectClient.listSchedulerRuns({
+        project: projectById(projectId),
+        agentName: scheduler.agentName,
+        limit: 1,
+      });
+      return taskFromProjectScheduler(scheduler, response.total, response.runs[0]);
+    }),
+  );
 }
 
-export async function getAutomationTask(id: string): Promise<AutomationTaskDetail> {
-  const found = await findScheduler(id);
-  if (!found) throw new Error('自动化任务不存在');
+export async function listRecentProjectAutomationRuns(
+  limit = 20,
+): Promise<{ runs: AutomationRun[]; tasks: AutomationTask[] }> {
+  if (limit <= 0) return { runs: [], tasks: [] };
+
+  const projects: Project[] = [];
+  let offset = 0;
+  for (;;) {
+    const page = await projectClient.listProjects({ limit: 200, offset });
+    const responses = await Promise.all(
+      page.projects.map((summary) =>
+        projectClient.getProject({ project: projectById(summary.projectId), includeSpec: false }),
+      ),
+    );
+    projects.push(...responses.flatMap((response) => (response.project ? [response.project] : [])));
+    const next = nextPageOffset(offset, page.projects.length, page.total);
+    if (next === undefined) break;
+    offset = next;
+  }
+
+  const targets = projects.flatMap((project) =>
+    project.schedulers.map((scheduler) => ({
+      projectId: scheduler.projectId || project.summary?.projectId || '',
+      scheduler,
+    })),
+  );
+  const responses = await Promise.all(
+    targets.map(({ projectId, scheduler }) =>
+      projectClient.listSchedulerRuns({
+        project: projectById(projectId),
+        agentName: scheduler.agentName,
+        limit: Math.min(Math.ceil(limit), 500),
+      }),
+    ),
+  );
+  const tasks = targets.map(({ scheduler }, index) =>
+    taskFromProjectScheduler(scheduler, responses[index].total, responses[index].runs[0]),
+  );
+  const uniqueRuns = new Map<string, SchedulerRun>();
+  for (const response of responses) {
+    for (const run of response.runs) uniqueRuns.set(run.runId, run);
+  }
+  return {
+    runs: [...uniqueRuns.values()]
+      .map(runFromScheduler)
+      .sort((left, right) => compareDateDesc(left.startedAt, right.startedAt))
+      .slice(0, limit),
+    tasks,
+  };
+}
+
+export async function getAutomationTask(projectId: string, agentName: string): Promise<AutomationTaskDetail> {
   const [response, project] = await Promise.all([
-    projectClient.getScheduler({ project: projectById(found.projectId), agentName: found.agentName }),
-    loadProject(found.projectId),
+    projectClient.getScheduler({ project: projectById(projectId), agentName }),
+    loadProject(projectId),
   ]);
-  const agent = project.spec?.agents.find((item) => item.name === found.agentName);
-  const summary = taskFromV2(found);
+  if (!response.scheduler) throw new Error('自动化任务不存在');
+  const agent = project.spec?.agents.find((item) => item.name === agentName);
+  const summary = taskFromProjectScheduler(response.scheduler);
   return {
     ...summary,
     name: response.spec?.displayName.trim() || response.scheduler?.displayName.trim() || summary.name,
@@ -250,22 +310,17 @@ export async function getAutomationTask(id: string): Promise<AutomationTaskDetai
   };
 }
 
-export async function resolveAutomationSessionTarget(
-  id: string,
-): Promise<{ projectId: string; agentName: string } | undefined> {
-  const found = await findScheduler(id);
-  return found ? { projectId: found.projectId, agentName: found.agentName } : undefined;
-}
-
-export async function previewAutomationTask(input: SaveAutomationTaskInput): Promise<ProjectDeploymentPreview> {
-  const target = input.id ? await findScheduler(input.id) : await findProjectAgent(input.agentId || input.defaultAgent);
-  if (!target) throw new Error('自动化任务必须关联项目智能体');
-  const project = await getProjectView(target.projectId);
+export async function previewAutomationTask(
+  projectId: string,
+  agentName: string,
+  input: SaveAutomationTaskInput,
+): Promise<ProjectDeploymentPreview> {
+  const project = await getProjectView(projectId);
   return previewProjectMutation({
     kind: input.id ? 'update_scheduler' : 'create_scheduler',
-    projectId: target.projectId,
+    projectId,
     baseSpecHash: project.specHash,
-    agentName: target.agentName,
+    agentName,
     agent: {
       env: (input.envItems ?? [])
         .map((item) => ({ name: item.name.trim(), value: item.value, secret: item.secret }))
@@ -275,15 +330,16 @@ export async function previewAutomationTask(input: SaveAutomationTaskInput): Pro
   });
 }
 
-export async function previewDeleteAutomationTask(id: string): Promise<ProjectDeploymentPreview> {
-  const found = await findScheduler(id);
-  if (!found) throw new Error('自动化任务不存在');
-  const project = await getProjectView(found.projectId);
+export async function previewDeleteAutomationTask(
+  projectId: string,
+  agentName: string,
+): Promise<ProjectDeploymentPreview> {
+  const project = await getProjectView(projectId);
   return previewProjectMutation({
     kind: 'delete_scheduler',
-    projectId: found.projectId,
+    projectId,
     baseSpecHash: project.specHash,
-    agentName: found.agentName,
+    agentName,
   });
 }
 
@@ -301,31 +357,33 @@ function schedulerSpecFromInput(input: SaveAutomationTaskInput): SchedulerEditab
   };
 }
 
-export async function setAutomationTaskEnabled(id: string, enabled: boolean): Promise<AutomationTask> {
-  const found = await findScheduler(id);
-  if (!found) throw new Error('自动化任务不存在');
-  await projectClient.setSchedulerEnabled({
-    project: projectById(found.projectId),
-    agentName: found.agentName,
+export async function setAutomationTaskEnabled(
+  projectId: string,
+  agentName: string,
+  enabled: boolean,
+): Promise<AutomationTask> {
+  const response = await projectClient.setSchedulerEnabled({
+    project: projectById(projectId),
+    agentName,
     enabled,
   });
-  return { ...taskFromV2(found), enabled };
+  if (!response.scheduler) throw new Error('自动化任务不存在');
+  return taskFromProjectScheduler(response.scheduler);
 }
 
 export async function setAutomationTriggerEnabled(
-  loaderId: string,
+  projectId: string,
+  agentName: string,
   triggerId: string,
   enabled: boolean,
 ): Promise<AutomationTaskDetail> {
-  const found = await findScheduler(loaderId);
-  if (!found) throw new Error('自动化任务不存在');
   await projectClient.setSchedulerTriggerEnabled({
-    project: projectById(found.projectId),
-    agentName: found.agentName,
+    project: projectById(projectId),
+    agentName,
     triggerId,
     enabled,
   });
-  return getAutomationTask(loaderId);
+  return getAutomationTask(projectId, agentName);
 }
 
 export async function validateAutomationTask(script: string, runtime: string): Promise<ValidateAutomationTaskResult> {
@@ -364,16 +422,17 @@ export async function validateAutomationTask(script: string, runtime: string): P
 }
 
 export async function runAutomationTaskNow(
-  loaderId: string,
+  projectId: string,
+  agentName: string,
   payloadJson: string,
   triggerId = '',
 ): Promise<AutomationRun> {
-  const scheduler = await requireScheduler(loaderId);
-  const effectiveTriggerId = triggerId || (await getAutomationTask(loaderId)).triggers[0]?.triggerId;
+  const task = await getAutomationTask(projectId, agentName);
+  const effectiveTriggerId = triggerId || task.triggers[0]?.triggerId;
   if (!effectiveTriggerId) throw new Error('自动化没有可用的触发条件');
   const response = await projectClient.runScheduler({
-    project: projectById(scheduler.projectId),
-    agentName: scheduler.agentName,
+    project: projectById(projectId),
+    agentName,
     triggerId: effectiveTriggerId,
     payloadJson,
   });
@@ -383,59 +442,19 @@ export async function runAutomationTaskNow(
   return result;
 }
 
-export async function getAutomationRun(loaderId: string, runId: string): Promise<AutomationRun> {
-  const scheduler = await requireScheduler(loaderId);
-  const response = await projectClient.getSchedulerRun({ project: projectById(scheduler.projectId), runId });
+export async function getAutomationRun(projectId: string, runId: string): Promise<AutomationRun> {
+  const response = await projectClient.getSchedulerRun({ project: projectById(projectId), runId });
   if (!response.run) throw new Error('自动化运行不存在');
   return runFromScheduler(response.run);
 }
 
-export async function getAutomationRunById(runId: string): Promise<AutomationRun> {
-  const projectIds = [...new Set((await listAllSchedulers()).map((item) => item.projectId))];
-  for (const projectId of projectIds) {
-    try {
-      const response = await projectClient.getSchedulerRun({ project: projectById(projectId), runId });
-      if (response.run) return runFromScheduler(response.run);
-    } catch {
-      // Scheduler run IDs are global, but GetSchedulerRun requires its project.
-    }
-  }
-  throw new Error('调度运行不存在');
-}
-
-export async function listRecentAutomationRuns(loaderIds: string[], limit = 10): Promise<AutomationRun[]> {
-  if (loaderIds.length === 0 || limit <= 0) return [];
-  const requestedIds = new Set(loaderIds);
-  const schedulers = (await listAllSchedulers()).filter((item) => requestedIds.has(item.schedulerId));
-  const responses = await Promise.all(
-    schedulers.map((scheduler) =>
-      projectClient.listSchedulerRuns({
-        project: projectById(scheduler.projectId),
-        agentName: scheduler.agentName,
-        limit: Math.min(Math.ceil(limit), 500),
-      }),
-    ),
-  );
-  const uniqueRuns = new Map<string, SchedulerRun>();
-  for (const response of responses) {
-    for (const run of response.runs) {
-      uniqueRuns.set(run.runId, run);
-    }
-  }
-  return [...uniqueRuns.values()]
-    .map(runFromScheduler)
-    .sort((left, right) => compareDateDesc(left.startedAt, right.startedAt))
-    .slice(0, limit);
-}
-
 export async function stopAutomationRun(
-  loaderId: string,
+  projectId: string,
   runId: string,
   reason = '',
 ): Promise<{ run: AutomationRun; stopRequested: boolean }> {
-  const scheduler = await requireScheduler(loaderId);
   const response = await projectClient.stopSchedulerRun({
-    project: projectById(scheduler.projectId),
+    project: projectById(projectId),
     runId,
     reason,
   });
@@ -443,17 +462,19 @@ export async function stopAutomationRun(
   return { run: runFromScheduler(response.run), stopRequested: response.stopRequested };
 }
 
-export async function listAutomationEvents(loaderId: string, limit = 50): Promise<AutomationEvent[]> {
-  const found = await findScheduler(loaderId);
-  if (!found) return [];
+export async function listAutomationEvents(
+  projectId: string,
+  agentName: string,
+  limit = 50,
+): Promise<AutomationEvent[]> {
   const response = await projectClient.listSchedulerEvents({
-    project: projectById(found.projectId),
-    agentName: found.agentName,
+    project: projectById(projectId),
+    agentName,
     limit,
   });
   return response.events.map((item) => ({
     id: item.id,
-    loaderId,
+    loaderId: item.schedulerId,
     runId: item.runId,
     triggerId: item.triggerId,
     type: item.type,
@@ -468,45 +489,12 @@ export async function listAutomationEvents(loaderId: string, limit = 50): Promis
   }));
 }
 
-async function listAllSchedulers(): Promise<SchedulerSummary[]> {
-  const result: SchedulerSummary[] = [];
-  let offset = 0;
-  for (;;) {
-    const response = await projectClient.listSchedulers({ limit: 500, offset });
-    result.push(...response.schedulers);
-    const next = nextPageOffset(offset, response.schedulers.length, response.total);
-    if (next === undefined) return result;
-    offset = next;
-  }
-}
-async function findScheduler(id: string): Promise<SchedulerSummary | undefined> {
-  return (await listAllSchedulers()).find((value) => value.schedulerId === id);
-}
-async function requireScheduler(id: string): Promise<SchedulerSummary> {
-  const scheduler = await findScheduler(id);
-  if (!scheduler) throw new Error('自动化任务不存在');
-  return scheduler;
-}
 async function loadProject(projectId: string): Promise<Project> {
   const response = await projectClient.getProject({ project: projectById(projectId), includeSpec: true });
   if (!response.project) throw new Error('项目不存在');
   return response.project;
 }
-async function findProjectAgent(id: string): Promise<{ projectId: string; agentName: string } | undefined> {
-  let offset = 0;
-  for (;;) {
-    const listed = await projectClient.listProjects({ limit: 200, offset });
-    for (const summary of listed.projects) {
-      const project = await loadProject(summary.projectId);
-      const agent = project.agents.find((value) => value.managedAgentId === id || value.agentName === id);
-      if (agent) return { projectId: summary.projectId, agentName: agent.agentName };
-    }
-    const next = nextPageOffset(offset, listed.projects.length, listed.total);
-    if (next === undefined) return undefined;
-    offset = next;
-  }
-}
-function taskFromV2(item: SchedulerSummary): AutomationTask {
+function taskFromProjectScheduler(item: ProjectScheduler, runCount = 0, latestRun?: SchedulerRun): AutomationTask {
   return {
     id: item.schedulerId,
     projectId: item.projectId,
@@ -520,10 +508,10 @@ function taskFromV2(item: SchedulerSummary): AutomationTask {
     capsetIds: [],
     defaultAgent: '',
     triggerCount: item.triggerCount,
-    runCount: item.runCount,
+    runCount,
     eventCount: 0,
-    latestRunAt: timestampString(item.latestRunAt),
-    lastError: item.lastError,
+    latestRunAt: timestampString(latestRun?.startedAt),
+    lastError: latestRun?.error ?? '',
     createdAt: '',
     updatedAt: '',
     driver: '',

@@ -50,7 +50,12 @@ reads JSONL files below `.codex/sessions` and `.claude/projects`.
 The UI server owns login identity and audit attribution; the daemon does not
 manage browser users. Local password login is a single emergency account from
 `AUTH_USERNAME`/`AUTH_PASSWORD`, while OAuth identities are discovered during
-login. There is intentionally no user-management API or user CRUD.
+login. There is intentionally no user-management API or user CRUD. When neither
+password login nor OAuth is configured, browser access is read-only: query APIs
+remain available, while mutations, command execution, interactive terminals,
+and Jupyter proxy access return HTTP 403. Configure either authentication method
+to enable those operations. Webhook ingress and the runtime LLM facade retain
+their existing public-access behavior.
 
 Database migrations live under `internal/dbmigrate/migrations/` and use one
 ordered sequence for the UI database. Applied migrations are tracked with

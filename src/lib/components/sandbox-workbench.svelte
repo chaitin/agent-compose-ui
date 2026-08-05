@@ -45,11 +45,13 @@
     initialTab,
     embedded = false,
     contextLog = '',
+    canWrite = true,
   }: {
     sandboxId: string;
     initialTab?: 'conversation' | 'logs' | 'records' | 'terminal';
     embedded?: boolean;
     contextLog?: string;
+    canWrite?: boolean;
   } = $props();
 
   let sandbox = $state<SandboxContextDetail | null>(null);
@@ -101,11 +103,13 @@
   const selectedTarget = $derived(
     targets.find((item) => targetKey(item) === selectedTargetKey) ?? targets[0] ?? target,
   );
-  const jupyterHref = $derived(jupyterEntryHref(sandbox));
+  const jupyterHref = $derived(canWrite ? jupyterEntryHref(sandbox) : '');
   const normalizedStatus = $derived(sandbox?.status.trim().toLowerCase() ?? '');
   const runnable = $derived(normalizedStatus === 'running');
   const resumable = $derived(normalizedStatus === 'stopped');
-  const terminalAvailable = $derived(normalizedStatus !== 'failed' && normalizedStatus !== 'deleting');
+  const terminalAvailable = $derived(
+    canWrite && normalizedStatus !== 'failed' && normalizedStatus !== 'deleting',
+  );
   const stoppedRuntime = $derived(sandbox ? stoppedRuntimePresentation(sandbox) : null);
 
   onMount(() => () => {
@@ -145,7 +149,7 @@
   });
 
   $effect(() => {
-    const key = tab === 'terminal' && runnable && sandbox ? sandboxId : '';
+    const key = canWrite && tab === 'terminal' && runnable && sandbox ? sandboxId : '';
     if (key && key !== terminalAutoKey) {
       terminalAutoKey = key;
       terminalAutoAttempts = 0;
@@ -184,7 +188,7 @@
       tab =
         initialTab === 'records'
           ? 'records'
-          : initialTab === 'terminal'
+          : canWrite && initialTab === 'terminal'
             ? 'terminal'
             : initialTab === 'conversation' && conversationAvailable
               ? 'conversation'
@@ -315,7 +319,7 @@
   }
 
   function connectTerminal(automatic = false): void {
-    if (!sandbox || terminal) return;
+    if (!canWrite || !sandbox || terminal) return;
     window.clearTimeout(terminalRetryTimer);
     if (automatic) terminalAutoAttempts += 1;
     terminalError = '';

@@ -41,11 +41,13 @@
   import { t } from '$lib/i18n.svelte';
   import { jupyterEntryHref } from '../model/jupyter';
 
+  let { canWrite = true }: { canWrite?: boolean } = $props();
+
   const runId = $derived(matchDetail('/runs', router.path) ?? '');
   let detail = $state<RunDetail | null>(null);
   let events = $state<RunEvent[]>([]);
   let sandbox = $state<SandboxContextDetail | null>(null);
-  let tab = $state(router.path.endsWith('/terminal') ? 'terminal' : 'chat');
+  let tab = $state<'chat' | 'process' | 'terminal' | 'sandbox'>('chat');
   let shellLines = $state<string[]>([]);
   let terminalState = $state(t('未连接'));
   let terminalFontSize = $state(15);
@@ -71,7 +73,13 @@
   const activeStream = $derived(
     sandboxStream?.running ? sandboxStream : runStream?.running ? runStream : (sandboxStream ?? runStream),
   );
-  const jupyterHref = $derived(jupyterEntryHref(sandbox));
+  const jupyterHref = $derived(canWrite ? jupyterEntryHref(sandbox) : '');
+
+  $effect(() => {
+    if (!canWrite && router.path.endsWith('/terminal')) {
+      navigate(`/runs/${encodeURIComponent(runId)}`);
+    }
+  });
 
   $effect(() => {
     const targetRunId = runId;
@@ -102,7 +110,7 @@
     const version = ++loadVersion;
     loading = true;
     error = '';
-    tab = router.path.endsWith('/terminal') ? 'terminal' : 'chat';
+    tab = canWrite && router.path.endsWith('/terminal') ? 'terminal' : 'chat';
     window.clearTimeout(statusPollTimer);
     controller?.abort();
     controller = new AbortController();
@@ -201,6 +209,8 @@
   }
 
   function selectTab(value: string): void {
+    if (value !== 'chat' && value !== 'process' && value !== 'terminal' && value !== 'sandbox') return;
+    if (value === 'terminal' && !canWrite) return;
     tab = value;
     if (value === 'terminal') {
       navigate(`/runs/${encodeURIComponent(runId)}/terminal`);
@@ -212,7 +222,7 @@
   }
 
   function connectShell(): void {
-    if (!summary?.sandboxId || terminal) return;
+    if (!canWrite || !summary?.sandboxId || terminal) return;
     shellLines = [];
     error = '';
     const connectionVersion = ++terminalConnectionVersion;
@@ -389,7 +399,7 @@
         ><Tabs.List data-tab-scroll class="shrink-0 justify-start"
           ><Tabs.Trigger value="chat">{t('对话')}</Tabs.Trigger><Tabs.Trigger value="process"
             >{t('执行过程')}</Tabs.Trigger
-          ><Tabs.Trigger value="terminal">{t('终端')}</Tabs.Trigger><Tabs.Trigger value="sandbox"
+          >{#if canWrite}<Tabs.Trigger value="terminal">{t('终端')}</Tabs.Trigger>{/if}<Tabs.Trigger value="sandbox"
             >{t('执行环境')}</Tabs.Trigger
           ></Tabs.List
         >
@@ -423,7 +433,7 @@
             onDownloadLogs={downloadLogs}
           />
         </Tabs.Content>
-        <Tabs.Content value="terminal" class="mt-4 min-h-0 flex-1 overflow-hidden"
+        {#if canWrite}<Tabs.Content value="terminal" class="mt-4 min-h-0 flex-1 overflow-hidden"
           >{#if terminalExpanded}<div class="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm"></div>{/if}
           <div
             data-terminal-panel
@@ -499,8 +509,7 @@
                 onResize={(cols, rows) => terminal?.resize(cols, rows)}
               />
             </div>
-          </div></Tabs.Content
-        >
+          </div></Tabs.Content>{/if}
         <Tabs.Content data-scroll-pane value="sandbox" class="mt-4 min-h-0 flex-1 overflow-y-auto pr-1"
           ><RunSandboxSummary {sandbox} {detail} /></Tabs.Content
         >

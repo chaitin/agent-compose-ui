@@ -44,8 +44,8 @@ func TestTokenManagementAndMachineProxyIntegration(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer upstream.Close()
-	t.Setenv("AUTH_PASSWORD", "")
-	t.Setenv("AUTH_SECRET", "")
+	t.Setenv("AUTH_PASSWORD", "secret")
+	t.Setenv("AUTH_SECRET", "test-secret")
 	t.Setenv("AGENT_COMPOSE_URL", upstream.URL)
 	t.Setenv("UI_DATABASE_PATH", t.TempDir()+"/ui.db")
 
@@ -57,6 +57,7 @@ func TestTokenManagementAndMachineProxyIntegration(t *testing.T) {
 
 	create := httptest.NewRequest(http.MethodPost, "/api/ui/v1/tokens", strings.NewReader(`{"name":"automation","role":"admin","expiresInDays":90}`))
 	create.Header.Set("Content-Type", "application/json")
+	create.SetBasicAuth("admin", "secret")
 	createdResponse := httptest.NewRecorder()
 	browser.ServeHTTP(createdResponse, create)
 	if createdResponse.Code != http.StatusCreated {
@@ -70,7 +71,9 @@ func TestTokenManagementAndMachineProxyIntegration(t *testing.T) {
 		t.Fatalf("created response = %q, err = %v", createdResponse.Body.String(), err)
 	}
 	auditResponse := httptest.NewRecorder()
-	browser.ServeHTTP(auditResponse, httptest.NewRequest(http.MethodGet, "/api/ui/v1/audit/events", nil))
+	auditRequest := httptest.NewRequest(http.MethodGet, "/api/ui/v1/audit/events", nil)
+	auditRequest.SetBasicAuth("admin", "secret")
+	browser.ServeHTTP(auditResponse, auditRequest)
 	if auditResponse.Code != http.StatusOK || !strings.Contains(auditResponse.Body.String(), "POST /api/ui/v1/tokens") {
 		t.Fatalf("audit response = %d: %s", auditResponse.Code, auditResponse.Body.String())
 	}
@@ -83,7 +86,9 @@ func TestTokenManagementAndMachineProxyIntegration(t *testing.T) {
 		t.Fatalf("proxy status = %d: %s", response.Code, response.Body.String())
 	}
 	auditResponse = httptest.NewRecorder()
-	browser.ServeHTTP(auditResponse, httptest.NewRequest(http.MethodGet, "/api/ui/v1/audit/events", nil))
+	auditRequest = httptest.NewRequest(http.MethodGet, "/api/ui/v1/audit/events", nil)
+	auditRequest.SetBasicAuth("admin", "secret")
+	browser.ServeHTTP(auditResponse, auditRequest)
 	if auditResponse.Code != http.StatusOK || !strings.Contains(auditResponse.Body.String(), `"id":"token:`+created.ID+`"`) ||
 		!strings.Contains(auditResponse.Body.String(), `"displayName":"automation"`) {
 		t.Fatalf("token audit attribution = %d: %s", auditResponse.Code, auditResponse.Body.String())
