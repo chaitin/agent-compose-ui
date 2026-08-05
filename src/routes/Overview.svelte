@@ -12,6 +12,7 @@
   import { RunStatus } from '../gen/agentcompose/v2/agentcompose_pb.js';
   import { timestampToISOString } from '../model/timestamps';
   import { compactIdentifier } from '../model/identifiers';
+  import { versionLabel } from '../model/presentation';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import Terminal from '@lucide/svelte/icons/terminal';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
@@ -83,7 +84,7 @@
           })),
       ];
       health = {
-        status: `v${healthValue.version}`,
+        status: versionLabel(healthValue.version),
         cpu: `${healthValue.processCpuPercent.toFixed(0)}%`,
         rss: `${(healthValue.processRssBytes / 1024 / 1024).toFixed(0)}M`,
       };
