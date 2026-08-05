@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
-  import BrandMark from '$lib/components/brand-mark.svelte';
+  import loginBrand from '$lib/assets/agent-compose-login-lockup.png';
   import { loginWithPassword, type AuthStatus } from '../api/auth';
   import { t } from '$lib/i18n.svelte';
   import { apiPath, normalizeAppLocation } from '../paths';
@@ -43,12 +43,11 @@
 
 <main class="flex min-h-dvh items-center justify-center bg-background p-4 text-foreground sm:p-6">
   <section class="w-full max-w-sm rounded-xl border border-border bg-card p-7 shadow-lg">
-    <div class="mb-6 flex items-center gap-3">
-      <BrandMark class="h-12 w-[4.2rem] shrink-0" />
-      <div>
-        <h1 class="text-lg font-semibold">agent-compose</h1>
-        <p class="text-sm text-muted-foreground">{t('登录 Web 控制台')}</p>
-      </div>
+    <div class="mb-6">
+      <h1 class="w-fit">
+        <img src={loginBrand} alt="Agent-Compose" class="h-11 w-auto max-w-full object-contain" />
+      </h1>
+      <p class="mt-3 text-sm text-muted-foreground">{t('登录 Web 控制台')}</p>
     </div>
     {#if error}<div class="mb-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
         {error}

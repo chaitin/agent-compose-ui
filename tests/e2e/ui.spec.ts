@@ -464,7 +464,7 @@ test('authenticates and loads every primary route without browser errors', async
   });
 
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'agent-compose' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agent-Compose', exact: true })).toBeVisible();
   await page.getByLabel('用户名').fill('admin');
   await page.getByLabel('密码').fill('wrong-password');
   await page.getByRole('button', { name: '登录', exact: true }).click();
@@ -1237,7 +1237,7 @@ test('keeps execution actions sticky and restores list scroll on browser history
 test('opens the live webhook event from the authenticated event center', async ({ page }) => {
   test.skip(!retainedLiveWebhookEventId, 'requires a retained webhook event');
   await page.goto(`/events/${retainedLiveWebhookEventId}`);
-  await expect(page.getByRole('heading', { name: 'agent-compose' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agent-Compose', exact: true })).toBeVisible();
   await page.getByLabel('用户名').fill('admin');
   await page.getByLabel('密码').fill(e2ePassword);
   await page.getByRole('button', { name: '登录', exact: true }).click();

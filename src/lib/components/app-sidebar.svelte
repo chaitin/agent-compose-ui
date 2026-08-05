@@ -3,7 +3,7 @@
   import { navGroups } from '$lib/nav';
   import { t } from '$lib/i18n.svelte';
   import { router, navigate } from '$lib/router.svelte';
-  import BrandMark from '$lib/components/brand-mark.svelte';
+  import sidebarBrand from '$lib/assets/agent-compose-sidebar.png';
 
   let {
     collapsed = false,
@@ -28,10 +28,10 @@
 >
   <!-- 品牌 -->
   <div class="flex h-12 items-center gap-2 border-b border-sidebar-border px-3">
-    <BrandMark class={cn('h-8 shrink-0', collapsed ? 'w-8' : 'w-11')} />
+    <img src={sidebarBrand} alt="Agent-Compose" class={cn('h-8 shrink-0 object-contain', collapsed ? 'w-8' : 'w-11')} />
     {#if !collapsed}
       <div class="min-w-0">
-        <div class="truncate text-sm font-semibold text-foreground">agent-compose</div>
+        <div class="truncate text-sm font-semibold text-foreground">Agent-Compose</div>
       </div>
     {/if}
   </div>
