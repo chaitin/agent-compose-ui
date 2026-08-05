@@ -6,6 +6,7 @@ import {
   OctoBusServerSpec,
   RunStatus,
 } from '../../src/gen/agentcompose/v2/agentcompose_pb.js';
+import { HealthStatusResponse, ProcessUsage } from '../../src/gen/health/v1/health_pb.js';
 
 const e2ePassword = process.env.AGENT_COMPOSE_E2E_PASSWORD || 'change-me';
 const webhookAccessToken = process.env.AGENT_COMPOSE_E2E_WEBHOOK_TOKEN || 'e2e-webhook-token';
@@ -89,6 +90,19 @@ async function navigateInApp(page: Page, path: string): Promise<void> {
   await expect.poll(() => page.evaluate(() => location.pathname)).toBe(path.split(/[?#]/, 1)[0]);
 }
 
+function grpcWebUnaryBody(message: Uint8Array): Buffer {
+  const messageFrame = Buffer.alloc(5 + message.length);
+  messageFrame.writeUInt32BE(message.length, 1);
+  Buffer.from(message).copy(messageFrame, 5);
+
+  const trailers = Buffer.from('grpc-status: 0\r\n');
+  const trailerFrame = Buffer.alloc(5 + trailers.length);
+  trailerFrame[0] = 0x80;
+  trailerFrame.writeUInt32BE(trailers.length, 1);
+  trailers.copy(trailerFrame, 5);
+  return Buffer.concat([messageFrame, trailerFrame]);
+}
+
 async function assertPageLayout(page: Page, route: string): Promise<void> {
   await page.evaluate((path) => {
     window.history.pushState({}, '', path);
@@ -169,6 +183,29 @@ async function assertPageLayout(page: Page, route: string): Promise<void> {
     `${route} has misaligned right content edges`,
   ).toBeLessThanOrEqual(1);
 }
+
+test('shows a single prefix for an already-prefixed daemon version', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.route('**/api/auth/status', (route) =>
+    route.fulfill({ json: { enabled: false, loggedIn: true, oauthEnabled: false } }),
+  );
+  await page.route('**/health.v1.HealthService/Status', (route) =>
+    route.fulfill({
+      contentType: 'application/grpc-web+proto',
+      body: grpcWebUnaryBody(
+        new HealthStatusResponse({
+          version: 'v2608.2.0',
+          process: new ProcessUsage({ cpuPercent: 12, rssBytes: BigInt(1048576) }),
+        }).toBinary(),
+      ),
+    }),
+  );
+
+  await page.goto('/');
+  await expect(page.getByRole('navigation').first()).toBeVisible();
+  await expect(page.getByText(/v2608\.2\.0 · CPU 12%/).first()).toBeVisible();
+  await expect(page.getByText(/vv2608\.2\.0/)).toHaveCount(0);
+});
 
 test('uses OAuth-only login when OAuth is enabled', async ({ page }) => {
   await page.route('**/api/auth/status', (route) =>

@@ -8,6 +8,7 @@
   import { navigate } from '$lib/router.svelte';
   import { getDashboardOverview, type DashboardActivity, type DashboardOverview } from '../api/dashboard';
   import { getHealthStatus } from '../api/health';
+  import { versionLabel } from '../model/presentation';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import Activity from '@lucide/svelte/icons/activity';
@@ -50,7 +51,7 @@
       const value = healthResult.value;
       health = {
         status: '正常',
-        detail: `v${value.version} · CPU ${value.processCpuPercent.toFixed(0)}% · RSS ${formatMemory(value.processRssBytes)}`,
+        detail: `${versionLabel(value.version)} · CPU ${value.processCpuPercent.toFixed(0)}% · RSS ${formatMemory(value.processRssBytes)}`,
         healthy: true,
       };
     } else {

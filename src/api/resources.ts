@@ -11,7 +11,7 @@ import {
   type ResourceTarget,
 } from '../gen/agentcompose/v2/agentcompose_pb.js';
 import { cacheClient, imageClient, projectClient, resourceClient } from './client';
-import { applyProjectSpecUpdate, projectSpecForUpdate } from './project-spec';
+import { patchProjectSpecUpdate, projectSpecForUpdate } from './project-spec';
 import { nextPageOffset, projectById } from './project-ref';
 
 export type ImagePage = {
@@ -179,9 +179,10 @@ export async function saveSpecResource(
         target.agentName,
         (agent) => new AgentSpec({ ...agent, mcpServers: replaceNamedResource(agent.mcpServers, originalName, item) }),
       );
-      await applyProjectSpecUpdate(new ProjectSpec({ ...spec, agents }));
+      await patchProjectSpecUpdate(project, new ProjectSpec({ ...spec, agents }));
     } else {
-      await applyProjectSpecUpdate(
+      await patchProjectSpecUpdate(
+        project,
         new ProjectSpec({ ...spec, mcpServers: replaceNamedResource(spec.mcpServers, originalName, item) }),
       );
     }
@@ -196,14 +197,15 @@ export async function saveSpecResource(
     target.agentName,
     (agent) => new AgentSpec({ ...agent, skills: replaceNamedResource(agent.skills, originalName, item) }),
   );
-  await applyProjectSpecUpdate(new ProjectSpec({ ...spec, agents }));
+  await patchProjectSpecUpdate(project, new ProjectSpec({ ...spec, agents }));
 }
 
 export async function removeSpecResource(kind: 'mcp' | 'skills', item: SpecResource): Promise<void> {
   const project = await getProjectWithSpec(item.projectId);
   const spec = projectSpecForUpdate(project.spec);
   if (kind === 'mcp' && !item.agentName) {
-    await applyProjectSpecUpdate(
+    await patchProjectSpecUpdate(
+      project,
       new ProjectSpec({ ...spec, mcpServers: spec.mcpServers.filter((value) => value.name !== item.name) }),
     );
     return;
@@ -213,7 +215,7 @@ export async function removeSpecResource(kind: 'mcp' | 'skills', item: SpecResou
       ? new AgentSpec({ ...agent, mcpServers: agent.mcpServers.filter((value) => value.name !== item.name) })
       : new AgentSpec({ ...agent, skills: agent.skills.filter((value) => value.name !== item.name) }),
   );
-  await applyProjectSpecUpdate(new ProjectSpec({ ...spec, agents }));
+  await patchProjectSpecUpdate(project, new ProjectSpec({ ...spec, agents }));
 }
 
 function replaceAgentResource(agents: AgentSpec[], name: string, update: (agent: AgentSpec) => AgentSpec): AgentSpec[] {

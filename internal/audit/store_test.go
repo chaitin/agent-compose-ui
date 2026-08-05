@@ -93,6 +93,13 @@ func TestOperationClassificationAuditsWritesOnly(t *testing.T) {
 	if safeResourceID("TOKEN=secret") || !safeResourceID("sandbox-123") {
 		t.Fatal("safe resource ID validation is too permissive or too restrictive")
 	}
+	projectID := []byte("project-1")
+	projectRef := append([]byte{0x0a, byte(len(projectID))}, projectID...)
+	patchRequest := append([]byte{0x0a, byte(len(projectRef))}, projectRef...)
+	resourceType, resourceID = connectResource("/agentcompose.v2.ProjectService/PatchProject", patchRequest)
+	if resourceType != "project" || resourceID != "project-1" {
+		t.Fatalf("PatchProject resource = %q %q", resourceType, resourceID)
+	}
 	request = httptest.NewRequest(http.MethodPut, "/api/webhook-sources/github", nil)
 	operation, ok = inspectOperation(request)
 	if !ok || operation.Category != "webhook" || operation.ResourceID != "github" {

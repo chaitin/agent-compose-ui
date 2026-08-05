@@ -263,16 +263,25 @@ func (h *Handler) apply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	request := map[string]any{
-		"spec":             record.Candidate,
-		"expectedSpecHash": record.CandidateSpecHash,
-		"dryRun":           false,
-	}
-	if len(record.Source) > 0 {
-		request["source"] = record.Source
+	method := "ApplyProject"
+	request := map[string]any{"spec": record.Candidate, "dryRun": false}
+	if record.BaseSpecHash == "" {
+		request["expectedSpecHash"] = record.CandidateSpecHash
+		if len(record.Source) > 0 {
+			request["source"] = record.Source
+		}
+	} else {
+		method = "PatchProject"
+		request["project"] = map[string]any{"projectId": record.ProjectID}
+		request["expectedCurrentSpecHash"] = record.BaseSpecHash
 	}
 	var response map[string]any
-	if err := h.connect(r.Context(), "ApplyProject", request, &response); err != nil {
+	if err := h.connect(r.Context(), method, request, &response); err != nil {
+		var daemonError apiError
+		if errors.As(err, &daemonError) && daemonError.status == http.StatusConflict {
+			writeAPIError(w, http.StatusConflict, "project_changed", "项目配置已变化，请重新预览")
+			return
+		}
 		h.writeError(w, err)
 		return
 	}
@@ -342,9 +351,6 @@ func (h *Handler) preparePreview(ctx context.Context, actorID string, input Muta
 			return PreviewResponse{}, apiError{http.StatusConflict, "project_changed", "项目配置已变化，请重新加载后编辑"}
 		}
 		spec := objectValue(project["spec"])
-		if reasons := projectBlockedReasons(spec); len(reasons) > 0 {
-			return PreviewResponse{}, apiError{http.StatusUnprocessableEntity, "project_read_only", strings.Join(reasons, "；")}
-		}
 		candidate = cloneObject(spec)
 		agents := arrayValue(candidate["agents"])
 		switch input.Kind {
@@ -417,12 +423,19 @@ func (h *Handler) preparePreview(ctx context.Context, actorID string, input Muta
 	}
 	normalizeDaemonProjectSpec(candidate)
 
+	method := "ApplyProject"
 	request := map[string]any{"spec": candidate, "dryRun": true}
-	if len(source) > 0 {
-		request["source"] = source
+	if baseHash == "" {
+		if len(source) > 0 {
+			request["source"] = source
+		}
+	} else {
+		method = "PatchProject"
+		request["project"] = map[string]any{"projectId": projectID}
+		request["expectedCurrentSpecHash"] = baseHash
 	}
 	var response map[string]any
-	if err := h.connect(ctx, "ApplyProject", request, &response); err != nil {
+	if err := h.connect(ctx, method, request, &response); err != nil {
 		return PreviewResponse{}, err
 	}
 	issues := arrayMaps(response["issues"])
@@ -544,8 +557,11 @@ func normalizeDaemonProjectSpec(spec map[string]any) {
 	for _, value := range arrayValue(spec["agents"]) {
 		agent := objectValue(value)
 		driver := objectValue(agent["driver"])
-		if strings.EqualFold(stringValue(driver["name"]), "docker") && driver["docker"] == nil {
-			driver["docker"] = map[string]any{}
+		runtime := strings.ToLower(strings.TrimSpace(stringValue(driver["name"])))
+		if runtime == "docker" || runtime == "boxlite" || runtime == "microsandbox" {
+			if driver[runtime] == nil {
+				driver[runtime] = map[string]any{}
+			}
 		}
 		normalizeSchedulerSpec(objectValue(agent["scheduler"]))
 	}
@@ -670,7 +686,6 @@ func patchAgentSpec(current, patch map[string]any) map[string]any {
 func projectView(project map[string]any) ProjectView {
 	summary := objectValue(project["summary"])
 	spec := objectValue(project["spec"])
-	reasons := projectBlockedReasons(spec)
 	runtimeAgents := map[string]map[string]any{}
 	for _, value := range arrayValue(project["agents"]) {
 		item := objectValue(value)
@@ -709,7 +724,7 @@ func projectView(project map[string]any) ProjectView {
 		CurrentRevision: fmt.Sprint(summary["currentRevision"]), SpecHash: stringValue(summary["specHash"]),
 		AgentCount: intValue(summary["agentCount"]), SchedulerCount: intValue(summary["schedulerCount"]),
 		RunningRunCount: intValue(summary["runningRunCount"]), UpdatedAt: stringValue(summary["updatedAt"]),
-		Editable: len(reasons) == 0, BlockedReasons: reasons, Variables: environmentView(spec["variables"]), Agents: agents,
+		Editable: true, Variables: environmentView(spec["variables"]), Agents: agents,
 	}
 }
 
@@ -725,37 +740,6 @@ func environmentView(value any) []any {
 		}
 	}
 	return result
-}
-
-func projectBlockedReasons(spec map[string]any) []string {
-	reasons := make([]string, 0, 2)
-	if containsRedacted(spec) {
-		reasons = append(reasons, "项目包含已脱敏凭据，请使用 Compose 或 CLI 修改")
-	}
-	if len(arrayValue(spec["octobusServers"])) > 0 {
-		reasons = append(reasons, "项目包含 OctoBus 配置，当前页面仅管理全局能力网关")
-	}
-	return reasons
-}
-
-func containsRedacted(value any) bool {
-	switch typed := value.(type) {
-	case string:
-		return typed == redactedSecret
-	case []any:
-		for _, item := range typed {
-			if containsRedacted(item) {
-				return true
-			}
-		}
-	case map[string]any:
-		for _, item := range typed {
-			if containsRedacted(item) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func (h *Handler) allProjectSummaries(ctx context.Context) ([]map[string]any, error) {
@@ -835,8 +819,9 @@ func (h *Handler) connect(ctx context.Context, method string, input any, output 
 			message = response.Status
 		}
 		status := http.StatusBadGateway
-		if response.StatusCode == http.StatusNotFound {
-			status = http.StatusNotFound
+		switch response.StatusCode {
+		case http.StatusBadRequest, http.StatusConflict, http.StatusNotFound, http.StatusUnprocessableEntity:
+			status = response.StatusCode
 		}
 		return apiError{status, "daemon_request_failed", message}
 	}

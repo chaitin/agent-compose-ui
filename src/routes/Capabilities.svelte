@@ -37,6 +37,9 @@
     selected = id;
     methods = await getCapabilityCatalog(id);
   }
+  function methodKey(method: CapabilityMethodInfo): string {
+    return JSON.stringify([method.serviceId, method.instanceId, method.methodFullName]);
+  }
 </script>
 
 <PageHeader title="能力集" description="查看能力集与可用方法"
@@ -78,7 +81,7 @@
           <thead class="bg-muted/40"
             ><tr><th class="p-3 text-left">{t('方法')}</th><th class="p-3 text-left">{t('说明')}</th></tr></thead
           ><tbody class="divide-y divide-border"
-            >{#each methods as method (method.methodFullName)}<tr
+            >{#each methods as method (methodKey(method))}<tr
                 ><td class="p-3 font-mono text-xs">{method.methodFullName}</td><td class="p-3 text-muted-foreground"
                   >{method.serviceId} · {method.backendInstanceStatus || '未知'}</td
                 ></tr
