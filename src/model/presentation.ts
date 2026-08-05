@@ -1,5 +1,9 @@
 import type { ProjectChange } from '../api/projects';
 
+export function versionLabel(value: string): string {
+  return value.startsWith('v') ? value : `v${value}`;
+}
+
 export type PresentedChange = {
   key: string;
   name: string;

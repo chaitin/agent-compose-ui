@@ -28,6 +28,7 @@
   import AccountTokens from './routes/AccountTokens.svelte';
   import { getAuthStatus, logout, type AuthStatus } from './api/auth';
   import { getHealthStatus, type HealthStatus } from './api/health';
+  import { versionLabel } from './model/presentation';
   import { normalizeAppLocation } from './paths';
 
   const STORAGE_KEY = 'ac.sidebarCollapsed';
@@ -151,7 +152,7 @@
       <AppSidebar
         {collapsed}
         healthy={Boolean(health)}
-        healthText={health ? `v${health.version}` : t('连接中')}
+        healthText={health ? versionLabel(health.version) : t('连接中')}
         cpu={health ? `${health.processCpuPercent.toFixed(0)}%` : '—'}
         rss={health ? `${(health.processRssBytes / 1024 / 1024).toFixed(0)}M` : '—'}
       />
@@ -168,7 +169,7 @@
         <AppSidebar
           collapsed={false}
           healthy={Boolean(health)}
-          healthText={health ? `v${health.version}` : t('连接中')}
+          healthText={health ? versionLabel(health.version) : t('连接中')}
           cpu={health ? `${health.processCpuPercent.toFixed(0)}%` : '—'}
           rss={health ? `${(health.processRssBytes / 1024 / 1024).toFixed(0)}M` : '—'}
         />
