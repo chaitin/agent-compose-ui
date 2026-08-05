@@ -53,6 +53,14 @@ docker compose -f docker-compose.full.yml up --build
 
 full 模式已让 web 的 `${AGENT_COMPOSE_DATA_DIR}/work` 与 agent-compose 的 `/data/work` 指向同一宿主目录，并设置 `PROJECT_STORAGE_ROOT=/data/work/projects`。旧 `/agent-compose-ui/projects` 数据只有在管理员额外挂载旧目录并设置绝对的 `LEGACY_PROJECT_STORAGE_ROOT` 时才会自动复制；迁移不会删除旧文件。
 
+### 本地卷目录（仅 full 模式）
+
+分容器部署中，Workspace 仍通过双方共享的 `/data/work/projects` 访问。除此之外，full Compose 只给 web/UI 网关增加 `${AGENT_COMPOSE_DATA_DIR}/volumes/local:/data/volumes/local` 这一条窄范围读写挂载，并设置 `LOCAL_VOLUME_ROOT=/data/volumes/local`；daemon 数据在 web 中的 `/data/agent-compose` 挂载继续保持只读，agent-compose 服务自身的存储挂载也不变。不会把整个 `${AGENT_COMPOSE_DATA_DIR}` 以可写方式交给 web。
+
+`LOCAL_VOLUME_ROOT` 未设置或为空时默认禁用，不会静默选择宿主目录；自定义部署必须同时提供经过权限控制的绝对、规范容器路径和对应的窄范围读写挂载。宿主目录应预先创建，并确保容器内 web 网关用户可创建、修改和删除其下内容；不要授予它访问 daemon 数据、系统目录或其他业务目录的权限。
+
+本地卷文件操作属于单管理员可信模型：所有能进入该 UI 的管理员都可操作此根目录内的数据，因此必须把 UI 限制在可信网络并保护认证凭据。这里的本地卷根目录与 `SHARED_DIRECTORY_CATALOG` 是两个独立概念：后者是管理员声明的共享目录目录表，不会自动成为本地卷，也不会扩大本地卷根目录。此部署只增加 UI 侧的目录挂载与配置，不修改 agent-compose daemon 源码或 API，也不表示支持任意 Docker volume driver。
+
 ### 不用 Compose：docker run 一条命令
 
 镜像自包含 nginx + Go 网关 + Bun script-service，可直接 `docker run`：

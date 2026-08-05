@@ -4,12 +4,12 @@
   import SessionTerminal from '../../pages/session/SessionTerminal.svelte';
   import FileBrowser from '../../pages/session/FileBrowser.svelte';
   import { execService, sandboxService } from '../../lib/rpc';
-  import { timestampToIso } from '../../lib/proto-helpers';
   import type { SandboxLifecycle } from '../../lib/runtime-inventory';
   import { filterSandboxes, listAllSandboxes, sandboxLifecycle } from '../../lib/sandbox-inventory';
   import { formatMetric, sandboxJupyterPath } from '../../lib/sandboxes';
   import { store } from '../../lib/stores.svelte';
   import { sandboxResumeErrorMessage } from '../../lib/sandbox-resume-error';
+  import { timestampToIso } from '../../lib/proto-helpers';
   import RuntimeBreadcrumb from './RuntimeBreadcrumb.svelte';
 
   let inventory: Sandbox[] = $state([]);

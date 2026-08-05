@@ -1,0 +1,30 @@
+name: agent-compose
+
+services:
+  agent-compose:
+    image: ${AGENT_COMPOSE_ALL_IN_ONE_IMAGE:-agent-compose-all-in-one:latest}
+    env_file:
+      - path: ./all-in-one.env
+        required: false
+    environment:
+      # These topology values must agree with the Compose service/network name.
+      AGENT_COMPOSE_URL: http://127.0.0.1:7410
+      AGENT_COMPOSE_RUNTIME_BASE_URL: http://agent-compose:7410
+      CAP_GRPC_TARGET: agent-compose:9100
+      # Keep paths consistent with the single persistent data volume.
+      DATA_ROOT: /data
+      AGENT_COMPOSE_DB_PATH: /data/data.db
+      UI_STATE_DB_PATH: /data/ui/project-env.db
+      TOKEN_DB_PATH: /data/api/tokens.db
+      SCRIPT_DATA_DIR: /data/scripts
+      PROJECT_STORAGE_ROOT: /data/work/projects
+    ports:
+      - "${WEB_PORT:-8080}:80"
+      - "127.0.0.1:${TOKEN_RBAC_API_PORT:-8081}:8081"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${AGENT_COMPOSE_DATA_DIR:-./data}:/data
+    restart: unless-stopped
+    networks:
+      default:
+        aliases: [agent-compose]

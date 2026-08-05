@@ -202,7 +202,7 @@
   .modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border-color); background: var(--bg-tertiary); border-radius: 0 0 8px 8px; }
   .modal-footer .btn { padding: 6px 14px; border-radius: 4px; font-size: var(--font-size-sm); border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); }
   .modal-footer .btn:hover:not(:disabled) { border-color: var(--accent-blue); }
-  .modal-footer .btn.primary { background: var(--accent-green); color: #0d1117; border-color: var(--accent-green); font-weight: 600; }
+  .modal-footer .btn.primary { background: var(--accent-blue-emphasis); color: var(--text-on-accent); border-color: var(--accent-blue-emphasis); font-weight: 600; }
   .modal-footer .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .alert-banner { padding: 10px 12px; border-radius: 4px; margin-bottom: 14px; display: flex; gap: 8px; align-items: flex-start; font-size: var(--font-size-sm); line-height: 1.5; }

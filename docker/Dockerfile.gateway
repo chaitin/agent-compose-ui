@@ -1,0 +1,15 @@
+FROM golang:1.25-alpine AS build
+ENV GOPROXY=https://goproxy.cn,direct
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY cmd ./cmd
+COPY internal ./internal
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \
+    -o /out/agent-compose-ui-server ./cmd/agent-compose-ui-server
+
+FROM alpine:latest
+COPY --from=build /out/agent-compose-ui-server /usr/local/bin/agent-compose-ui-server
+ENTRYPOINT ["/usr/local/bin/agent-compose-ui-server"]

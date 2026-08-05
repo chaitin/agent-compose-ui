@@ -1,0 +1,6 @@
+#!/bin/sh
+set -a
+. /run/agent-compose/internal.env
+set +a
+umask 077
+exec /usr/local/bin/agent-compose-ui-server

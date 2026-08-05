@@ -26,6 +26,7 @@ services:
       UI_STATE_DB_PATH: /data/ui/project-env.db
       PROJECT_STORAGE_ROOT: /data/work/projects
       LEGACY_PROJECT_STORAGE_ROOT: ${LEGACY_PROJECT_STORAGE_ROOT:-}
+      LOCAL_VOLUME_ROOT: /data/volumes/local
       # script-service runs in the same container, loopback only.
       SCRIPT_SERVICE_URL: http://127.0.0.1:7420
       SCRIPT_SERVICE_HOST: 127.0.0.1
@@ -44,6 +45,8 @@ services:
       # The UI file gateway and daemon must resolve project-local workspace paths
       # against the same filesystem. Keep the mount scoped to the daemon work dir.
       - ${AGENT_COMPOSE_DATA_DIR:-./data}/work:/data/work
+      # Narrow writable root for administrator-managed local volume directories.
+      - ${AGENT_COMPOSE_DATA_DIR:-./data}/volumes/local:/data/volumes/local
       # Reference-only project shadows and pending-sync state.
       - ui-state:/data/ui
       - api-token-data:/data/api
@@ -55,7 +58,7 @@ services:
       - agent-web-net
 
   agent-compose:
-    image: ${AGENT_COMPOSE_IMAGE:-chaitin/agent-compose:latest}
+    image: ${AGENT_COMPOSE_IMAGE:-ghcr.io/chaitin/agent-compose:latest}
     restart: always
     environment:
       AGENT_COMPOSE_RUNTIME_BASE_URL: ${AGENT_COMPOSE_RUNTIME_BASE_URL:-http://agent-compose:7410}

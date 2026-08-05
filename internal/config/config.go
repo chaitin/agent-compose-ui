@@ -7,6 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
+
+	"agent-compose-ui/internal/sharedirs"
 )
 
 type AuthMode string
@@ -24,6 +28,8 @@ type Config struct {
 	ScriptServiceToken                                 string
 	AgentComposeDBPath, UIStateDBPath, TokenDBPath     string
 	ProjectStorageRoot, LegacyProjectStorageRoot       string
+	LocalVolumeRoot                                    string
+	SharedDirectoryCatalog                             []sharedirs.Entry
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -84,6 +90,11 @@ func Load(getenv func(string) string) (Config, error) {
 		cfg.ProjectStorageRoot = filepath.Join(os.TempDir(), "agent-compose-ui", "projects")
 	}
 	cfg.LegacyProjectStorageRoot = strings.TrimSpace(getenv("LEGACY_PROJECT_STORAGE_ROOT"))
+	cfg.LocalVolumeRoot = getenv("LOCAL_VOLUME_ROOT")
+	cfg.SharedDirectoryCatalog, err = sharedirs.ParseCatalog(getenv("SHARED_DIRECTORY_CATALOG"))
+	if err != nil {
+		return Config{}, fmt.Errorf("SHARED_DIRECTORY_CATALOG is invalid: %w", err)
+	}
 	for name, value := range map[string]string{
 		"PROJECT_STORAGE_ROOT":        cfg.ProjectStorageRoot,
 		"LEGACY_PROJECT_STORAGE_ROOT": cfg.LegacyProjectStorageRoot,
@@ -95,5 +106,58 @@ func Load(getenv func(string) string) (Config, error) {
 			return Config{}, fmt.Errorf("%s must be an absolute clean path", name)
 		}
 	}
+	if cfg.LocalVolumeRoot != "" {
+		if !validLocalVolumeRoot(cfg.LocalVolumeRoot) || overlapsProtectedPath(cfg.LocalVolumeRoot, cfg) {
+			return Config{}, fmt.Errorf("LOCAL_VOLUME_ROOT must be a safe absolute clean path")
+		}
+	}
 	return cfg, nil
+}
+
+func validLocalVolumeRoot(value string) bool {
+	if len(value) > 4096 || !utf8.ValidString(value) || !filepath.IsAbs(value) || filepath.Clean(value) != value {
+		return false
+	}
+	switch value {
+	case "/", "/data", "/var", "/tmp":
+		return false
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) || unicode.In(r, unicode.Cf) {
+			return false
+		}
+	}
+	return true
+}
+
+func overlapsProtectedPath(localRoot string, cfg Config) bool {
+	protectedDirectories := []string{cfg.ProjectStorageRoot, cfg.LegacyProjectStorageRoot}
+	if cfg.AgentComposeDBPath != "" {
+		protectedDirectories = append(protectedDirectories, filepath.Dir(cfg.AgentComposeDBPath))
+	}
+	for _, entry := range cfg.SharedDirectoryCatalog {
+		protectedDirectories = append(protectedDirectories, entry.Path)
+	}
+	for _, protected := range protectedDirectories {
+		if protected != "" && pathsOverlap(localRoot, protected) {
+			return true
+		}
+	}
+
+	protectedFiles := []string{cfg.AgentComposeDBPath, cfg.UIStateDBPath, cfg.TokenDBPath}
+	for _, protected := range protectedFiles {
+		if protected != "" && pathsOverlap(localRoot, protected) {
+			return true
+		}
+	}
+	return false
+}
+
+func pathsOverlap(left, right string) bool {
+	return pathContains(left, right) || pathContains(right, left)
+}
+
+func pathContains(root, target string) bool {
+	rel, err := filepath.Rel(root, target)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

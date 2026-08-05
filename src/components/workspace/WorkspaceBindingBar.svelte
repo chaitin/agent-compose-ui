@@ -1,16 +1,16 @@
 <script lang="ts">
   import { store } from '../../lib/stores.svelte';
-  import { parseWorkspaceBinding } from '../../lib/workspace-binding';
-  import { createWorkspaceAndBind } from '../../lib/workspace-create';
+  import type { WorkspaceBinding } from '../../lib/workspace-binding';
+  import { createWorkspaceForAgent } from '../../lib/workspace-create';
   import WorkspaceUpload from './WorkspaceUpload.svelte';
 
   interface Props {
     sourcePath: string;
+    binding: WorkspaceBinding | null;
+    agentName: string;
   }
 
-  let { sourcePath }: Props = $props();
-
-  const binding = $derived(parseWorkspaceBinding(store.editorContent));
+  let { sourcePath, binding, agentName }: Props = $props();
 
   const status = $derived.by(() => {
     if (!binding) return { kind: 'none' as const };
@@ -27,7 +27,7 @@
     if (creating) return;
     creating = true;
     try {
-      const result = await createWorkspaceAndBind(store.editorContent, sourcePath);
+      const result = await createWorkspaceForAgent(store.editorContent, agentName, sourcePath);
       store.commitEditorContent(result.yaml);
       if (sourcePath) {
         store.addToast(`已绑定 workspace（path=${result.workspacePath}）`, 'success');

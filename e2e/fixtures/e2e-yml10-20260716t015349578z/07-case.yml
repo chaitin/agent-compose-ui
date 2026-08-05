@@ -1,0 +1,19 @@
+name: e2e-yml10-20260716t015349578z-07
+variables:
+  CASE_KIND: { value: scheduler }
+agents:
+  worker-7:
+    provider: codex
+    image: ghcr.io/chaitin/agent-compose-guest:latest
+    driver:
+      docker: {}
+    env:
+      YML_CASE: { value: "7" }
+      YML_MARKER: { value: e2e-yml10-20260716t015349578z-07-bash-ok }
+    scheduler:
+      enabled: true
+      sandbox_policy: sticky
+      triggers:
+        - name: daily-check
+          interval: 24h
+          prompt: e2e-yml10-20260716t015349578z-07-bash-ok

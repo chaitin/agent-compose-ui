@@ -10,12 +10,13 @@ describe('Toolbar YAML image build confirmation', () => {
     expect(source).toMatch(/GetProjectRequest/);
     expect(source).toMatch(/includeSpec:\s*true/);
     expect(source).toMatch(/preview\.prepared\.yamlText/);
-    expect(source).toMatch(/summary\.sourcePath/);
+    expect(source).toMatch(/createProjectImageBuildPlans\(frozenSpec, canonicalSourcePath\)/);
+    expect(source).toMatch(/checkProjectImageFiles/);
+    expect(source).toMatch(/await checkProjectImageFiles[\s\S]*if \(!previewGeneration\.isCurrent\(generation\)\) return;[\s\S]*openImagesTab/);
   });
 
-  test('offers an explicit build-or-skip choice and per-agent selection', () => {
-    expect(source).toMatch(/构建 YAML 中配置的镜像/);
-    expect(source).toMatch(/仅应用配置，不构建镜像/);
+  test('automatically builds changed images without a skip choice', () => {
+    expect(source).not.toMatch(/仅应用配置，不构建镜像/);
     expect(source).toMatch(/selectedBuildAgents/);
     expect(source).toMatch(/本次构建选项/);
     expect(source).toMatch(/不使用缓存/);
@@ -23,7 +24,7 @@ describe('Toolbar YAML image build confirmation', () => {
   });
 
   test('shows the real phase rail and stream progress', () => {
-    expect(source).toMatch(/构建镜像/);
+    expect(source).toMatch(/本次镜像处理/);
     expect(source).toMatch(/应用配置/);
     expect(source).toMatch(/启动运行/);
     expect(source).toMatch(/buildResults/);

@@ -1,0 +1,12 @@
+name: e2e-yml10-20260716t015349578z-05
+network:
+  mode: default
+agents:
+  worker-5:
+    provider: codex
+    image: ghcr.io/chaitin/agent-compose-guest:latest
+    driver:
+      docker: {}
+    env:
+      YML_CASE: { value: "5" }
+      YML_MARKER: { value: e2e-yml10-20260716t015349578z-05-bash-ok }

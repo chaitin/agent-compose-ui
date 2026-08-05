@@ -24,6 +24,8 @@ let paths: { json: string; markdown: string } | undefined;
 try {
   await mkdir(reportDirectory, { recursive: true });
   await runApiCases(context);
+  const { runProjectResourceCases } = await import('./project-resources.test');
+  await runProjectResourceCases(context);
   if (!process.argv.includes('--api-only')) {
     const { runBrowserCases } = await import('./browser');
     await runBrowserCases(context, reportDirectory);

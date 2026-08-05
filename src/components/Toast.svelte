@@ -38,7 +38,7 @@
     max-width: 420px;
     pointer-events: auto;
     animation: slideIn 0.2s ease-out;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--bg-primary) 40%, transparent);
   }
   .toast.error { border-left: 3px solid var(--accent-red); }
   .toast.success { border-left: 3px solid var(--accent-green); }
