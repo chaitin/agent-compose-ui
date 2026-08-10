@@ -1315,7 +1315,13 @@ test('shows retained event execution environments in place', async ({ page }) =>
   const desktopSelector = page.locator('[data-sandbox-selector="desktop"]');
   if (sandboxCount > 1) {
     await expect(desktopSelector).toBeVisible();
-    await expect(desktopSelector.getByRole('button')).toHaveCount(sandboxCount);
+    if (sandboxCount > 5) {
+      await expect(desktopSelector).toHaveAttribute('data-sandbox-selector-mode', 'compact');
+      await expect(desktopSelector.locator('option')).toHaveCount(sandboxCount);
+    } else {
+      await expect(desktopSelector).toHaveAttribute('data-sandbox-selector-mode', 'buttons');
+      await expect(desktopSelector.getByRole('button')).toHaveCount(sandboxCount);
+    }
     expect(await desktopSelector.innerText()).not.toMatch(/[a-f\d]{32,}/i);
   } else await expect(desktopSelector).toHaveCount(0);
 
