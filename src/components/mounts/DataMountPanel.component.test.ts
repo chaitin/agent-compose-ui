@@ -48,7 +48,8 @@ test('fills the resource panel and assigns remaining height to the browser', () 
 });
 
 test('creates an isolated managed local volume and one mount in a single callback', async () => {
-  const onYamlChange = setup();
+  const onApply = vi.fn().mockResolvedValue(undefined);
+  const onYamlChange = setup({ onApply });
   await fireEvent.click(screen.getByRole('button', { name: '创建数据卷' }));
   await fireEvent.input(screen.getByLabelText('逻辑名称'), { target: { value: 'memory' } });
   await fireEvent.click(screen.getByRole('button', { name: '创建并挂载' }));
@@ -59,10 +60,12 @@ test('creates an isolated managed local volume and one mount in a single callbac
     labels: { 'agent-compose-ui.logical-name': 'memory', 'agent-compose-ui.project-key': KEY, 'agent-compose-ui.managed': 'true' },
   });
   expect(result.agents.alpha.volumes).toEqual([{ type: 'volume', source: 'memory', target: '/data/memory', read_only: false }]);
+  expect(onApply).toHaveBeenCalledOnce();
 });
 
 test('closes the create dialog and shows creation status inline after the mount action', async () => {
-  const onYamlChange = setup();
+  const onApply = vi.fn().mockResolvedValue(undefined);
+  const onYamlChange = setup({ onApply });
   await fireEvent.click(screen.getByRole('button', { name: '创建数据卷' }));
   await fireEvent.input(screen.getByLabelText('逻辑名称'), { target: { value: 'memory' } });
   await fireEvent.click(screen.getByRole('button', { name: '创建并挂载' }));
@@ -72,8 +75,63 @@ test('closes the create dialog and shows creation status inline after the mount 
   const toolbar = screen.getByRole('toolbar', { name: '数据与挂载操作' });
   const mountAction = within(toolbar).getByRole('button', { name: '挂载资源' });
   const status = within(toolbar).getByRole('status');
-  expect(status).toHaveTextContent('已创建 memory');
+  expect(status).toHaveTextContent('已创建并应用 memory');
   expect(mountAction.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test('disables creation and explains the required naming format for invalid values', async () => {
+  const onYamlChange = setup();
+  await fireEvent.click(screen.getByRole('button', { name: '创建数据卷' }));
+  const submit = screen.getByRole('button', { name: '创建并挂载' });
+  expect(submit).toBeDisabled();
+  expect(screen.getByText(/\^\[a-z\]\[a-z0-9_-\]\*\$/)).toBeInTheDocument();
+
+  await fireEvent.input(screen.getByLabelText('逻辑名称'), { target: { value: 'Memory!' } });
+  expect(screen.getByText('逻辑名称格式不正确')).toBeInTheDocument();
+  expect(submit).toBeDisabled();
+
+  await fireEvent.input(screen.getByLabelText('逻辑名称'), { target: { value: 'memory' } });
+  await fireEvent.input(screen.getByLabelText('创建卷挂载目标'), { target: { value: '/data/Bad.Path' } });
+  expect(screen.getByText('挂载目标格式不正确')).toBeInTheDocument();
+  expect(submit).toBeDisabled();
+  expect(onYamlChange).not.toHaveBeenCalled();
+});
+
+test('creates and mounts one volume to every selected Agent', async () => {
+  const onYamlChange = setup();
+  await fireEvent.click(screen.getByRole('button', { name: '创建数据卷' }));
+  await fireEvent.input(screen.getByLabelText('逻辑名称'), { target: { value: 'memory' } });
+  await fireEvent.click(screen.getByLabelText('创建卷目标 Agent'));
+  await fireEvent.click(within(screen.getByRole('group', { name: '创建卷目标 Agent 选项' })).getByRole('checkbox', { name: 'beta' }));
+  await fireEvent.click(screen.getByRole('button', { name: '创建并挂载' }));
+  await waitFor(() => expect(onYamlChange).toHaveBeenCalledOnce());
+  const result = yaml.load(onYamlChange.mock.calls[0][0]) as any;
+  expect(result.agents.alpha.volumes).toEqual([{ type: 'volume', source: 'memory', target: '/data/memory', read_only: false }]);
+  expect(result.agents.beta.volumes).toEqual([{ type: 'volume', source: 'memory', target: '/data/memory', read_only: false }]);
+});
+
+test('applies the mutated YAML before reporting a created volume', async () => {
+  const order: string[] = [];
+  const onYamlChange = vi.fn(async () => { order.push('yaml'); });
+  const onApply = vi.fn(async () => { order.push('apply'); });
+  setup({ onYamlChange, onApply });
+  await fireEvent.click(screen.getByRole('button', { name: '创建数据卷' }));
+  await fireEvent.input(screen.getByLabelText('逻辑名称'), { target: { value: 'memory' } });
+  await fireEvent.click(screen.getByRole('button', { name: '创建并挂载' }));
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('已创建并应用 memory'));
+  expect(order).toEqual(['yaml', 'apply']);
+});
+
+test('does not report creation when the real apply fails', async () => {
+  const onApply = vi.fn().mockRejectedValue(new Error('daemon unavailable'));
+  const onYamlChange = setup({ onApply });
+  await fireEvent.click(screen.getByRole('button', { name: '创建数据卷' }));
+  await fireEvent.input(screen.getByLabelText('逻辑名称'), { target: { value: 'memory' } });
+  await fireEvent.click(screen.getByRole('button', { name: '创建并挂载' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('daemon unavailable');
+  expect(screen.queryByText('已创建并应用 memory')).not.toBeInTheDocument();
+  expect(onYamlChange).toHaveBeenCalledOnce();
+  expect(onApply).toHaveBeenCalledOnce();
 });
 
 test('styles mount modal actions by intent', async () => {
@@ -106,7 +164,7 @@ test('rejects a duplicate target across bind and volume mounts without a callbac
   await fireEvent.click(screen.getByRole('button', { name: '创建数据卷' }));
   await fireEvent.input(screen.getByLabelText('逻辑名称'), { target: { value: 'memory' } });
   await fireEvent.click(screen.getByRole('button', { name: '创建并挂载' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('挂载目标已被使用');
+  expect(await screen.findByRole('alert')).toHaveTextContent('已有 Agent 使用了该挂载目标');
   expect(onYamlChange).not.toHaveBeenCalled();
 });
 
@@ -124,12 +182,69 @@ test('mounts the same declaration to a second Agent and unmounts only that refer
   expect(result.agents.alpha.volumes).toEqual([{ type: 'volume', source: 'cache', target: '/cache', read_only: false }]);
 });
 
+test('mounts an existing volume to multiple Agents and closes the dialog after success', async () => {
+  const source = 'volumes:\n  cache: {}\nagents:\n  alpha: {}\n  beta: {}\n';
+  const onYamlChange = setup({ yaml: source });
+  await fireEvent.click(screen.getByRole('button', { name: '挂载资源' }));
+  await fireEvent.change(screen.getByLabelText('现有卷'), { target: { value: 'cache' } });
+  await fireEvent.click(screen.getByLabelText('现有卷目标 Agent'));
+  await fireEvent.click(within(screen.getByRole('group', { name: '现有卷目标 Agent 选项' })).getByRole('checkbox', { name: 'beta' }));
+  await fireEvent.input(screen.getByLabelText('现有卷挂载目标'), { target: { value: '/data/cache' } });
+  await fireEvent.click(screen.getByRole('button', { name: /^挂载$/ }));
+  await waitFor(() => expect(onYamlChange).toHaveBeenCalledOnce());
+  const result = yaml.load(onYamlChange.mock.calls[0][0]) as any;
+  expect(result.agents.alpha.volumes).toEqual([{ type: 'volume', source: 'cache', target: '/data/cache', read_only: false }]);
+  expect(result.agents.beta.volumes).toEqual([{ type: 'volume', source: 'cache', target: '/data/cache', read_only: false }]);
+  expect(screen.queryByRole('dialog', { name: '挂载资源' })).not.toBeInTheDocument();
+});
+
+test('mounts an existing volume to additional Agents even when one already binds it at the same target', async () => {
+  // cache is already bound to alpha at /cache. alpha is pre-selected by default;
+  // adding beta and gamma and reusing /cache must mount to beta/gamma (alpha is
+  // an idempotent no-op) instead of aborting the whole batch.
+  const source = 'volumes:\n  cache: {}\nagents:\n  alpha:\n    volumes:\n      - { type: volume, source: cache, target: /cache, read_only: false }\n  beta: {}\n  gamma: {}\n';
+  const onYamlChange = setup({ yaml: source });
+  await fireEvent.click(screen.getByRole('button', { name: '挂载资源' }));
+  await fireEvent.change(screen.getByLabelText('现有卷'), { target: { value: 'cache' } });
+  const options = screen.getByRole('group', { name: '现有卷目标 Agent 选项' });
+  await fireEvent.click(within(options).getByRole('checkbox', { name: 'beta' }));
+  await fireEvent.click(within(options).getByRole('checkbox', { name: 'gamma' }));
+  await fireEvent.input(screen.getByLabelText('现有卷挂载目标'), { target: { value: '/cache' } });
+  await fireEvent.click(screen.getByRole('button', { name: /^挂载$/ }));
+  await waitFor(() => expect(onYamlChange).toHaveBeenCalledOnce());
+  const result = yaml.load(onYamlChange.mock.calls[0][0]) as any;
+  expect(result.agents.alpha.volumes).toEqual([{ type: 'volume', source: 'cache', target: '/cache', read_only: false }]);
+  expect(result.agents.beta.volumes).toEqual([{ type: 'volume', source: 'cache', target: '/cache', read_only: false }]);
+  expect(result.agents.gamma.volumes).toEqual([{ type: 'volume', source: 'cache', target: '/cache', read_only: false }]);
+  expect(screen.queryByRole('dialog', { name: '挂载资源' })).not.toBeInTheDocument();
+});
+
+test('still rejects mounting when a selected Agent has a different volume at the target', async () => {
+  const source = 'volumes:\n  cache: {}\n  other: {}\nagents:\n  alpha:\n    volumes:\n      - { type: volume, source: other, target: /cache, read_only: false }\n  beta: {}\n';
+  const onYamlChange = setup({ yaml: source });
+  await fireEvent.click(screen.getByRole('button', { name: '挂载资源' }));
+  await fireEvent.change(screen.getByLabelText('现有卷'), { target: { value: 'cache' } });
+  await fireEvent.click(within(screen.getByRole('group', { name: '现有卷目标 Agent 选项' })).getByRole('checkbox', { name: 'beta' }));
+  await fireEvent.input(screen.getByLabelText('现有卷挂载目标'), { target: { value: '/cache' } });
+  await fireEvent.click(screen.getByRole('button', { name: /^挂载$/ }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('在该挂载目标上挂载了其他卷或目录');
+  expect(onYamlChange).not.toHaveBeenCalled();
+});
+
 test('explicit apply reports rejection without reverting YAML', async () => {
   const onApply = vi.fn().mockRejectedValue(new Error('offline'));
   const onYamlChange = setup({ onApply });
   await fireEvent.click(screen.getByRole('button', { name: '应用 YAML' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('应用失败：offline');
   expect(onYamlChange).not.toHaveBeenCalled();
+});
+
+test('does not silently report success when apply is not configured', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ entries: [] }), { headers: { 'content-type': 'application/json' } })));
+  render(DataMountPanel, { yaml: SOURCE, projectKey: KEY, onYamlChange: vi.fn() });
+  await fireEvent.click(screen.getByRole('button', { name: '应用 YAML' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('应用回调未配置');
+  expect(screen.queryByText('应用成功')).not.toBeInTheDocument();
 });
 
 test('treats confirmation cancellation as neutral', async () => {

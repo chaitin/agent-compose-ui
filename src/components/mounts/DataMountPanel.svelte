@@ -14,13 +14,14 @@
   import MountResourceList, { type MountSelection } from './MountResourceList.svelte';
   import MountResourceDetail from './MountResourceDetail.svelte';
 
-  interface Props { yaml: string; projectKey: string; selectedAgent?: string; onYamlChange: (yaml: string) => void | Promise<void>; onApply: () => Promise<void> }
-  let { yaml, projectKey, selectedAgent = '', onYamlChange, onApply }: Props = $props();
+  interface Props { yaml: string; projectKey: string; selectedAgent?: string; onYamlChange: (yaml: string) => void | Promise<void>; onApply?: () => Promise<void> }
+  let { yaml, projectKey, selectedAgent = '', onYamlChange, onApply = async () => { throw new Error('应用回调未配置'); } }: Props = $props();
   const PROJECT_KEY_PATTERN = /^ws_[0-9a-f]{32}$/;
+  const RESOURCE_NAME_PATTERN = /^[a-z][a-z0-9_-]*$/;
   const validKey = $derived(PROJECT_KEY_PATTERN.test(projectKey));
-  let logicalName = $state(''); let targetAgent = $state(''); let createTarget = $state(''); let targetTouched = $state(false);
-  let existingKey = $state(''); let existingAgent = $state(''); let existingTarget = $state('');
-  let sharedId = $state(''); let sharedAgent = $state(''); let sharedTarget = $state(''); let sharedReadOnly = $state(true);
+  let logicalName = $state(''); let targetAgents = $state<string[]>([]); let createTarget = $state(''); let targetTouched = $state(false);
+  let existingKey = $state(''); let existingAgents = $state<string[]>([]); let existingTarget = $state('');
+  let sharedId = $state(''); let sharedAgents = $state<string[]>([]); let sharedTarget = $state(''); let sharedReadOnly = $state(true);
   let catalog = $state<SharedDirectory[]>([]); let catalogLoading = $state(false); let catalogError = $state(''); let catalogGeneration = 0;
   let busy = $state(false); let applyBusy = $state(false); let status = $state(''); let error = $state(''); let applyStatus = $state(''); let volumeBrowserRevision = $state(0);
   let observedKey: string | undefined; let contextGeneration = 0;
@@ -33,6 +34,7 @@
   let selection = $state<MountSelection | null>(null);
   let operationModal = $state<'create' | 'mount' | ''>('');
   let resourceType = $state<'volume' | 'cache' | 'share'>('volume');
+  let observedAgentOptions = '';
 
   const agents = $derived(agentNames(yaml));
   const resources = $derived.by(() => { try { return deriveProjectResources(yaml); } catch { return []; } });
@@ -44,6 +46,12 @@
   const selectedBind = $derived.by(() => { const current = selection; return current?.kind === 'share' ? binds.find((item) => item.source === current.source && item.agent === current.agent && item.target === current.target) : undefined; });
   const selectedBrowsableVolume = $derived(selectedResource && validKey && fileBrowsable(selectedResource) ? selectedResource.systemName : '');
   const selectedBrowseKey = $derived.by(() => { const resource = selectedResource; if (!resource) return projectKey; return volumeOwnerKey(resource) || projectKey; });
+  const logicalNameValid = $derived(RESOURCE_NAME_PATTERN.test(logicalName.trim()));
+  const createTargetValid = $derived(validMountTarget(createTarget));
+  const existingTargetValid = $derived(validMountTarget(existingTarget));
+  const sharedTargetValid = $derived(validMountTarget(sharedTarget));
+  const createReady = $derived(validKey && logicalNameValid && createTargetValid && targetAgents.length > 0 && !locked);
+  const mountReady = $derived(validKey && !!existingKey && existingTargetValid && existingAgents.length > 0 && !locked);
 
   $effect(() => {
     const key = projectKey;
@@ -61,10 +69,14 @@
     else saveCleanup({ ...cleanup, observedYaml: currentYaml });
   });
   $effect(() => {
-    const names = agents; const preferred = selectedAgent && names.includes(selectedAgent) ? selectedAgent : names[0] ?? '';
-    if (!names.includes(targetAgent)) targetAgent = preferred;
-    if (!names.includes(existingAgent)) existingAgent = preferred;
-    if (!names.includes(sharedAgent)) sharedAgent = preferred;
+    const names = agents;
+    const context = `${selectedAgent}\0${names.join('\0')}`;
+    if (context === observedAgentOptions) return;
+    observedAgentOptions = context;
+    const preferred = selectedAgent && names.includes(selectedAgent) ? selectedAgent : names[0] ?? '';
+    targetAgents = selectedAgents(targetAgents, names, preferred);
+    existingAgents = selectedAgents(existingAgents, names, preferred);
+    sharedAgents = selectedAgents(sharedAgents, names, preferred);
   });
   $effect(() => { if (!targetTouched) createTarget = logicalName.trim() ? `/data/${logicalName.trim().toLowerCase().replace(/ +/g, '-')}` : ''; });
   $effect(() => { const keys = resources.map((resource) => resource.key); if (!keys.includes(existingKey)) existingKey = keys[0] ?? ''; });
@@ -99,16 +111,29 @@
     const canonical = trimmed === '/' ? '/' : `/${trimmed.split('/').filter(Boolean).join('/')}`;
     return canonical === trimmed ? canonical : null;
   }
+  function validMountTarget(path: string): boolean {
+    const canonical = canonicalAbsolute(path);
+    if (!canonical || canonical === '/') return false;
+    return canonical.slice(1).split('/').every((part) => RESOURCE_NAME_PATTERN.test(part));
+  }
+  function selectedAgents(current: string[], available: string[], preferred: string): string[] {
+    const next = current.filter((name) => available.includes(name));
+    return next.length > 0 ? next : preferred ? [preferred] : [];
+  }
+  function agentSelectionLabel(selected: string[]): string {
+    if (selected.length === 0) return '请选择 Agent';
+    if (selected.length === 1) return selected[0];
+    return `已选择 ${selected.length} 个 Agent`;
+  }
   function identityTarget(path: string): string {
     const parts: string[] = [];
     for (const part of path.trim().split('/')) { if (!part || part === '.') continue; if (part === '..') parts.pop(); else parts.push(part); }
     return `/${parts.join('/')}`;
   }
-  function absolute(path: string) { return canonicalAbsolute(path) !== null; }
-  function duplicateTarget(agent: string, target: string, text = yaml) {
+  function duplicateTarget(agent: string, target: string, text = yaml, ignoreSource?: string) {
     const normalized = identityTarget(target);
     return [...deriveProjectResources(text).flatMap((r) => r.mounts), ...bindMounts(text)]
-      .some((mount) => mount.agent === agent && identityTarget(mount.target) === normalized);
+      .some((mount) => mount.agent === agent && identityTarget(mount.target) === normalized && (!ignoreSource || mount.source !== ignoreSource));
   }
   function message(value: unknown) { return value instanceof Error ? value.message : String(value); }
   function cleanupKey(key: string, volume: string) { return `${key}\0${volume}`; }
@@ -174,39 +199,62 @@
     if (!owned || item.driver !== 'local' || item.name !== expectedName) throw new Error(`卷声明 ${key} 冲突：现有声明不属于当前项目或配置不同，未做任何更改`);
   }
   async function commit(build: (current: string) => string, success: string, generation = contextGeneration, key = projectKey) {
-    if (!validKey || locked) return; busy = true; error = ''; status = '';
+    if (!validKey || locked) return false; busy = true; error = ''; status = '';
     try {
       if (generation !== contextGeneration || key !== projectKey) throw new Error('项目上下文已变化');
       const next = build(yaml); await onYamlChange(next);
-      if (generation === contextGeneration && key === projectKey) status = success;
-    } catch (value) { if (generation === contextGeneration && key === projectKey) error = message(value); }
+      if (generation !== contextGeneration || key !== projectKey) return false;
+      status = success;
+      return true;
+    } catch (value) { if (generation === contextGeneration && key === projectKey) error = message(value); return false; }
     finally { busy = false; }
   }
   async function createVolume() {
-    const logical = logicalName.trim(); const agent = targetAgent; const target = createTarget.trim(); const generation = contextGeneration; const key = projectKey;
-    if (!logical || !agent || !absolute(target)) { error = '请输入安全名称、Agent 和绝对 Linux 路径'; return; }
-    if (duplicateTarget(agent, target)) { error = '该 Agent 的挂载目标已被使用'; return; }
+    const logical = logicalName.trim(); const selected = [...targetAgents]; const target = createTarget.trim(); const generation = contextGeneration; const key = projectKey;
+    if (!RESOURCE_NAME_PATTERN.test(logical)) { error = '逻辑名称必须以小写字母开头，且只能包含小写字母、数字、下划线和短横线'; return; }
+    if (!validMountTarget(target)) { error = '挂载目标必须是绝对路径，且每一级目录都要以小写字母开头，只能包含小写字母、数字、下划线和短横线'; return; }
+    if (selected.length === 0) { error = '请至少选择一个 Agent'; return; }
+    if (selected.some((agent) => duplicateTarget(agent, target))) { error = '所选 Agent 中已有 Agent 使用了该挂载目标'; return; }
     if (locked) return; busy = true; error = ''; status = '';
     try {
       const systemName = await managedVolumeName(key, logical);
       if (generation !== contextGeneration || key !== projectKey) return;
-      const declaration = logical.toLowerCase().replace(/ +/g, '-');
+      const declaration = logical;
       assertReusable(yaml, declaration, systemName);
       let next = upsertProjectVolume(yaml, declaration, { name: systemName, driver: 'local', labels: { 'agent-compose-ui.logical-name': declaration, 'agent-compose-ui.project-key': key } });
-      if (duplicateTarget(agent, target, next)) throw new Error('该 Agent 的挂载目标已被使用');
-      next = upsertAgentMount(next, agent, { type: 'volume', source: declaration, target, read_only: false });
+      for (const agent of selected) {
+        if (duplicateTarget(agent, target, next)) throw new Error(`Agent ${agent} 的挂载目标已被使用`);
+        next = upsertAgentMount(next, agent, { type: 'volume', source: declaration, target, read_only: false });
+      }
+      // A YAML mutation is only a local editor change.  The daemon volume is
+      // created by ApplyProject, so wait for the real apply callback before
+      // reporting success.  Previously this function stopped after
+      // onYamlChange(), which made the UI claim that a volume existed while
+      // the daemon had never created it (and file operations then returned
+      // 404).
       await onYamlChange(next);
+      await onApply();
       if (generation === contextGeneration && key === projectKey) {
-        status = `已创建 ${declaration}`;
+        status = `已创建并应用 ${declaration}`;
+        volumeBrowserRevision += 1;
         operationModal = '';
       }
-    } catch (value) { if (generation === contextGeneration && key === projectKey) error = message(value); }
+    } catch (value) { if (generation === contextGeneration && key === projectKey) error = `创建数据卷失败：${message(value)}`; }
     finally { busy = false; }
   }
   async function mountExisting() {
-    if (!existingKey || !existingAgent || !absolute(existingTarget.trim())) { error = '请选择卷、Agent 并输入绝对路径'; return; }
-    if (duplicateTarget(existingAgent, existingTarget)) { error = '该 Agent 的挂载目标已被使用'; return; }
-    await commit((current) => upsertAgentMount(current, existingAgent, { type: 'volume', source: existingKey, target: existingTarget.trim(), read_only: false }), '已挂载卷');
+    const selected = [...existingAgents]; const target = existingTarget.trim();
+    if (!existingKey || selected.length === 0 || !validMountTarget(target)) { error = '请选择卷和至少一个 Agent，并输入符合命名格式的绝对路径'; return; }
+    // Re-mounting the same volume to an Agent that already has it is idempotent
+    // (upsertAgentMount no-ops), so only block a genuine conflict: another volume
+    // or bind already occupying the target on one of the selected Agents.
+    if (selected.some((agent) => duplicateTarget(agent, target, yaml, existingKey))) { error = '所选 Agent 中已有 Agent 在该挂载目标上挂载了其他卷或目录'; return; }
+    const committed = await commit((current) => {
+      let next = current;
+      for (const agent of selected) next = upsertAgentMount(next, agent, { type: 'volume', source: existingKey, target, read_only: false });
+      return next;
+    }, `已将卷挂载到 ${selected.length} 个 Agent`);
+    if (committed) operationModal = '';
   }
   async function unmount(mount: AgentMount) { await commit((current) => removeAgentMount(current, mount.agent, mount.source, mount.target), '已卸载；卷声明和数据均已保留'); }
   async function togglePreset(name: keyof typeof CACHE_PRESETS, agent: string) {
@@ -230,13 +278,17 @@
   }
   async function mountShared() {
     const entry = catalog.find((item) => item.id === sharedId);
-    if (!entry || !sharedAgent || !absolute(sharedTarget.trim())) { error = '请选择当前目录、Agent 并输入绝对路径'; return; }
+    const selected = [...sharedAgents]; const target = sharedTarget.trim();
+    if (!entry || selected.length === 0 || !validMountTarget(target)) { error = '请选择当前目录和至少一个 Agent，并输入符合命名格式的绝对路径'; return; }
     if (!sharedReadOnly && !entry.writable) { error = '该共享目录不允许写入'; return; }
-    if (duplicateTarget(sharedAgent, sharedTarget)) { error = '该 Agent 的挂载目标已被使用'; return; }
-    await commit((current) => {
+    if (selected.some((agent) => duplicateTarget(agent, target))) { error = '所选 Agent 中已有 Agent 使用了该挂载目标'; return; }
+    const committed = await commit((current) => {
       const currentEntry = catalog.find((item) => item.id === sharedId); if (!currentEntry || currentEntry.path !== entry.path) throw new Error('共享目录目录已变化，请重试');
-      return upsertAgentMount(current, sharedAgent, { type: 'bind', source: currentEntry.path, target: sharedTarget.trim(), read_only: sharedReadOnly });
-    }, '已挂载共享目录');
+      let next = current;
+      for (const agent of selected) next = upsertAgentMount(next, agent, { type: 'bind', source: currentEntry.path, target, read_only: sharedReadOnly });
+      return next;
+    }, `已将共享目录挂载到 ${selected.length} 个 Agent`);
+    if (committed) operationModal = '';
   }
   function refs(resource: ProjectDataResource) { return resource.mounts.map((mount) => `${mount.agent}\0${mount.source}\0${mount.target}`).sort(); }
   function requestRemove(resource: ProjectDataResource, trigger: HTMLButtonElement) { deletion = { resource, refs: refs(resource), revision: yaml }; deleteTrigger = trigger; void tick().then(() => cancelDelete?.focus()); }
@@ -327,21 +379,29 @@
       {#if selectedBrowsableVolume}{#key `${selectedBrowseKey}\0${selectedBrowsableVolume}\0${volumeBrowserRevision}`}<VolumeFileBrowser projectKey={selectedBrowseKey} volume={selectedBrowsableVolume} />{/key}{/if}
     </div>
   </div>
-  {#if operationModal === 'create'}<div class="resource-modal-backdrop"><dialog class="resource-modal-card command-modal" open aria-label="创建数据卷"><form class="command-modal-form" onsubmit={(e) => { e.preventDefault(); void createVolume(); }}><div class="command-header"><div class="command-title"><h3>创建隔离持久卷</h3><span class="command-context">VOLUME / CREATE</span></div></div>
-    <div class="command-fields"><label class="command-field">逻辑名称 <input aria-label="逻辑名称" bind:value={logicalName} /></label><label class="command-field">目标 Agent <select aria-label="创建卷目标 Agent" bind:value={targetAgent}>{#each agents as a}<option value={a}>{a}</option>{/each}</select></label>
-    <label class="command-field">挂载目标 <input class="command-path" aria-label="创建卷挂载目标" bind:value={createTarget} oninput={() => targetTouched = true} /></label></div><div class="command-footer"><button class="ui-button ghost" type="button" onclick={() => operationModal = ''}>取消</button><button class="ui-button primary" disabled={!validKey || locked}>创建并挂载</button></div>
+  {#if operationModal === 'create'}<div class="resource-modal-backdrop"><dialog class="resource-modal-card command-modal" open aria-label="创建数据卷"><form class="command-modal-form" onsubmit={(e) => { e.preventDefault(); if (createReady) void createVolume(); }}><div class="command-header"><div class="command-title"><h3>创建隔离持久卷</h3><span class="command-context">VOLUME / CREATE</span></div></div>
+    <div class="command-fields">
+      <label class="command-field">逻辑名称 <input aria-label="逻辑名称" aria-describedby={`${instanceId}-logical-help`} aria-invalid={logicalName.length > 0 && !logicalNameValid} bind:value={logicalName} /></label>
+      <div class="command-field"><span>目标 Agent</span><details class="agent-multiselect"><summary aria-label="创建卷目标 Agent">{agentSelectionLabel(targetAgents)}</summary><div class="agent-options" role="group" aria-label="创建卷目标 Agent 选项">{#each agents as agent}<label><input type="checkbox" value={agent} bind:group={targetAgents} /> {agent}</label>{/each}</div></details></div>
+      <label class="command-field">挂载目标 <input class="command-path" aria-label="创建卷挂载目标" aria-describedby={`${instanceId}-target-help`} aria-invalid={createTarget.length > 0 && !createTargetValid} bind:value={createTarget} oninput={() => targetTouched = true} /></label>
+    </div>
+    <div class="naming-help" id={`${instanceId}-logical-help`}>逻辑名称格式：以小写字母开头，只能包含小写字母、数字、下划线（_）和短横线（-），即 <code>^[a-z][a-z0-9_-]*$</code>。</div>
+    <div class="naming-help" id={`${instanceId}-target-help`}>挂载目标格式：绝对路径，且每一级目录均符合上述命名格式，例如 <code>/data/project_memory</code>。</div>
+    {#if logicalName.length > 0 && !logicalNameValid}<p class="field-error" role="alert">逻辑名称格式不正确</p>{/if}
+    {#if createTarget.length > 0 && !createTargetValid}<p class="field-error" role="alert">挂载目标格式不正确</p>{/if}
+    <div class="command-footer"><button class="ui-button ghost" type="button" onclick={() => operationModal = ''}>取消</button><button class="ui-button primary" disabled={!createReady}>创建并挂载</button></div>
   </form></dialog></div>{/if}
   {#if operationModal === 'mount'}<div class="resource-modal-backdrop"><dialog class="resource-modal-card command-modal" open aria-label="挂载资源"><div class="command-header"><div class="command-title"><h3>挂载资源</h3><span class="command-context">VOLUME / MOUNT</span></div><label class="command-field">资源类型 <select aria-label="资源类型" value={resourceType} onchange={(event) => { resourceType = event.currentTarget.value as typeof resourceType; }}><option value="volume">持久数据</option><option hidden value="cache">依赖缓存</option><option hidden value="share">共享目录</option></select></label></div>
   {#if resourceType === 'volume'}<form class="command-modal-form" onsubmit={(e) => { e.preventDefault(); void mountExisting(); }}>
     <div class="command-fields"><label class="command-field">卷 <select aria-label="现有卷" bind:value={existingKey}><option value="">请选择</option>{#each resources as r}<option value={r.key}>{r.key}</option>{/each}</select></label>
-    <label class="command-field">目标 Agent <select aria-label="现有卷目标 Agent" bind:value={existingAgent}>{#each agents as a}<option value={a}>{a}</option>{/each}</select></label><label class="command-field">挂载目标 <input class="command-path" aria-label="现有卷挂载目标" bind:value={existingTarget} /></label></div><div class="command-footer"><button class="ui-button ghost" type="button" onclick={() => operationModal = ''}>关闭</button><button class="ui-button primary" disabled={!validKey || locked}>挂载</button></div>
+    <div class="command-field"><span>目标 Agent</span><details class="agent-multiselect"><summary aria-label="现有卷目标 Agent">{agentSelectionLabel(existingAgents)}</summary><div class="agent-options" role="group" aria-label="现有卷目标 Agent 选项">{#each agents as agent}<label><input type="checkbox" value={agent} bind:group={existingAgents} /> {agent}</label>{/each}</div></details></div><label class="command-field">挂载目标 <input class="command-path" aria-label="现有卷挂载目标" aria-invalid={existingTarget.length > 0 && !existingTargetValid} bind:value={existingTarget} /></label></div><div class="command-footer"><button class="ui-button ghost" type="button" onclick={() => operationModal = ''}>关闭</button><button class="ui-button primary" disabled={!mountReady}>挂载</button></div>
   </form>
   {:else if resourceType === 'cache'}<section class="command-modal-form"><label class="command-field">缓存预设 <select aria-label="缓存预设"><option>请选择下方预设</option></select></label><div class="command-presets">{#each agents as agent}<fieldset><legend>{agent}</legend>{#each Object.entries(CACHE_PRESETS) as [name, preset]}<button class="ui-button secondary" type="button" disabled={!validKey || locked} aria-pressed={resources.some((r) => r.key === preset.suffix && r.mounts.some((m) => m.agent === agent && m.target === preset.target))} onclick={() => togglePreset(name as keyof typeof CACHE_PRESETS, agent)}>{name} · {preset.target}</button>{/each}</fieldset>{/each}</div><div class="command-footer"><button class="ui-button ghost" type="button" onclick={() => operationModal = ''}>关闭</button></div></section>
   {:else}<form class="command-modal-form" onsubmit={(e) => { e.preventDefault(); void mountShared(); }}>
     {#if catalogLoading}<p class="command-status" role="status">正在加载共享目录…</p>{:else if catalogError}<p class="command-status" role="alert">加载失败：{catalogError} <button class="ui-button secondary" type="button" onclick={() => loadCatalog()}>重试</button></p>{/if}
     <div class="command-fields"><label class="command-field">目录 <select aria-label="共享目录" bind:value={sharedId} disabled={catalogLoading}><option value="">请选择</option>{#each catalog as entry}<option value={entry.id}>{entry.name} ({entry.writable ? '可写' : '只读'})</option>{/each}</select></label>
-    <label class="command-field">目标 Agent <select aria-label="共享目录目标 Agent" bind:value={sharedAgent}>{#each agents as a}<option value={a}>{a}</option>{/each}</select></label><label class="command-field">挂载目标 <input class="command-path" aria-label="共享目录挂载目标" bind:value={sharedTarget} /></label>
-    <label class="command-field"><input type="checkbox" aria-label="只读" bind:checked={sharedReadOnly} /> 只读</label></div><div class="command-footer">{#if selectedShared?.writable}<button class="ui-button secondary" type="button" onclick={() => sharedReadOnly = !sharedReadOnly}>{sharedReadOnly ? '允许写入' : '改为只读'}</button>{/if}<button class="ui-button ghost" type="button" onclick={() => operationModal = ''}>关闭</button><button class="ui-button primary" disabled={!validKey || locked || !sharedId}>挂载目录</button></div>
+    <div class="command-field"><span>目标 Agent</span><details class="agent-multiselect"><summary aria-label="共享目录目标 Agent">{agentSelectionLabel(sharedAgents)}</summary><div class="agent-options" role="group" aria-label="共享目录目标 Agent 选项">{#each agents as agent}<label><input type="checkbox" value={agent} bind:group={sharedAgents} /> {agent}</label>{/each}</div></details></div><label class="command-field">挂载目标 <input class="command-path" aria-label="共享目录挂载目标" aria-invalid={sharedTarget.length > 0 && !sharedTargetValid} bind:value={sharedTarget} /></label>
+    <label class="command-field"><input type="checkbox" aria-label="只读" bind:checked={sharedReadOnly} /> 只读</label></div><div class="command-footer">{#if selectedShared?.writable}<button class="ui-button secondary" type="button" onclick={() => sharedReadOnly = !sharedReadOnly}>{sharedReadOnly ? '允许写入' : '改为只读'}</button>{/if}<button class="ui-button ghost" type="button" onclick={() => operationModal = ''}>关闭</button><button class="ui-button primary" disabled={!validKey || locked || !sharedId || !sharedTargetValid || sharedAgents.length === 0}>挂载目录</button></div>
   </form>{/if}</dialog></div>{/if}
 </section>
 
@@ -353,5 +413,5 @@
 {/if}
 
 <style>
-  .mount-panel{box-sizing:border-box;display:grid;flex:1;grid-template-rows:auto minmax(0,1fr);gap:12px;width:100%;min-width:0;min-height:0;padding:12px;overflow:hidden}.toolbar{display:flex;min-height:38px;align-items:center;gap:6px;margin:-12px -12px 0;padding:6px 10px;border-bottom:1px solid var(--border-color);background:var(--bg-secondary)}.toolbar-spacer{flex:1}.inline-status{overflow:hidden;color:var(--accent-green);font-size:var(--font-size-sm);text-overflow:ellipsis;white-space:nowrap}.toolbar button{height:27px;padding:3px 10px;border:1px solid var(--border-color);border-radius:4px;color:var(--text-primary);background:var(--bg-tertiary);font-size:var(--font-size-sm);cursor:pointer}.toolbar button:hover:not(:disabled){border-color:var(--accent-blue);color:var(--accent-blue)}.toolbar button:focus-visible{outline:2px solid var(--accent-blue);outline-offset:1px}.toolbar button:disabled{cursor:not-allowed;opacity:.5}.toolbar .primary{border-color:var(--accent-blue-emphasis);color:var(--text-on-accent);background:var(--accent-blue-emphasis);font-weight:600}.toolbar .primary:hover:not(:disabled){border-color:var(--accent-blue-emphasis);background:color-mix(in srgb,var(--accent-blue-emphasis) 88%,var(--bg-primary))}.toolbar .secondary{background:var(--bg-tertiary)}.toolbar .ghost{padding-inline:8px;border-color:transparent;color:var(--text-secondary);background:transparent}.toolbar .ghost:hover:not(:disabled){border-color:var(--border-color);color:var(--text-primary);background:var(--bg-tertiary)}.resource-browser{display:grid;grid-template-columns:minmax(210px,28%) minmax(0,1fr);height:100%;min-height:0;overflow:hidden;border:1px solid var(--border-color)}.resource-detail{min-width:0;min-height:0;overflow:auto}dialog{width:min(620px,100%)}form,section section{border:1px solid var(--border-color);padding:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}h3{width:100%;margin:0}label{display:grid;gap:3px}.command-modal .command-modal-form{display:grid;gap:10px;padding:0;border:0}.command-modal .command-field{display:flex;gap:7px}.command-modal .command-presets{display:grid}.command-modal .command-presets fieldset{display:flex;padding:7px}button,input,select{font:inherit}.backdrop{position:fixed;inset:0;background:#0008;display:grid;place-items:center;z-index:100}.backdrop>[role=dialog]{background:var(--bg-primary);padding:20px;max-width:520px;border:1px solid var(--border-color)}
+  .mount-panel{box-sizing:border-box;display:grid;flex:1;grid-template-rows:auto minmax(0,1fr);gap:12px;width:100%;min-width:0;min-height:0;padding:12px;overflow:hidden}.toolbar{display:flex;min-height:38px;align-items:center;gap:6px;margin:-12px -12px 0;padding:6px 10px;border-bottom:1px solid var(--border-color);background:var(--bg-secondary)}.toolbar-spacer{flex:1}.inline-status{overflow:hidden;color:var(--accent-green);font-size:var(--font-size-sm);text-overflow:ellipsis;white-space:nowrap}.toolbar button{height:27px;padding:3px 10px;border:1px solid var(--border-color);border-radius:4px;color:var(--text-primary);background:var(--bg-tertiary);font-size:var(--font-size-sm);cursor:pointer}.toolbar button:hover:not(:disabled){border-color:var(--accent-blue);color:var(--accent-blue)}.toolbar button:focus-visible{outline:2px solid var(--accent-blue);outline-offset:1px}.toolbar button:disabled{cursor:not-allowed;opacity:.5}.toolbar .primary{border-color:var(--accent-blue-emphasis);color:var(--text-on-accent);background:var(--accent-blue-emphasis);font-weight:600}.toolbar .primary:hover:not(:disabled){border-color:var(--accent-blue-emphasis);background:color-mix(in srgb,var(--accent-blue-emphasis) 88%,var(--bg-primary))}.toolbar .secondary{background:var(--bg-tertiary)}.toolbar .ghost{padding-inline:8px;border-color:transparent;color:var(--text-secondary);background:transparent}.toolbar .ghost:hover:not(:disabled){border-color:var(--border-color);color:var(--text-primary);background:var(--bg-tertiary)}.resource-browser{display:grid;grid-template-columns:minmax(210px,28%) minmax(0,1fr);height:100%;min-height:0;overflow:hidden;border:1px solid var(--border-color)}.resource-detail{min-width:0;min-height:0;overflow:auto}dialog{width:min(620px,100%)}form,section section{border:1px solid var(--border-color);padding:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}h3{width:100%;margin:0}label{display:grid;gap:3px}.command-modal .command-modal-form{display:grid;gap:10px;padding:0;border:0}.command-modal .command-field{display:flex;align-items:center;gap:7px}.command-modal .command-presets{display:grid}.command-modal .command-presets fieldset{display:flex;padding:7px}.agent-multiselect{position:relative;min-width:0;flex:1}.agent-multiselect summary{padding:6px 28px 6px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);cursor:pointer;list-style:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.agent-multiselect summary::-webkit-details-marker{display:none}.agent-multiselect summary::after{position:absolute;right:9px;content:'⌄'}.agent-options{position:absolute;z-index:5;top:calc(100% + 4px);right:0;left:0;display:grid;max-height:180px;gap:2px;overflow:auto;padding:6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);box-shadow:0 8px 20px #0005}.agent-options label{display:flex;align-items:center;gap:7px;padding:5px}.naming-help{color:var(--text-muted);font-size:var(--font-size-xs);line-height:1.5}.naming-help code{color:var(--text-secondary)}.field-error{margin:0;color:var(--accent-red);font-size:var(--font-size-xs)}input[aria-invalid=true]{border-color:var(--accent-red)}button,input,select{font:inherit}.backdrop{position:fixed;inset:0;background:#0008;display:grid;place-items:center;z-index:100}.backdrop>[role=dialog]{background:var(--bg-primary);padding:20px;max-width:520px;border:1px solid var(--border-color)}
 </style>

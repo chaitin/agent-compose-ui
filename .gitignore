@@ -11,3 +11,7 @@ docker/.env
 docker/data/
 docker/agent-compose.env
 release_amd
+.cache
+release_arm64
+*.tar.gz
+.DS_Store

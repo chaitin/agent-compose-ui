@@ -16,10 +16,12 @@
     files = workspaceFiles,
     locationLabel = 'workspace',
     stripFolderRoot = false,
+    disabled = false,
   }: {
     files?: UploadFileStore;
     locationLabel?: string;
     stripFolderRoot?: boolean;
+    disabled?: boolean;
   } = $props();
 
   type OverwritePrompt =
@@ -35,12 +37,12 @@
   let prompt = $state<OverwritePrompt>(null);
 
   function openPicker() {
-    if (uploading) return;
+    if (uploading || disabled) return;
     fileInput?.click();
   }
 
   function openFolderPicker() {
-    if (uploading) return;
+    if (uploading || disabled) return;
     folderInput?.click();
   }
 
@@ -289,7 +291,7 @@
       type="button"
       class="upload-btn"
       onclick={openPicker}
-      disabled={uploading}
+      disabled={uploading || disabled}
     >
       <span class="btn-icon" aria-hidden="true">📄</span>
       <span class="btn-label">上传文件</span>
@@ -298,7 +300,7 @@
       type="button"
       class="upload-btn"
       onclick={openFolderPicker}
-      disabled={uploading}
+      disabled={uploading || disabled}
     >
       <span class="btn-icon" aria-hidden="true">📁</span>
       <span class="btn-label">上传文件夹</span>

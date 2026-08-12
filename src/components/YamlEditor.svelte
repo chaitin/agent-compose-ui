@@ -38,6 +38,11 @@
   } from '../lib/workspace-binding';
   import { createWorkspaceAndBind } from '../lib/workspace-create';
   import { listSkillLocations, type SkillLocation } from '../lib/skills/locations';
+  import { projectService } from '../lib/rpc';
+  import { previewProject } from '../lib/toolbar-actions';
+  import { prepareScriptRequest } from '../lib/scripts/request-pipeline';
+  import { requiresManagedWorkspace } from '../lib/workspace/preflight';
+  import { getProjectBindingOverride, legacyKeyFromSourcePath, setProjectBindingOverride, workspaceBindings } from '../lib/workspace/bindings';
 
   self.MonacoEnvironment = {
     getWorker: () => new EditorWorker(),
@@ -75,6 +80,80 @@
 
   function commitSkillYaml(yaml: string): void {
     store.commitEditorContent(yaml);
+  }
+
+  async function ensureApplySourcePath(yamlText: string): Promise<string> {
+    const needsWorkspace = requiresManagedWorkspace(yamlText);
+    const projectId = store.activeProjectId;
+    if (projectId) {
+      const override = getProjectBindingOverride(projectId);
+      if (override) return override.sourcePath;
+      const current = store.projects.find((project) => project.summary.projectId === projectId)?.summary.sourcePath?.trim() || '';
+      if (current) {
+        try {
+          const resolved = await workspaceBindings.ensure(`project:${projectId}`, {
+            sourcePath: current,
+            legacyKey: legacyKeyFromSourcePath(current),
+            ensureWorkspace: needsWorkspace,
+          });
+          return resolved.sourcePath;
+        } catch {
+          if (!needsWorkspace) return current;
+        }
+      }
+      if (!needsWorkspace) return current;
+      const replacement = await workspaceBindings.ensure(`project:${projectId}:replacement`, { ensureWorkspace: true });
+      setProjectBindingOverride(projectId, replacement);
+      return replacement.sourcePath;
+    }
+    store.ensureEditorDraftSourcePath();
+    const draftId = store.activeDraftId;
+    const draft = store.activeDraftBinding();
+    const resolved = await workspaceBindings.ensure(`draft:${draftId}`, {
+      projectKey: draft.projectKey,
+      sourcePath: draft.sourcePath,
+      legacyKey: store.browserDrafts.find((item) => item.id === draftId)?.legacyStorageKey,
+      ensureWorkspace: needsWorkspace,
+    });
+    return resolved.sourcePath;
+  }
+
+  // Resource actions need an apply operation that completes synchronously
+  // from the panel's perspective.  Toolbar's normal flow intentionally opens
+  // a preview/confirmation dialog; data-volume creation must instead wait for
+  // the non-dry-run ApplyProject RPC and only then report success.
+  async function applyCurrentYaml(): Promise<void> {
+    const editorContent = store.editorContent;
+    const currentProjectId = store.activeProjectId;
+    const projects = store.projects.map((project) => ({ ...project, summary: { ...project.summary } }));
+    const sourcePath = await ensureApplySourcePath(editorContent);
+    const prepared = await prepareScriptRequest({
+      mode: 'save',
+      editorYaml: editorContent,
+      workspace: scriptWorkspace,
+      readFile: scriptApi.readFile,
+    });
+    // The daemon's submittedSpecHash is the hash of the new normalized spec,
+    // not the currently stored revision.  Run a dry-run first to obtain that
+    // hash, then immediately consume the returned real-apply callback.
+    const preview = await previewProject(editorContent, projectService, {
+      currentProjectId,
+      projects,
+      newProjectSourcePath: currentProjectId ? '' : sourcePath,
+      sourcePathOverride: currentProjectId && getProjectBindingOverride(currentProjectId) ? sourcePath : undefined,
+      preparedYaml: prepared.yamlText,
+    });
+    const result = await preview.apply();
+    const appliedProjectId = result.response.project?.summary?.projectId || currentProjectId;
+    if (!appliedProjectId) throw new Error('应用成功但未返回项目 ID');
+    if (!currentProjectId) store.removeEditorDraft(store.activeDraftId);
+    store.saveProjectEditor(appliedProjectId, editorContent);
+    store.triggerRuntimeRefresh();
+    if ((window as any).__refreshProjects) await (window as any).__refreshProjects();
+    if (store.activeProjectId !== appliedProjectId) {
+      store.activeProjectId = appliedProjectId;
+      store.syncHash();
+    }
   }
 
   function persistSkillBinding(binding: { projectKey: string; sourcePath: string }, identity: string): void {
@@ -733,6 +812,7 @@
       yaml={store.editorContent}
       selectedAgent={store.runtimeView.agentName}
       onYamlChange={commitSkillYaml}
+      onApply={applyCurrentYaml}
     />
     {#if modalRequest}
       <ScriptReferenceModal

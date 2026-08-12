@@ -8,9 +8,21 @@
     sourcePath: string;
     binding: WorkspaceBinding | null;
     agentName: string;
+    hasPendingChanges?: boolean;
+    applying?: boolean;
+    onReload?: () => void | Promise<void>;
+    disabled?: boolean;
   }
 
-  let { sourcePath, binding, agentName }: Props = $props();
+  let {
+    sourcePath,
+    binding,
+    agentName,
+    hasPendingChanges = false,
+    applying = false,
+    onReload = () => {},
+    disabled = false,
+  }: Props = $props();
 
   const status = $derived.by(() => {
     if (!binding) return { kind: 'none' as const };
@@ -43,6 +55,12 @@
       creating = false;
     }
   }
+
+  const reloadTitle = $derived(
+    hasPendingChanges
+      ? 'YAML 中的 workspace 配置已变更，点击重新加载'
+      : 'YAML 配置已同步',
+  );
 </script>
 
 {#if status.kind === 'valid'}
@@ -51,7 +69,17 @@
     <span class="path">{status.path}</span>
     <span class="sep">·</span>
     <span class="sync">● 已绑定</span>
-    <WorkspaceUpload />
+    <div class="actions">
+      <WorkspaceUpload {disabled} />
+      <button
+        type="button"
+        class="reload-btn"
+        class:pending={hasPendingChanges}
+        onclick={() => void onReload()}
+        disabled={!hasPendingChanges || applying}
+        title={reloadTitle}
+      >{applying ? '加载中…' : '重新加载'}</button>
+    </div>
   </div>
 {:else if status.kind === 'non-file'}
   <div class="binding-bar warn">
@@ -59,6 +87,16 @@
     <span class="path">{status.provider}</span>
     <span class="sep">·</span>
     <span class="warn-text">非 local 类型，不支持文件管理</span>
+    <div class="actions">
+      <button
+        type="button"
+        class="reload-btn"
+        class:pending={hasPendingChanges}
+        onclick={() => void onReload()}
+        disabled={!hasPendingChanges || applying}
+        title={reloadTitle}
+      >{applying ? '加载中…' : '重新加载'}</button>
+    </div>
   </div>
 {:else}
   <div class="binding-bar empty">
@@ -67,9 +105,19 @@
       type="button"
       class="create-btn"
       onclick={createWorkspace}
-      disabled={creating}
+      disabled={creating || disabled}
     >{creating ? '创建中…' : '＋ 绑定 workspace'}</button>
     <span class="hint">设置 <code>workspace.path</code> 为项目相对路径</span>
+    <div class="actions">
+      <button
+        type="button"
+        class="reload-btn"
+        class:pending={hasPendingChanges}
+        onclick={() => void onReload()}
+        disabled={!hasPendingChanges || applying}
+        title={reloadTitle}
+      >{applying ? '加载中…' : '重新加载'}</button>
+    </div>
   </div>
 {/if}
 
@@ -102,6 +150,13 @@
   .warn-text { color: var(--accent-yellow); }
   .hint { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
   .hint code { color: var(--accent-blue); }
+  .actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
   .create-btn {
     padding: 2px 8px;
     border: 1px solid var(--border-color);
@@ -112,7 +167,6 @@
     font-family: var(--font-sans);
     cursor: pointer;
   }
-  :global(.binding-bar.valid > .upload-bar) { margin-left: auto; }
   .create-btn {
     color: var(--accent-blue);
     border-color: color-mix(in srgb, var(--accent-blue) 50%, var(--border-color));
@@ -123,7 +177,31 @@
     border-color: var(--accent-blue);
   }
   .create-btn:disabled {
-    opacity: 0.6;
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .reload-btn {
+    padding: 2px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .reload-btn.pending {
+    color: var(--accent-yellow);
+    border-color: color-mix(in srgb, var(--accent-yellow) 50%, var(--border-color));
+    background: color-mix(in srgb, var(--accent-yellow) 8%, var(--bg-secondary));
+  }
+  .reload-btn.pending:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent-yellow) 15%, var(--bg-secondary));
+    border-color: var(--accent-yellow);
+  }
+  .reload-btn:disabled {
+    opacity: 0.5;
     cursor: not-allowed;
   }
 </style>

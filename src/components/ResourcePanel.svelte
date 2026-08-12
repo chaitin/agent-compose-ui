@@ -30,7 +30,8 @@
   }
   let {
     workspace, projectKey = '', projectIdentity = '', bindingProjectKey = '', bindingSourcePath = '', bindingLegacyKey = '',
-    onBindingResolved = () => {}, yaml = '', selectedAgent = '', onYamlChange = () => {}, onApply = async () => {},
+    onBindingResolved = () => {}, yaml = '', selectedAgent = '', onYamlChange = () => {},
+    onApply = async () => { throw new Error('应用回调未配置'); },
   }: Props = $props();
   const instanceId = $props.id();
   const resourceTabs: readonly ResourceTab[] = ['scripts', 'workspace', 'images', 'skills', 'mounts'];

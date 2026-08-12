@@ -90,10 +90,72 @@ test('switching to another agent re-resolves the workspace binding for that agen
   });
 });
 
+test('switching back to a previously viewed agent refreshes its workspace file list', async () => {
+  render(WorkspacePanel);
+
+  await waitFor(() => {
+    expect(mocks.setWorkspace).toHaveBeenCalledWith('ws_test', 'workspace-alpha');
+  });
+
+  const dropdown = screen.getByRole('combobox', { name: '选择智能体 workspace' }) as HTMLSelectElement;
+
+  // alpha -> beta (first visit: full binding resolve).
+  mocks.setWorkspace.mockClear();
+  mocks.ensure.mockClear();
+  await fireEvent.change(dropdown, { target: { value: 'beta' } });
+  await waitFor(() => {
+    expect(mocks.setWorkspace).toHaveBeenCalledWith('ws_test', 'workspace-beta');
+  });
+
+  // beta -> alpha (already visited): the file list must re-point at alpha's
+  // workspace, without repeating the binding round-trip.
+  mocks.setWorkspace.mockClear();
+  mocks.ensure.mockClear();
+  await fireEvent.change(dropdown, { target: { value: 'alpha' } });
+  await waitFor(() => {
+    expect(mocks.setWorkspace).toHaveBeenCalledWith('ws_test', 'workspace-alpha');
+  });
+  expect(mocks.ensure).not.toHaveBeenCalled();
+});
+
 test('first agent workspace is bound on initial render', async () => {
   render(WorkspacePanel);
 
   await waitFor(() => {
     expect(mocks.setWorkspace).toHaveBeenCalledWith('ws_test', 'workspace-alpha');
   });
+});
+
+test('renders reload button in binding bar', async () => {
+  render(WorkspacePanel);
+
+  await waitFor(() => {
+    expect(mocks.setWorkspace).toHaveBeenCalledWith('ws_test', 'workspace-alpha');
+  });
+
+  expect(screen.getByRole('button', { name: '重新加载' })).toBeInTheDocument();
+});
+
+test('reload button is disabled after initial apply completes', async () => {
+  render(WorkspacePanel);
+
+  await waitFor(() => {
+    expect(mocks.setWorkspace).toHaveBeenCalledWith('ws_test', 'workspace-alpha');
+  });
+
+  const reloadButton = screen.getByRole('button', { name: '重新加载' }) as HTMLButtonElement;
+  expect(reloadButton.disabled).toBe(true);
+});
+
+test('upload buttons are enabled when no pending changes', async () => {
+  render(WorkspacePanel);
+
+  await waitFor(() => {
+    expect(mocks.setWorkspace).toHaveBeenCalledWith('ws_test', 'workspace-alpha');
+  });
+
+  const uploadButtons = screen.getAllByRole('button', { name: /上传文件|上传文件夹/ });
+  for (const button of uploadButtons) {
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+  }
 });
