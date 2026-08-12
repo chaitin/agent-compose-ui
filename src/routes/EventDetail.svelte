@@ -2,6 +2,7 @@
   import { Button } from '$lib/components/ui/button';
   import EventExecutionOverview from '$lib/components/event-execution-overview.svelte';
   import EventDetailSidebar from '$lib/components/event-detail-sidebar.svelte';
+  import EventSandboxSelector from '$lib/components/event-sandbox-selector.svelte';
   import SandboxWorkbench from '$lib/components/sandbox-workbench.svelte';
   import PageHeader from '$lib/components/page-header.svelte';
   import PageContent from '$lib/components/page-content.svelte';
@@ -123,33 +124,13 @@
     {:else if event}
       {#if linkedSandboxes.length}
         <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
-          {#if linkedSandboxes.length > 1}<div
-              data-sandbox-selector="desktop"
-              class="hidden shrink-0 gap-2 overflow-x-auto pb-1 sm:flex"
-            >
-              {#each linkedSandboxes as item (item.link.sandboxId)}<Button
-                  size="sm"
-                  variant={item.link.sandboxId === selectedSandboxId ? 'default' : 'outline'}
-                  aria-pressed={item.link.sandboxId === selectedSandboxId}
-                  data-sandbox-id={item.link.sandboxId}
-                  onclick={() => (selectedSandboxId = item.link.sandboxId)}
-                  >{item.sandbox?.agentName || item.sandbox?.title || t('执行环境')} · {compactIdentifier(
-                    item.link.sandboxId,
-                  )}</Button
-                >{/each}
-            </div>
-            <select
-              data-sandbox-selector="mobile"
-              aria-label={t('关联执行环境')}
-              bind:value={selectedSandboxId}
-              class="h-9 w-full shrink-0 rounded-md border border-input bg-background px-3 text-sm sm:hidden"
-            >
-              {#each linkedSandboxes as item (item.link.sandboxId)}<option value={item.link.sandboxId}
-                  >{item.sandbox?.agentName || item.sandbox?.title || t('执行环境')} · {compactIdentifier(
-                    item.link.sandboxId,
-                  )}</option
-                >{/each}
-            </select>{/if}
+          {#if linkedSandboxes.length > 1}
+            <EventSandboxSelector
+              items={linkedSandboxes}
+              {selectedSandboxId}
+              onSelect={(sandboxId) => (selectedSandboxId = sandboxId)}
+            />
+          {/if}
           <div class="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_24rem]">
             <div data-selected-sandbox-id={selectedSandboxId} class="min-h-0">
               {#key selectedSandboxId}<SandboxWorkbench

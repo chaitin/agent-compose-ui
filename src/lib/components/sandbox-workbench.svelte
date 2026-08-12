@@ -17,7 +17,6 @@
   import { openInteractiveTerminal, type InteractiveTerminal } from '../../api/exec';
   import {
     getSandboxContext,
-    getSandboxRunTarget,
     listSandboxExecutionEvents,
     listSandboxHistoryCells,
     resumeSandboxContext,
@@ -115,10 +114,11 @@
   });
 
   $effect(() => {
-    if (sandboxId && sandboxId !== loadedSandboxId) {
-      loadedSandboxId = sandboxId;
+    const targetSandboxId = sandboxId;
+    if (targetSandboxId && targetSandboxId !== loadedSandboxId) {
+      loadedSandboxId = targetSandboxId;
       liveContextLog = '';
-      void load();
+      void load(targetSandboxId);
     }
   });
 
@@ -157,19 +157,19 @@
     }
   });
 
-  async function load(): Promise<void> {
+  async function load(targetSandboxId: string): Promise<void> {
     loading = true;
     error = '';
     resetTerminal();
     try {
-      const [nextSandbox, nextRuns, nextEvents, cells, nextTarget] = await Promise.all([
-        getSandboxContext(sandboxId),
-        listRuns({ sandboxId, limit: 200 }),
-        listSandboxExecutionEvents(sandboxId),
-        listSandboxHistoryCells(sandboxId),
-        getSandboxRunTarget(sandboxId),
+      const [nextSandbox, nextRuns, nextEvents, cells] = await Promise.all([
+        getSandboxContext(targetSandboxId),
+        listRuns({ sandboxId: targetSandboxId, limit: 200 }),
+        listSandboxExecutionEvents(targetSandboxId),
+        listSandboxHistoryCells(targetSandboxId),
       ]);
-      if (loadedSandboxId !== sandboxId) return;
+      if (loadedSandboxId !== targetSandboxId) return;
+      const nextTarget = firstTarget(nextRuns) ?? sandboxTarget(nextSandbox);
       sandbox = nextSandbox;
       const nextTurns = conversationTurns(cells);
       const nextConversationRuns = conversationRunsFor(nextRuns, nextEvents, nextTurns);
@@ -194,6 +194,7 @@
                   ? 'conversation'
                   : 'logs';
     } catch (cause) {
+      if (loadedSandboxId !== targetSandboxId) return;
       error = errorMessage(cause);
       sandbox = null;
       runs = [];
@@ -201,7 +202,7 @@
       events = [];
       turns = [];
     } finally {
-      loading = false;
+      if (loadedSandboxId === targetSandboxId) loading = false;
     }
   }
 
@@ -368,6 +369,10 @@
   function firstTarget(items: RunSummary[]): SandboxRunTarget | undefined {
     const run = items.find((item) => item.projectId && item.agentName);
     return run ? { projectId: run.projectId, agentName: run.agentName } : undefined;
+  }
+
+  function sandboxTarget(value: SandboxContextDetail): SandboxRunTarget | undefined {
+    return value.projectId && value.agentName ? { projectId: value.projectId, agentName: value.agentName } : undefined;
   }
 
   function targetKey(value: SandboxRunTarget | undefined): string {
