@@ -39,12 +39,12 @@
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="modal-backdrop" onclick={onCancel} role="presentation">
+<div class="resource-modal-backdrop modal-backdrop" onclick={onCancel} role="presentation">
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="modal-card" role="dialog" aria-modal="true" onclick={(e) => e.stopPropagation()} onkeydown={onKeydown} tabindex="-1">
-    <div class="modal-title">{mode === 'file' ? '新建脚本文件' : '新建文件夹'}</div>
-
-    <label class="field">
+  <div class="resource-modal-card command-modal modal-card" role="dialog" aria-modal="true" onclick={(e) => e.stopPropagation()} onkeydown={onKeydown} tabindex="-1">
+    <div class="command-header"><div class="command-title"><div class="modal-title">{mode === 'file' ? '新建脚本文件' : '新建文件夹'}</div><span class="command-context">SCRIPT / CREATE</span></div></div>
+    <div class="command-fields">
+    <label class="command-field field">
       <span class="field-label">{mode === 'file' ? '文件名' : '目录名'}</span>
       <input
         type="text"
@@ -54,7 +54,7 @@
       />
     </label>
 
-    <label class="field">
+    <label class="command-field field">
       <span class="field-label">所属目录</span>
       <select bind:value={selectedDir}>
         <option value="">（根目录）</option>
@@ -63,39 +63,25 @@
         {/each}
       </select>
     </label>
+    </div>
 
-    <div class="preview">完整路径：<code>{fullPath || '—'}</code></div>
-    {#if error}
-      <div class="field-error">{error}</div>
-    {/if}
-
-    <div class="modal-actions">
-      <button class="btn-secondary" onclick={onCancel}>取消</button>
-      <button class="btn-primary" disabled={!canSubmit} onclick={submit}>创建</button>
+    <div class="command-footer modal-actions">
+      <div class:field-error={!!error} class="command-status preview">{error || '完整路径：'}{#if !error}<code class="command-path">{fullPath || '—'}</code>{/if}</div>
+      <button class="ui-button ghost" onclick={onCancel}>取消</button>
+      <button class="ui-button primary" disabled={!canSubmit} onclick={submit}>创建</button>
     </div>
   </div>
 </div>
 
 <style>
   .modal-backdrop {
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
     z-index: 1000;
   }
   .modal-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 16px;
-    width: 360px;
+    width: min(660px, 100%);
     display: flex;
     flex-direction: column;
     gap: 10px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   }
   .modal-title {
     font-size: var(--font-size-md);
@@ -104,8 +90,7 @@
   }
   .field {
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    gap: 7px;
   }
   .field-label {
     font-size: var(--font-size-sm);
@@ -140,27 +125,5 @@
     display: flex;
     justify-content: flex-end;
     gap: 8px;
-    margin-top: 4px;
-  }
-  .btn-primary, .btn-secondary {
-    padding: 6px 14px;
-    border-radius: 4px;
-    font-size: var(--font-size-md);
-    cursor: pointer;
-    border: 1px solid var(--border-color);
-  }
-  .btn-primary {
-    background: var(--accent-blue);
-    color: #0d1117;
-    border-color: var(--accent-blue);
-    font-weight: 600;
-  }
-  .btn-primary:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  .btn-secondary {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
   }
 </style>

@@ -18,7 +18,22 @@
   import { restoreProjectScripts } from '../lib/scripts/project-lifecycle';
   import { getProjectEnvStatus } from '../lib/project-env-status';
 
+  const SIDEBAR_COLLAPSED_KEY = 'agent-compose.sidebar-collapsed';
+
+  function loadSidebarCollapsed(): boolean {
+    if (typeof localStorage === 'undefined') return false;
+    try { return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true'; }
+    catch { return false; }
+  }
+
+  let sidebarCollapsed = $state(loadSidebarCollapsed());
   let deletingProjectId = $state('');
+
+  function setSidebarCollapsed(collapsed: boolean): void {
+    sidebarCollapsed = collapsed;
+    try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed)); }
+    catch { /* Storage can be unavailable in privacy-restricted browsers. */ }
+  }
 
   const cascadeDeleteClient = {
     listSandboxes: sandboxService.listSandboxes.bind(sandboxService),
@@ -139,7 +154,7 @@
     // Fall back to loading from backend (expanded values; do not cache).
     try {
       const req = new GetProjectRequest({
-        project: new ProjectRef({ selector: { case: "projectId", value: id } }),
+        project: new ProjectRef({ selector: { case: 'projectId', value: id } }),
         includeSpec: true,
       });
       const resp: any = await projectService.getProject(req);
@@ -263,14 +278,33 @@
   });
 </script>
 
-<nav class="sidebar">
+<nav class="sidebar" class:collapsed={sidebarCollapsed} aria-label="主导航">
   <div class="brand">
-    <span class="logo">&blacktriangleright;</span>
-    <span class="title">Agent Compose</span>
+    {#if sidebarCollapsed}
+      <button class="brand-expand" type="button" onclick={() => setSidebarCollapsed(false)} aria-label="展开左侧菜单" title="展开左侧菜单">
+        <span class="ac-mark" aria-hidden="true">AC</span>
+        <span class="expand-handle" aria-hidden="true">›</span>
+      </button>
+    {:else}
+      <span class="ac-mark" aria-hidden="true">AC</span>
+      <span class="title">Agent Compose</span>
+      <button class="collapse-button" type="button" onclick={() => setSidebarCollapsed(true)} aria-label="折叠左侧菜单" title="折叠左侧菜单">‹</button>
+    {/if}
   </div>
 
+  {#if sidebarCollapsed}
+    <button class="rail-expand-button" type="button" onclick={() => setSidebarCollapsed(false)} aria-label="展开左侧菜单" title="展开左侧菜单">
+      <span aria-hidden="true">›</span>
+    </button>
+    <button class="rail-app-button" type="button" onclick={() => setSidebarCollapsed(false)} aria-label="展开智能体应用" title="智能体应用">
+      <svg class="smart-agent-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.4" /><circle cx="12" cy="4" r="1.2" /><circle cx="5" cy="16" r="1.2" /><circle cx="19" cy="16" r="1.2" /><path d="M12 6v3.6M10 13.3l-3.4 1.8m7.4-1.8 3.4 1.8M8.8 7.4 10.4 10m4.8-2.6L13.6 10" /></svg>
+    </button>
+  {:else}
   <div class="nav-section project-section" aria-labelledby="project-list-heading">
-    <div class="section-header" id="project-list-heading">智能体应用</div>
+    <div class="section-header" id="project-list-heading">
+      <svg class="smart-agent-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.4" /><circle cx="12" cy="4" r="1.2" /><circle cx="5" cy="16" r="1.2" /><circle cx="19" cy="16" r="1.2" /><path d="M12 6v3.6M10 13.3l-3.4 1.8m7.4-1.8 3.4 1.8M8.8 7.4 10.4 10m4.8-2.6L13.6 10" /></svg>
+      <span>智能体应用</span>
+    </div>
     <div class="filter-box">
       <input
         class="project-filter"
@@ -362,15 +396,28 @@
   </div>
 
   <div class="divider"></div>
+  {/if}
 
   <div class="nav-section bottom">
     <button
       class="nav-item"
       class:active={store.currentPage === 'images' || store.currentPage === 'environment' || store.currentPage === 'settings'}
       onclick={() => store.goTo('images')}
+      aria-label="系统管理"
+      title={sidebarCollapsed ? '系统管理' : undefined}
     >
-      <span class="icon">&#9881;</span> 系统管理
+      <span class="icon" aria-hidden="true">&#9881;</span>{#if !sidebarCollapsed}<span class="nav-label">系统管理</span>{/if}
     </button>
+    <a
+      class="nav-item"
+      href="https://devboard.chaitin.net/devboard/issues?product_id=6a5f3c14839f64bb543f172d"
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="反馈"
+      title={sidebarCollapsed ? '反馈' : undefined}
+    >
+      <span class="icon" aria-hidden="true">&#9993;</span>{#if !sidebarCollapsed}<span class="nav-label">反馈</span>{/if}
+    </a>
   </div>
 </nav>
 
@@ -384,6 +431,14 @@
     flex-direction: column;
     background: var(--bg-secondary);
     border-right: 1px solid var(--border-color);
+    transition: width 160ms ease, min-width 160ms ease;
+  }
+  .sidebar.collapsed {
+    width: 44px;
+    min-width: 44px;
+    overflow: visible;
+    position: relative;
+    z-index: 2;
   }
   .brand {
     min-height: 46px;
@@ -396,8 +451,85 @@
     font-weight: 600;
     letter-spacing: -0.2px;
   }
-  .logo { color: var(--accent-green); font-size: 16px; }
+  .ac-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 24px;
+    border: 1px solid color-mix(in srgb, var(--accent-blue) 42%, var(--border-color));
+    border-radius: 4px;
+    background: var(--bg-primary);
+    color: var(--accent-blue);
+    font: 700 11px/1 var(--font-mono);
+    letter-spacing: -0.8px;
+  }
   .title { color: var(--text-primary); }
+  .collapse-button,
+  .brand-expand,
+  .rail-app-button {
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+  }
+  .collapse-button { width: 26px; height: 28px; margin-left: auto; font: 18px/1 var(--font-mono); }
+  .brand-expand { position: relative; width: 36px; height: 38px; }
+  .expand-handle {
+    position: absolute;
+    right: -10px;
+    top: 10px;
+    display: grid;
+    place-items: center;
+    width: 14px;
+    height: 20px;
+    border: 1px solid var(--border-color);
+    border-left: 0;
+    border-radius: 0 4px 4px 0;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font: 15px/1 var(--font-mono);
+    box-shadow: 2px 0 5px color-mix(in srgb, var(--bg-primary) 28%, transparent);
+  }
+  .rail-app-button { width: 36px; height: 36px; margin: 7px auto 0; }
+  .rail-expand-button {
+    position: absolute;
+    top: 50%;
+    right: 7px;
+    z-index: 3;
+    width: 28px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    transform: translateY(-50%);
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    box-shadow: 0 2px 6px color-mix(in srgb, var(--bg-primary) 24%, transparent);
+    font: 20px/1 var(--font-mono);
+    transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+  }
+  .rail-expand-button:hover { color: var(--accent-blue); border-color: var(--accent-blue); background: var(--bg-tertiary); }
+  .collapse-button:hover,
+  .brand-expand:hover,
+  .rail-app-button:hover { color: var(--accent-blue); background: var(--bg-tertiary); }
+  .brand-expand:hover .expand-handle { border-color: var(--accent-blue); color: var(--accent-blue); }
+  .sidebar.collapsed .expand-handle { display: none; }
+  .sidebar.collapsed .brand { min-height: 46px; padding: 0 3px; justify-content: center; }
+  .smart-agent-icon {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
   .nav-section { padding: 4px 7px; }
   .project-section {
     min-height: 0;
@@ -406,7 +538,16 @@
     scrollbar-color: var(--border-color) transparent;
   }
   .nav-section.bottom { margin-top: auto; padding-bottom: 8px; }
+  .sidebar.collapsed .nav-section.bottom { padding: 4px; }
+  .sidebar.collapsed .nav-section.bottom .nav-item {
+    justify-content: center;
+    min-height: 36px;
+    padding: 4px;
+  }
   .section-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
     padding: 8px 7px 5px;
     font-size: var(--font-size-md);
     font-weight: 600;
@@ -490,7 +631,7 @@
     inset: 5px auto 5px 0;
     width: 2px;
     border-radius: 2px;
-    background: var(--accent-green);
+    background: var(--accent-blue);
   }
   .project-row .nav-item { min-width: 0; }
   .project-row .nav-item:hover { background: transparent; }
@@ -533,7 +674,7 @@
     display: block;
   }
   .project-delete:hover:not(:disabled) {
-    background: rgba(248, 81, 73, 0.15);
+    background: color-mix(in srgb, var(--accent-red) 15%, transparent);
     color: var(--accent-red);
   }
   .project-delete:disabled { cursor: wait; opacity: 0.6; }
@@ -546,7 +687,15 @@
     outline: 2px solid var(--accent-blue);
     outline-offset: -2px;
   }
+  .collapse-button:focus-visible,
+  .brand-expand:focus-visible,
+  .rail-expand-button:focus-visible,
+  .rail-app-button:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: -2px;
+  }
   .nav-item .icon { font-size: 14px; width: 18px; text-align: center; }
+  .sidebar.collapsed .nav-item .icon { width: 20px; font-size: 16px; }
   .status {
     width: 6px; height: 6px; border-radius: 50%;
     background: var(--text-muted);
@@ -565,8 +714,8 @@
   }
   .badge {
     margin-left: auto;
-    background: var(--accent-green);
-    color: #000;
+    background: var(--accent-blue-emphasis);
+    color: var(--text-on-accent);
     font-size: var(--font-size-xs);
     font-weight: 600;
     padding: 1px 5px;
@@ -625,5 +774,8 @@
   .new-project-btn:active {
     border-color: color-mix(in srgb, var(--accent-green) 30%, var(--border-color));
     color: var(--text-primary);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sidebar { transition: none; }
   }
 </style>

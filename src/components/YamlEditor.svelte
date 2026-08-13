@@ -4,13 +4,14 @@
   import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
   import * as monaco from 'monaco-editor';
   import { store } from '../lib/stores.svelte';
-  import { countAgents, countSchedulers, yamlToSpec } from '../lib/yaml';
+  import { yamlToSpec } from '../lib/yaml';
   import Toolbar from './Toolbar.svelte';
   import ResourcePanel from './ResourcePanel.svelte';
   import ScriptLineActions from './scripts/ScriptLineActions.svelte';
   import ScriptReferenceModal from './scripts/ScriptReferenceModal.svelte';
   import WorkspaceLineActions from './workspace/WorkspaceLineActions.svelte';
   import GlobalEnvLineAction from './env/GlobalEnvLineAction.svelte';
+  import SkillLineAction from './skills/SkillLineAction.svelte';
   import ConfigureGlobalEnvModal from './env/ConfigureGlobalEnvModal.svelte';
   import { GetGlobalEnvRequest } from '../gen/agentcompose/v2/agentcompose_pb';
   import { settingsService } from '../lib/rpc';
@@ -36,6 +37,12 @@
     type WorkspaceBinding,
   } from '../lib/workspace-binding';
   import { createWorkspaceAndBind } from '../lib/workspace-create';
+  import { listSkillLocations, type SkillLocation } from '../lib/skills/locations';
+  import { projectService } from '../lib/rpc';
+  import { previewProject } from '../lib/toolbar-actions';
+  import { prepareScriptRequest } from '../lib/scripts/request-pipeline';
+  import { requiresManagedWorkspace } from '../lib/workspace/preflight';
+  import { getProjectBindingOverride, legacyKeyFromSourcePath, setProjectBindingOverride, workspaceBindings } from '../lib/workspace/bindings';
 
   self.MonacoEnvironment = {
     getWorker: () => new EditorWorker(),
@@ -64,14 +71,94 @@
   let workspaceWidget: MountedActionWidget | null = null;
   let workspaceWidgetKey = '';
   let envWidgets: MountedActionWidget[] = [];
+  let skillWidgets: MountedActionWidget[] = [];
   let envDecorationIds: string[] = [];
   let configuredGlobalNames = $state<string[]>([]);
   let globalEnvLoaded = $state(false);
   let envModal = $state<{ agentName: string; names: string[] } | null>(null);
   let updateScriptActionContext = () => {};
 
-  let agentCount = $derived(countAgents(store.editorContent));
-  let schedulerCount = $derived(countSchedulers(store.editorContent));
+  function commitSkillYaml(yaml: string): void {
+    store.commitEditorContent(yaml);
+  }
+
+  async function ensureApplySourcePath(yamlText: string): Promise<string> {
+    const needsWorkspace = requiresManagedWorkspace(yamlText);
+    const projectId = store.activeProjectId;
+    if (projectId) {
+      const override = getProjectBindingOverride(projectId);
+      if (override) return override.sourcePath;
+      const current = store.projects.find((project) => project.summary.projectId === projectId)?.summary.sourcePath?.trim() || '';
+      if (current) {
+        try {
+          const resolved = await workspaceBindings.ensure(`project:${projectId}`, {
+            sourcePath: current,
+            legacyKey: legacyKeyFromSourcePath(current),
+            ensureWorkspace: needsWorkspace,
+          });
+          return resolved.sourcePath;
+        } catch {
+          if (!needsWorkspace) return current;
+        }
+      }
+      if (!needsWorkspace) return current;
+      const replacement = await workspaceBindings.ensure(`project:${projectId}:replacement`, { ensureWorkspace: true });
+      setProjectBindingOverride(projectId, replacement);
+      return replacement.sourcePath;
+    }
+    store.ensureEditorDraftSourcePath();
+    const draftId = store.activeDraftId;
+    const draft = store.activeDraftBinding();
+    const resolved = await workspaceBindings.ensure(`draft:${draftId}`, {
+      projectKey: draft.projectKey,
+      sourcePath: draft.sourcePath,
+      legacyKey: store.browserDrafts.find((item) => item.id === draftId)?.legacyStorageKey,
+      ensureWorkspace: needsWorkspace,
+    });
+    return resolved.sourcePath;
+  }
+
+  // Resource actions need an apply operation that completes synchronously
+  // from the panel's perspective.  Toolbar's normal flow intentionally opens
+  // a preview/confirmation dialog; data-volume creation must instead wait for
+  // the non-dry-run ApplyProject RPC and only then report success.
+  async function applyCurrentYaml(): Promise<void> {
+    const editorContent = store.editorContent;
+    const currentProjectId = store.activeProjectId;
+    const projects = store.projects.map((project) => ({ ...project, summary: { ...project.summary } }));
+    const sourcePath = await ensureApplySourcePath(editorContent);
+    const prepared = await prepareScriptRequest({
+      mode: 'save',
+      editorYaml: editorContent,
+      workspace: scriptWorkspace,
+      readFile: scriptApi.readFile,
+    });
+    // The daemon's submittedSpecHash is the hash of the new normalized spec,
+    // not the currently stored revision.  Run a dry-run first to obtain that
+    // hash, then immediately consume the returned real-apply callback.
+    const preview = await previewProject(editorContent, projectService, {
+      currentProjectId,
+      projects,
+      newProjectSourcePath: currentProjectId ? '' : sourcePath,
+      sourcePathOverride: currentProjectId && getProjectBindingOverride(currentProjectId) ? sourcePath : undefined,
+      preparedYaml: prepared.yamlText,
+    });
+    const result = await preview.apply();
+    const appliedProjectId = result.response.project?.summary?.projectId || currentProjectId;
+    if (!appliedProjectId) throw new Error('应用成功但未返回项目 ID');
+    if (!currentProjectId) store.removeEditorDraft(store.activeDraftId);
+    store.saveProjectEditor(appliedProjectId, editorContent);
+    store.triggerRuntimeRefresh();
+    if ((window as any).__refreshProjects) await (window as any).__refreshProjects();
+    if (store.activeProjectId !== appliedProjectId) {
+      store.activeProjectId = appliedProjectId;
+      store.syncHash();
+    }
+  }
+
+  function persistSkillBinding(binding: { projectKey: string; sourcePath: string }, identity: string): void {
+    if (identity.startsWith('draft:')) store.persistActiveDraftBinding(binding, identity.slice('draft:'.length));
+  }
 
   async function loadGlobalEnv(): Promise<void> {
     try {
@@ -477,9 +564,57 @@
       options: {
         inlineClassName: 'missing-global-env',
         hoverMessage: { value: `全局环境变量 ${reference.names.join('、')} 尚未配置` },
-        overviewRuler: { color: 'rgba(210, 153, 34, .8)', position: monaco.editor.OverviewRulerLane.Right },
+        overviewRuler: { color: '#d29922', position: monaco.editor.OverviewRulerLane.Right },
       },
     })));
+  }
+
+  function clearSkillWidgets(target: monaco.editor.IStandaloneCodeEditor): void {
+    for (const entry of skillWidgets) {
+      target.removeContentWidget(entry.widget);
+      void unmount(entry.component);
+    }
+    skillWidgets = [];
+  }
+
+  function addSkillWidget(target: monaco.editor.IStandaloneCodeEditor, location: SkillLocation): MountedActionWidget {
+    const node = document.createElement('div');
+    const component = mount(SkillLineAction, {
+      target: node,
+      props: {
+        state: location.state,
+        agentName: location.agentName,
+        onOpen: () => scriptWorkspace.openSkillsTab(location.agentName),
+      },
+    });
+    const widget: monaco.editor.IContentWidget = {
+      allowEditorOverflow: false,
+      suppressMouseDown: true,
+      getId: () => `skill-line-action:${location.agentName}:${location.line}`,
+      getDomNode: () => node,
+      getPosition: () => {
+        const model = target.getModel();
+        if (!model || location.line > model.getLineCount()) return null;
+        return {
+          position: { lineNumber: location.line, column: 1 },
+          preference: [monaco.editor.ContentWidgetPositionPreference.EXACT],
+        };
+      },
+      afterRender: (position) => {
+        if (position === null) return;
+        const layout = target.getLayoutInfo();
+        const availableWidth = Math.max(0, layout.width - layout.verticalScrollbarWidth - ACTION_RIGHT_GAP - layout.contentLeft);
+        node.style.maxWidth = `${availableWidth}px`;
+        node.style.transform = `translateX(${Math.max(0, availableWidth - Math.min(node.offsetWidth, availableWidth))}px)`;
+      },
+    };
+    target.addContentWidget(widget);
+    return { widget, component };
+  }
+
+  function refreshSkillPresentation(target: monaco.editor.IStandaloneCodeEditor): void {
+    clearSkillWidgets(target);
+    skillWidgets = listSkillLocations(store.editorContent).map((location) => addSkillWidget(target, location));
   }
 
   $effect(() => {
@@ -593,6 +728,7 @@
     const relayoutActionWidgets = () => {
       for (const entry of actionWidgets) e.layoutContentWidget(entry.widget);
       for (const entry of envWidgets) e.layoutContentWidget(entry.widget);
+      for (const entry of skillWidgets) e.layoutContentWidget(entry.widget);
       if (workspaceWidget) e.layoutContentWidget(workspaceWidget.widget);
     };
     const scrollDisposable = e.onDidScrollChange(relayoutActionWidgets);
@@ -604,6 +740,7 @@
       refreshScriptPresentation(e);
       refreshWorkspacePresentation(e);
       refreshEnvPresentation(e);
+      refreshSkillPresentation(e);
     });
 
     return () => {
@@ -618,6 +755,7 @@
       clearActionWidgets(e);
       clearWorkspaceWidget(e);
       clearEnvWidgets(e);
+      clearSkillWidgets(e);
       decorationIds = e.deltaDecorations(decorationIds, []);
       envDecorationIds = e.deltaDecorations(envDecorationIds, []);
       e.dispose();
@@ -645,6 +783,7 @@
     refreshScriptPresentation(editor);
     refreshWorkspacePresentation(editor);
     refreshEnvPresentation(editor);
+    refreshSkillPresentation(editor);
   });
 </script>
 
@@ -661,7 +800,20 @@
   </div>
   <div class="editor-stack">
     <div class="yaml-editor-body" bind:this={container}></div>
-    <ResourcePanel workspace={scriptWorkspace} />
+    <ResourcePanel
+      workspace={scriptWorkspace}
+      projectIdentity={store.activeProjectId ? `project:${store.activeProjectId}` : (store.activeDraftId ? `draft:${store.activeDraftId}` : '')}
+      bindingProjectKey={store.activeProjectId ? '' : (store.activeDraftBinding().projectKey || '')}
+      bindingSourcePath={store.activeProjectId
+        ? (store.projects.find((project) => project.summary.projectId === store.activeProjectId)?.summary.sourcePath || '')
+        : (store.activeDraftBinding().sourcePath || '')}
+      bindingLegacyKey={store.activeProjectId ? '' : (store.browserDrafts.find((draft) => draft.id === store.activeDraftId)?.legacyStorageKey || '')}
+      onBindingResolved={persistSkillBinding}
+      yaml={store.editorContent}
+      selectedAgent={store.runtimeView.agentName}
+      onYamlChange={commitSkillYaml}
+      onApply={applyCurrentYaml}
+    />
     {#if modalRequest}
       <ScriptReferenceModal
         mode={modalRequest.mode}
@@ -682,11 +834,6 @@
       />
     {/if}
   </div>
-  <div class="yaml-editor-footer">
-    <span>智能体: {agentCount}</span>
-    <span>调度器: {schedulerCount}</span>
-    <span class="lang-badge">YAML</span>
-  </div>
 </div>
 
 <style>
@@ -695,7 +842,7 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
-    background: #1e1e1e;
+    background: var(--bg-primary);
     overflow: hidden;
   }
   .collapse-strip {
@@ -706,14 +853,14 @@
     gap: 8px;
     height: 100%;
     cursor: pointer;
-    background: #1a1a1f;
+    background: var(--bg-secondary);
     border-left: 2px solid var(--accent-blue);
     transition: background 0.2s;
     user-select: none;
     padding: 0 4px;
   }
-  .collapse-strip:hover { background: #22222a; }
-  .collapse-strip:hover .strip-arrow { color: #fff; transform: scale(1.3); }
+  .collapse-strip:hover { background: var(--bg-tertiary); }
+  .collapse-strip:hover .strip-arrow { color: var(--accent-blue-bright); transform: scale(1.3); }
   .strip-filename {
     writing-mode: vertical-rl;
     font-family: var(--font-mono);
@@ -725,8 +872,7 @@
   .yaml-editor.collapsed { min-width: 28px; }
   .yaml-editor.collapsed .collapse-strip { display: flex; }
   .yaml-editor.collapsed .yaml-editor-header,
-  .yaml-editor.collapsed .editor-stack,
-  .yaml-editor.collapsed .yaml-editor-footer { display: none; }
+  .yaml-editor.collapsed .editor-stack { display: none; }
   .yaml-editor-header {
     display: flex;
     justify-content: space-between;
@@ -749,30 +895,19 @@
   }
   .editor-stack { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; }
   .yaml-editor-body { flex: 1; min-height: 0; }
-  .yaml-editor-footer {
-    display: flex;
-    gap: 16px;
-    padding: 2px 12px;
-    background: var(--bg-secondary);
-    border-top: 1px solid var(--border-color);
-    font-size: var(--font-size-sm);
-    color: var(--text-muted);
-    flex-shrink: 0;
-  }
   :global(.script-ref-link) {
-    color: #c9a7ff !important;
-    background: rgba(163, 113, 247, 0.09);
+    color: var(--accent-blue) !important;
+    background: color-mix(in srgb, var(--accent-blue) 9%, transparent);
     text-decoration: underline;
-    text-decoration-color: rgba(201, 167, 255, 0.75);
+    text-decoration-color: color-mix(in srgb, var(--accent-blue) 75%, transparent);
     cursor: pointer;
   }
   :global(.missing-global-env) {
     text-decoration-line: underline;
     text-decoration-style: wavy;
-    text-decoration-color: var(--accent-orange);
+    text-decoration-color: var(--accent-yellow);
     text-underline-offset: 3px;
   }
   :global(.monaco-scrollable-element > .scrollbar > .slider) { width: 4px !important; }
   :global(.monaco-editor .decorationsOverviewRuler) { width: 4px !important; }
-  .lang-badge { margin-left: auto; color: var(--text-secondary); }
 </style>

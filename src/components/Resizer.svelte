@@ -81,5 +81,5 @@
     border-radius: 4px;
     transition: color 0.15s;
   }
-  .collapse-btn:hover { color: #fff; transform: scale(1.3); }
+  .collapse-btn:hover { color: var(--accent-blue-bright); transform: scale(1.3); }
 </style>

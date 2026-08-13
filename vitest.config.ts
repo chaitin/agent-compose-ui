@@ -10,6 +10,7 @@ export default defineConfig({
   // 不支持 mount）；其 exports 用 `browser` 条件指向 client 入口，故显式加上。
   resolve: {
     conditions: ['browser'],
+    mainFields: ['module', 'browser', 'main'],
   },
   test: {
     environment: 'happy-dom',

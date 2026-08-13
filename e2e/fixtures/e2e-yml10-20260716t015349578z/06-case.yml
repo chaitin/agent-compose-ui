@@ -1,0 +1,12 @@
+name: e2e-yml10-20260716t015349578z-06
+variables:
+  CASE_KIND: { value: pipeline }
+agents:
+  worker-6:
+    provider: codex
+    image: ghcr.io/chaitin/agent-compose-guest:latest
+    driver:
+      docker: {}
+    env:
+      YML_CASE: { value: "6" }
+      YML_MARKER: { value: e2e-yml10-20260716t015349578z-06-bash-ok }

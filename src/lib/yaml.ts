@@ -36,12 +36,44 @@ function convertAgentsMapToArray(obj: YamlMap): void {
   }
 }
 
+function isMap(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function envMapToArray(value: unknown): unknown {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
   return Object.entries(value as Record<string, unknown>).map(([name, definition]) => {
     if (definition && typeof definition === 'object') return { name, ...definition as Record<string, unknown> };
     return { name, value: String(definition ?? '') };
   });
+}
+
+function convertMcpServerMapToArray(value: unknown): unknown {
+  if (!isMap(value)) return value;
+  return Object.entries(value).map(([name, definition]) => {
+    const mcp: Record<string, unknown> = isMap(definition) ? { name, ...definition } : { name };
+    if (mcp.env !== undefined) mcp.env = envMapToArray(mcp.env);
+    if (mcp.headers !== undefined) mcp.headers = envMapToArray(mcp.headers);
+    return mcp;
+  });
+}
+
+function normalizeMcpAliases(target: Record<string, unknown>, owner: string): void {
+  if (!Object.prototype.hasOwnProperty.call(target, 'mcps')) return;
+  if (Object.prototype.hasOwnProperty.call(target, 'mcp_servers')) {
+    throw new Error(`${owner} 不能同时包含 mcps 和 mcp_servers`);
+  }
+  target.mcp_servers = target.mcps;
+  delete target.mcps;
+}
+
+function normalizeVolumeMountTypes(agent: Record<string, unknown>): void {
+  if (!Array.isArray(agent.volumes)) return;
+  for (const item of agent.volumes) {
+    if (!isMap(item) || typeof item.type !== 'string') continue;
+    if (item.type === 'bind') item.type = 'VOLUME_MOUNT_TYPE_BIND';
+    else if (item.type === 'volume') item.type = 'VOLUME_MOUNT_TYPE_VOLUME';
+  }
 }
 
 function convertCanonicalMapsToArrays(obj: YamlMap): void {
@@ -55,19 +87,46 @@ function convertCanonicalMapsToArrays(obj: YamlMap): void {
       ...definition as Record<string, unknown>,
     }));
   }
-  if (obj.mcps && typeof obj.mcps === 'object' && !Array.isArray(obj.mcps)) {
-    obj.mcps = Object.entries(obj.mcps as Record<string, unknown>).map(([name, definition]) => {
-      const mcp: Record<string, unknown> = { name, ...definition as Record<string, unknown> };
-      if (mcp.env !== undefined) mcp.env = envMapToArray(mcp.env);
-      if (mcp.headers !== undefined) mcp.headers = envMapToArray(mcp.headers);
-      return mcp;
-    });
+  normalizeMcpAliases(obj, 'Project');
+  if (obj.mcp_servers && typeof obj.mcp_servers === 'object' && !Array.isArray(obj.mcp_servers)) {
+    obj.mcp_servers = convertMcpServerMapToArray(obj.mcp_servers);
+  }
+  if (obj.agents && typeof obj.agents === 'object') {
+    const agents = Array.isArray(obj.agents) ? obj.agents : Object.values(obj.agents);
+    for (const agent of agents) {
+      if (!isMap(agent)) continue;
+      normalizeMcpAliases(agent, 'Agent');
+      if (agent.mcp_servers && typeof agent.mcp_servers === 'object' && !Array.isArray(agent.mcp_servers)) {
+        agent.mcp_servers = convertMcpServerMapToArray(agent.mcp_servers);
+      }
+      normalizeVolumeMountTypes(agent);
+    }
+  }
+}
+
+function convertLegacySkillSources(obj: YamlMap): void {
+  if (!obj.agents || typeof obj.agents !== 'object' || Array.isArray(obj.agents)) return;
+  for (const agent of Object.values(obj.agents as Record<string, unknown>)) {
+    if (!agent || typeof agent !== 'object' || Array.isArray(agent)) continue;
+    const skills = (agent as Record<string, unknown>).skills;
+    if (!Array.isArray(skills)) continue;
+    for (const value of skills) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+      const skill = value as Record<string, unknown>;
+      if (!Object.prototype.hasOwnProperty.call(skill, 'source')) continue;
+      if (Object.prototype.hasOwnProperty.call(skill, 'provider')) {
+        throw new Error('Skill 不能同时包含 source 和 provider');
+      }
+      skill.provider = skill.source;
+      delete skill.source;
+    }
   }
 }
 
 export function yamlToSpec(yamlText: string): { spec: ProjectSpec; error?: string } {
   try {
     const obj = parseYamlObject(yamlText);
+    convertLegacySkillSources(obj);
     convertCanonicalMapsToArrays(obj);
     convertAgentsMapToArray(obj);
     const spec = ProjectSpec.fromJson(obj as unknown as JsonObject);
@@ -79,6 +138,10 @@ export function yamlToSpec(yamlText: string): { spec: ProjectSpec; error?: strin
 
 export function specToYaml(spec: ProjectSpec): string {
   const obj = spec.toJson() as Record<string, unknown>;
+  if (Array.isArray(obj.mcpServers)) {
+    obj.mcp_servers = obj.mcpServers;
+    delete obj.mcpServers;
+  }
   // Convert agents from array back to map: [{ name: "x", env: [...] }] -> { x: { env: {...} } }
   if (Array.isArray(obj.agents)) {
     const agentsMap: Record<string, unknown> = {};
@@ -95,6 +158,16 @@ export function specToYaml(spec: ProjectSpec): string {
           }
         }
         rest.env = envMap;
+      }
+      if (Array.isArray(rest.volumes)) {
+        for (const item of rest.volumes as Array<Record<string, unknown>>) {
+          if (item.type === 'VOLUME_MOUNT_TYPE_BIND') item.type = 'bind';
+          else if (item.type === 'VOLUME_MOUNT_TYPE_VOLUME') item.type = 'volume';
+        }
+      }
+      if (Array.isArray(rest.mcpServers)) {
+        rest.mcp_servers = rest.mcpServers;
+        delete rest.mcpServers;
       }
       agentsMap[name as string] = rest;
     }
@@ -123,13 +196,13 @@ export function specToYaml(spec: ProjectSpec): string {
     }
     obj.volumes = volumesMap;
   }
-  if (Array.isArray(obj.mcps)) {
+  if (Array.isArray(obj.mcp_servers)) {
     const mcpsMap: Record<string, unknown> = {};
-    for (const item of obj.mcps as Array<Record<string, unknown>>) {
+    for (const item of obj.mcp_servers as Array<Record<string, unknown>>) {
       const { name, ...definition } = item;
       if (name) mcpsMap[name as string] = definition;
     }
-    obj.mcps = mcpsMap;
+    obj.mcp_servers = mcpsMap;
   }
   return yaml.dump(obj, { indent: 2, lineWidth: -1, noRefs: true });
 }

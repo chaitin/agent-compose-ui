@@ -39,6 +39,42 @@ describe('YAML input and expected model matrix', () => {
     expect(second.spec.toJson()).toEqual(first.spec.toJson());
   });
 
+  test('maps daemon provider Skill YAML into the generated client field', () => {
+    const result = yamlToSpec(`name: skill-project
+agents:
+  aisoc-analyst:
+    provider: codex
+    skills:
+      - name: aiwaf-host-investigation
+        provider: file
+        path: ./skills/aiwaf-host-investigation
+`);
+
+    expect(result.error).toBeUndefined();
+    expect(result.spec.agents[0].skills[0]).toMatchObject({
+      name: 'aiwaf-host-investigation',
+      provider: 'file',
+      path: './skills/aiwaf-host-investigation',
+    });
+  });
+
+  test('serializes a file skill with the daemon provider JSON field', () => {
+    const result = yamlToSpec(`name: skill-project
+agents:
+  aisoc-analyst:
+    provider: codex
+    skills:
+      - name: aiwaf-host-investigation
+        provider: file
+        path: ./skills/aiwaf-host-investigation
+`);
+
+    expect(result.error).toBeUndefined();
+    expect(result.spec.toJson()).toMatchObject({
+      agents: [{ skills: [{ provider: 'file' }] }],
+    });
+  });
+
   for (const scenario of invalidYamlInputs) {
     test(`rejects ${scenario.name}`, () => {
       const result = yamlToSpec(scenario.yaml);

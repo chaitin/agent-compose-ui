@@ -61,18 +61,18 @@
   .pill .ico { font-size: 11px; line-height: 1; }
 
   .pill.warn {
-    background: rgba(210, 153, 34, 0.12);
-    border-color: #d29922;
-    color: #d29922;
+    background: color-mix(in srgb, var(--accent-yellow) 12%, transparent);
+    border-color: var(--accent-yellow);
+    color: var(--accent-yellow-bright);
   }
-  .pill.warn:hover { background: rgba(210, 153, 34, 0.24); }
+  .pill.warn:hover { background: color-mix(in srgb, var(--accent-yellow) 24%, transparent); }
 
   .pill.action {
-    background: rgba(47, 129, 247, 0.12);
+    background: color-mix(in srgb, var(--accent-blue) 12%, transparent);
     border-color: var(--accent-blue);
-    color: var(--accent-blue);
+    color: var(--accent-blue-pale);
   }
-  .pill.action:hover { background: rgba(47, 129, 247, 0.24); }
+  .pill.action:hover { background: color-mix(in srgb, var(--accent-blue) 24%, transparent); }
 
   .pill.neutral {
     background: transparent;
@@ -82,6 +82,6 @@
   .pill.neutral:hover {
     border-color: var(--accent-blue);
     color: var(--accent-blue);
-    background: rgba(47, 129, 247, 0.08);
+    background: color-mix(in srgb, var(--accent-blue) 8%, transparent);
   }
 </style>

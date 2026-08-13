@@ -4,13 +4,14 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export function childSpecs({ executable, gatewayExecutable = 'go', token, authMode = 'disabled', agentComposeURL = '', scriptServiceURL = '', agentComposeDBPath = '', uiStateDBPath = '', goCache = '', goModCache = '' }) {
+export function childSpecs({ executable, gatewayExecutable = 'go', token, authMode = 'disabled', agentComposeURL = '', scriptServiceURL = '', agentComposeDBPath = '', uiStateDBPath = '', localVolumeRoot = '', goCache = '', goModCache = '' }) {
   const env = { SCRIPT_SERVICE_TOKEN: token };
   const gatewayEnv = {
     ...env,
     AUTH_MODE: authMode,
     ...(agentComposeURL ? { AGENT_COMPOSE_URL: agentComposeURL } : {}),
     ...(scriptServiceURL ? { SCRIPT_SERVICE_URL: scriptServiceURL } : {}),
+    ...(localVolumeRoot ? { LOCAL_VOLUME_ROOT: localVolumeRoot } : {}),
     ...(goCache ? { GOCACHE: goCache } : {}),
     ...(goModCache ? { GOMODCACHE: goModCache } : {}),
     ...(agentComposeDBPath && uiStateDBPath ? {
@@ -27,10 +28,11 @@ export function childSpecs({ executable, gatewayExecutable = 'go', token, authMo
 
 async function startDevelopment() {
   const executable = process.execPath;
-  const token = randomBytes(32).toString('hex');
+  const token = process.env.SCRIPT_SERVICE_TOKEN || randomBytes(32).toString('hex');
   const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const workspaceGo = path.resolve(projectRoot, '../.tools/go/bin/go');
-  const specs = childSpecs({
+  const skipLocalGateway = process.env.SKIP_LOCAL_GATEWAY === '1' || process.env.SKIP_LOCAL_GATEWAY === 'true';
+  const allSpecs = childSpecs({
     executable,
     gatewayExecutable: process.env.GO_EXECUTABLE || (existsSync(workspaceGo) ? workspaceGo : 'go'),
     token,
@@ -39,9 +41,14 @@ async function startDevelopment() {
     scriptServiceURL: process.env.SCRIPT_SERVICE_URL || 'http://127.0.0.1:7420',
     agentComposeDBPath: process.env.AGENT_COMPOSE_DB_PATH || path.resolve(projectRoot, '../agent-compose/.dev-data/data.db'),
     uiStateDBPath: process.env.UI_STATE_DB_PATH || path.resolve(projectRoot, '.cache/project-env.db'),
+    localVolumeRoot: process.env.LOCAL_VOLUME_ROOT || path.resolve(projectRoot, '.cache/volumes/local'),
     goCache: process.env.GOCACHE || path.resolve(projectRoot, '.cache/go-build'),
     goModCache: process.env.GOMODCACHE || path.resolve(projectRoot, '../agent-compose/.cache/go-mod'),
   });
+  const specs = skipLocalGateway ? allSpecs.filter((s) => s.name !== 'gateway') : allSpecs;
+  if (skipLocalGateway) {
+    process.stdout.write('[dev] SKIP_LOCAL_GATEWAY=1 -- Go gateway is expected to run elsewhere (e.g. Docker)\n');
+  }
 
   const children = specs.map((spec) => {
     const child = spawn(spec.command, spec.args, {

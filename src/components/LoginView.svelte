@@ -54,19 +54,19 @@
 
 <style>
   .login-gate { display:grid; min-height:100%; place-items:center; padding:24px; background:var(--bg-primary); }
-  .login-panel { width:min(400px,100%); overflow:hidden; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-secondary); box-shadow:0 18px 50px #0005; }
+  .login-panel { width:min(400px,100%); overflow:hidden; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-secondary); box-shadow:0 18px 50px color-mix(in srgb,var(--bg-primary) 33.333%,transparent); }
   header { padding:24px 24px 20px; border-bottom:1px solid var(--border-color); }
   .gateway-line { display:grid; grid-template-columns:8px 1fr 8px; align-items:center; gap:7px; margin-bottom:20px; }
-  .gateway-line i { width:8px; height:8px; border:2px solid var(--accent-green); border-radius:50%; }
-  .gateway-line span { height:1px; background:linear-gradient(90deg,var(--accent-green),var(--border-color)); transform-origin:left; animation:connect .6s ease-out both; }
-  .eyebrow { color:var(--accent-green); font:var(--font-size-xs) var(--font-mono); letter-spacing:.08em; }
+  .gateway-line i { width:8px; height:8px; border:2px solid var(--accent-blue); border-radius:50%; }
+  .gateway-line span { height:1px; background:linear-gradient(90deg,var(--accent-blue),var(--border-color)); transform-origin:left; animation:connect .6s ease-out both; }
+  .eyebrow { color:var(--accent-blue); font:var(--font-size-xs) var(--font-mono); letter-spacing:.08em; }
   h1 { margin-top:8px; font-size:var(--font-size-3xl); font-weight:600; }
   .description { margin-top:7px; color:var(--text-secondary); font-size:var(--font-size-sm); }
   form { display:grid; gap:7px; padding:22px 24px 24px; }
   label { margin-top:6px; color:var(--text-secondary); font-size:var(--font-size-sm); }
   input { width:100%; min-height:38px; padding:7px 10px; background:var(--bg-primary); }
   input:focus-visible,button:focus-visible { outline:2px solid var(--accent-blue); outline-offset:2px; }
-  button { min-height:38px; margin-top:12px; border:1px solid var(--accent-green); border-radius:5px; background:var(--accent-green); color:#071009; font-weight:600; }
+  button { min-height:38px; margin-top:12px; border:1px solid var(--accent-blue-emphasis); border-radius:5px; background:var(--accent-blue-emphasis); color:var(--text-on-accent); font-weight:600; }
   button:disabled { cursor:wait; opacity:.65; }
   .error { margin-top:5px; color:var(--accent-red); font-size:var(--font-size-sm); }
   @keyframes connect { from { transform:scaleX(0); opacity:0; } }

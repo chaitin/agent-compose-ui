@@ -190,12 +190,12 @@
     text-align: center;
     color: var(--text-muted);
   }
-  .tree-node .icon.folder { color: var(--accent-blue); }
+  .tree-node .icon.folder { color: var(--accent-blue-bright); }
   .tree-node .icon.md { color: var(--accent-purple); }
   .tree-node .icon.json { color: var(--accent-yellow); }
   .tree-node .icon.yaml { color: var(--accent-yellow); }
   .tree-node .icon.sh { color: var(--accent-green); }
-  .tree-node .icon.py { color: var(--accent-blue); }
+  .tree-node .icon.py { color: var(--accent-blue-bright); }
   .tree-node .icon.txt { color: var(--text-muted); }
   .tree-node .icon.img { color: var(--accent-orange); }
   .tree-node .icon.default { color: var(--text-muted); }

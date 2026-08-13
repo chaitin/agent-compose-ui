@@ -3,6 +3,13 @@ import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('./YamlEditor.svelte', import.meta.url), 'utf8');
 
+test('does not render the YAML editor status footer', () => {
+  expect(source).not.toContain('class="yaml-editor-footer"');
+  expect(source).not.toContain('智能体:');
+  expect(source).not.toContain('调度器:');
+  expect(source).not.toContain('class="lang-badge"');
+});
+
 test('renders script references as clickable Monaco links', () => {
   expect(source).toContain('listScriptRanges(store.editorContent)');
   expect(source).toContain("inlineClassName: 'script-ref-link'");
@@ -59,7 +66,7 @@ test('uses the reference modal instead of browser prompts', () => {
 });
 
 test('does not subscribe the Monaco initialization effect to editor content', () => {
-  expect(source).toMatch(/editor = e;\s*untrack\(\(\) => \{\s*updateScriptActionContext\(\);\s*refreshScriptPresentation\(e\);\s*refreshWorkspacePresentation\(e\);\s*refreshEnvPresentation\(e\);\s*\}\);/);
+  expect(source).toMatch(/editor = e;\s*untrack\(\(\) => \{\s*updateScriptActionContext\(\);\s*refreshScriptPresentation\(e\);\s*refreshWorkspacePresentation\(e\);\s*refreshEnvPresentation\(e\);\s*refreshSkillPresentation\(e\);\s*\}\);/);
 });
 
 test('restores only viewport primitives after external content replacement', () => {

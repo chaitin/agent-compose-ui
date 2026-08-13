@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -19,8 +21,11 @@ import (
 	"agent-compose-ui/internal/config"
 	"agent-compose-ui/internal/localfs"
 	"agent-compose-ui/internal/projectenv"
+	"agent-compose-ui/internal/projectfiles"
 	"agent-compose-ui/internal/proxy"
+	"agent-compose-ui/internal/sharedirs"
 	"agent-compose-ui/internal/tokenproxy"
+	"agent-compose-ui/internal/volumefiles"
 )
 
 const (
@@ -28,15 +33,48 @@ const (
 	tokenListenAddr = ":8081"
 )
 
-func New(cfg config.Config) http.Handler {
+type OwnedHandler struct {
+	http.Handler
+	cleanup  func() error
+	once     sync.Once
+	closeErr error
+}
+
+func (h *OwnedHandler) Close() error {
+	if h == nil {
+		return nil
+	}
+	h.once.Do(func() {
+		if h.cleanup != nil {
+			h.closeErr = h.cleanup()
+		}
+		runtime.SetFinalizer(h, nil)
+	})
+	return h.closeErr
+}
+
+func NewWithCleanup(cfg config.Config) (http.Handler, func() error, error) {
 	handlers, cleanup, err := newHandlers(cfg, nil)
 	if err != nil {
-		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		return nil, func() error { return nil }, err
+	}
+	var once sync.Once
+	var cleanupErr error
+	ownedCleanup := func() error { once.Do(func() { cleanupErr = cleanup() }); return cleanupErr }
+	return handlers.browser, ownedCleanup, nil
+}
+
+func New(cfg config.Config) *OwnedHandler {
+	handler, cleanup, err := NewWithCleanup(cfg)
+	if err != nil {
+		handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			http.Error(w, "gateway unavailable", http.StatusServiceUnavailable)
 		})
+		cleanup = func() error { return nil }
 	}
-	_ = cleanup
-	return handlers.browser
+	owned := &OwnedHandler{Handler: handler, cleanup: cleanup}
+	runtime.SetFinalizer(owned, func(h *OwnedHandler) { _ = h.Close() })
+	return owned
 }
 
 type gatewayHandlers struct {
@@ -65,6 +103,40 @@ func newHandlers(cfg config.Config, logger *slog.Logger) (gatewayHandlers, func(
 	daemonProxy := manager.Require(daemonHandler)
 	scriptProxy := manager.Require(proxy.NewScripts(cfg.ScriptServiceURL, cfg.ScriptServiceToken))
 	projectStorage := manager.Require(localfs.New(localfs.NewStorage(cfg.ProjectStorageRoot, cfg.LegacyProjectStorageRoot)))
+	protectedProjectFiles := manager.Require(projectfiles.NewHandler(&projectfiles.Storage{ProjectRoot: cfg.ProjectStorageRoot}))
+	projectFiles := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		protectedProjectFiles.ServeHTTP(w, r)
+	})
+	sharedDirectoryHandler, err := sharedirs.NewHandler(cfg.SharedDirectoryCatalog)
+	if err != nil {
+		_ = cleanup()
+		return gatewayHandlers{}, func() error { return nil }, err
+	}
+	protectedSharedDirectories := manager.Require(sharedDirectoryHandler)
+	sharedDirectories := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		protectedSharedDirectories.ServeHTTP(w, r)
+	})
+	var volumeResolver *volumefiles.Resolver
+	volumeStorage := &volumefiles.Storage{}
+	if cfg.LocalVolumeRoot != "" {
+		transactionRoot := filepath.Join(cfg.LocalVolumeRoot, ".agent-compose-ui-transactions")
+		volumeResolver = &volumefiles.Resolver{
+			Root:            cfg.LocalVolumeRoot,
+			Inspector:       volumefiles.NewDaemonInspector(cfg.AgentComposeURL, nil),
+			TransactionRoot: transactionRoot,
+		}
+		volumeStorage.TransactionRoot = transactionRoot
+	}
+	protectedVolumeFiles := manager.Require(volumefiles.NewHandler(volumeStorage, volumeResolver))
+	volumeFiles := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		protectedVolumeFiles.ServeHTTP(w, r)
+	})
 	authHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		serveAuth(manager, w, r)
 	})
@@ -82,15 +154,27 @@ func newHandlers(cfg config.Config, logger *slog.Logger) (gatewayHandlers, func(
 		machineHandler = tokenproxy.New(store, proxy.NewTokenDaemon(cfg.AgentComposeURL), logger)
 	}
 	return gatewayHandlers{
-		browser: recoverHTTPPanics(routeHandler(authHandler, managementHandler, scriptProxy, daemonProxy, projectStorage)),
+		browser: recoverHTTPPanics(routeHandler(authHandler, managementHandler, scriptProxy, daemonProxy, projectStorage, projectFiles, sharedDirectories, volumeFiles)),
 		token:   recoverHTTPPanics(machineHandler),
 	}, cleanup, nil
 }
 
 func routeHandler(authHandler, managementHandler, scriptProxy, daemonProxy http.Handler, storageHandlers ...http.Handler) http.Handler {
 	var projectStorage http.Handler = localfs.New()
+	var projectFiles http.Handler = http.NotFoundHandler()
+	var sharedDirectories http.Handler = http.NotFoundHandler()
+	var volumeFiles http.Handler = http.NotFoundHandler()
 	if len(storageHandlers) > 0 && storageHandlers[0] != nil {
 		projectStorage = storageHandlers[0]
+	}
+	if len(storageHandlers) > 1 && storageHandlers[1] != nil {
+		projectFiles = storageHandlers[1]
+	}
+	if len(storageHandlers) > 2 && storageHandlers[2] != nil {
+		sharedDirectories = storageHandlers[2]
+	}
+	if len(storageHandlers) > 3 && storageHandlers[3] != nil {
+		volumeFiles = storageHandlers[3]
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
@@ -103,6 +187,12 @@ func routeHandler(authHandler, managementHandler, scriptProxy, daemonProxy http.
 			scriptProxy.ServeHTTP(w, r)
 		case strings.HasPrefix(path, "/api/local-workspace/") || strings.HasPrefix(path, "/api/project-storage/"):
 			projectStorage.ServeHTTP(w, r)
+		case path == "/api/project-files" || strings.HasPrefix(path, "/api/project-files/"):
+			projectFiles.ServeHTTP(w, r)
+		case path == "/api/shared-directories":
+			sharedDirectories.ServeHTTP(w, r)
+		case path == "/api/volume-files" || strings.HasPrefix(path, "/api/volume-files/"):
+			volumeFiles.ServeHTTP(w, r)
 		case isDaemonPath(path):
 			daemonProxy.ServeHTTP(w, r)
 		default:

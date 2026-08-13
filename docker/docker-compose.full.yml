@@ -26,6 +26,10 @@ services:
       UI_STATE_DB_PATH: /data/ui/project-env.db
       PROJECT_STORAGE_ROOT: /data/work/projects
       LEGACY_PROJECT_STORAGE_ROOT: ${LEGACY_PROJECT_STORAGE_ROOT:-}
+      # Must match the daemon's local-volume root (host ./data/volumes/local,
+      # mounted as /data/volumes/local in both containers). Without this the
+      # volume file browser reports the service as unconfigured (HTTP 503).
+      LOCAL_VOLUME_ROOT: /data/volumes/local
       # script-service runs in the same container, loopback only.
       SCRIPT_SERVICE_URL: http://127.0.0.1:7420
       SCRIPT_SERVICE_HOST: 127.0.0.1
@@ -44,6 +48,11 @@ services:
       # The UI file gateway and daemon must resolve project-local workspace paths
       # against the same filesystem. Keep the mount scoped to the daemon work dir.
       - ${AGENT_COMPOSE_DATA_DIR:-./data}/work:/data/work
+      # Managed local volumes: the daemon creates them under ./data/volumes/local
+      # (= /data/volumes/local in the agent-compose container). Mount the same
+      # path read-write so the gateway can browse/upload/edit volume files; the
+      # resolver still gates every request on daemon-owned volume labels.
+      - ${AGENT_COMPOSE_DATA_DIR:-./data}/volumes/local:/data/volumes/local
       # Reference-only project shadows and pending-sync state.
       - ui-state:/data/ui
       - api-token-data:/data/api

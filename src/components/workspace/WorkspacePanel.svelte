@@ -1,13 +1,32 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { store } from '../../lib/stores.svelte';
   import WorkspaceBindingBar from './WorkspaceBindingBar.svelte';
   import WorkspaceFileTree from './WorkspaceFileTree.svelte';
   import WorkspaceFilePreview from './WorkspaceFilePreview.svelte';
-  import { parseWorkspaceBinding, isWorkspaceBindingValid, defaultWorkspacePath } from '../../lib/workspace-binding';
+  import { listWorkspaceBindings, parseWorkspaceBinding, isWorkspaceBindingValid, defaultWorkspacePath } from '../../lib/workspace-binding';
   import { workspaceFiles } from '../../lib/workspace/store.svelte';
   import { workspaceBindings, setProjectBindingOverride, projectStorageErrorMessage, legacyKeyFromSourcePath } from '../../lib/workspace/bindings';
 
-  const binding = $derived(parseWorkspaceBinding(store.editorContent));
+  function agentBindingSignature(yaml: string, agentName: string): string {
+    const b = parseWorkspaceBinding(yaml, agentName);
+    if (!b) return 'none';
+    return `${b.agentName}|${b.provider ?? ''}|${b.path}`;
+  }
+
+  const bindings = $derived(listWorkspaceBindings(store.editorContent));
+  const agentNames = $derived(bindings.map((b) => b.agentName));
+  let selectedAgent = $state('');
+
+  $effect(() => {
+    if (agentNames.length === 0) {
+      if (selectedAgent !== '') selectedAgent = '';
+      return;
+    }
+    if (!agentNames.includes(selectedAgent)) selectedAgent = agentNames[0];
+  });
+
+  const binding = $derived(parseWorkspaceBinding(store.editorContent, selectedAgent) ?? null);
   const isValid = $derived(isWorkspaceBindingValid(binding));
   const workspacePath = $derived(binding?.path ?? defaultWorkspacePath());
 
@@ -16,11 +35,29 @@
 
   let bindingError = $state('');
   let bindingGeneration = 0;
+  let appliedSignatures = $state<Record<string, string>>({});
+  let applying = $state(false);
+  // Resolved project storage key for the current project/draft. It is per-project
+  // (identical for every agent), so it can be reused when switching agents instead
+  // of repeating the binding round-trip.
+  let resolvedProjectKey = $state('');
 
-  $effect(() => {
+  const currentSignature = $derived(agentBindingSignature(store.editorContent, selectedAgent));
+  const appliedSignature = $derived(appliedSignatures[selectedAgent] ?? '');
+  const hasPendingChanges = $derived(appliedSignature !== '' && appliedSignature !== currentSignature);
+
+  async function applyYamlWorkspace(): Promise<void> {
     const generation = ++bindingGeneration;
-    if (!isValid) {
+    applying = true;
+    const path = workspacePath;
+    const valid = isValid;
+    const agentName = selectedAgent;
+    const sig = currentSignature;
+    if (!valid) {
       workspaceFiles.setWorkspace('', '');
+      bindingError = '';
+      appliedSignatures = { ...appliedSignatures, [agentName]: sig };
+      applying = false;
       return;
     }
     const projectId = store.activeProjectId;
@@ -28,36 +65,72 @@
     if (!projectId && !store.activeDraftId) store.ensureEditorDraftSourcePath();
     const draftId = store.activeDraftId;
     const identity = projectId ? `project:${projectId}` : `draft:${draftId}`;
-    void (async () => {
+    try {
+      let resolved;
       try {
-        let resolved;
-        try {
-          resolved = await workspaceBindings.ensure(identity, {
-            projectKey: projectId ? undefined : draft.projectKey,
-            sourcePath: projectId ? sourcePath : draft.sourcePath,
-            legacyKey: projectId ? legacyKeyFromSourcePath(sourcePath) : store.browserDrafts.find((item) => item.id === store.activeDraftId)?.legacyStorageKey,
-            ensureWorkspace: true,
-          });
-        } catch {
-          if (!projectId) throw new Error('项目 Workspace 绑定恢复失败');
-          resolved = await workspaceBindings.ensure(`${identity}:replacement`, { ensureWorkspace: true });
-          setProjectBindingOverride(projectId, resolved);
-        }
-        if (generation !== bindingGeneration) return;
-        if (!projectId) store.persistActiveDraftBinding(resolved, draftId);
-        bindingError = '';
-        workspaceFiles.setWorkspace(resolved.projectKey, workspacePath);
-      } catch (error) {
-        if (generation !== bindingGeneration) return;
-        bindingError = projectStorageErrorMessage(error);
-        workspaceFiles.setWorkspace('', workspacePath);
+        resolved = await workspaceBindings.ensure(identity, {
+          projectKey: projectId ? undefined : draft.projectKey,
+          sourcePath: projectId ? sourcePath : draft.sourcePath,
+          legacyKey: projectId ? legacyKeyFromSourcePath(sourcePath) : store.browserDrafts.find((item) => item.id === store.activeDraftId)?.legacyStorageKey,
+          ensureWorkspace: true,
+        });
+      } catch {
+        if (!projectId) throw new Error('项目 Workspace 绑定恢复失败');
+        resolved = await workspaceBindings.ensure(`${identity}:replacement`, { ensureWorkspace: true });
+        setProjectBindingOverride(projectId, resolved);
       }
-    })();
+      if (generation !== bindingGeneration) return;
+      resolvedProjectKey = resolved.projectKey;
+      if (!projectId) store.persistActiveDraftBinding(resolved, draftId);
+      bindingError = '';
+      workspaceFiles.setWorkspace(resolved.projectKey, path);
+      appliedSignatures = { ...appliedSignatures, [agentName]: sig };
+    } catch (error) {
+      if (generation !== bindingGeneration) return;
+      bindingError = projectStorageErrorMessage(error);
+      workspaceFiles.setWorkspace('', path);
+    } finally {
+      if (generation === bindingGeneration) applying = false;
+    }
+  }
+
+  // Apply on mount and when project/draft identity changes.
+  // YAML content edits do NOT trigger re-apply — user must click reload.
+  $effect(() => {
+    const projectId = store.activeProjectId;
+    const draftId = store.activeDraftId;
+    untrack(() => {
+      appliedSignatures = {};
+      resolvedProjectKey = '';
+      void applyYamlWorkspace();
+    });
   });
 
-  const loadError = $derived(bindingError ? { message: bindingError } : workspaceFiles.lastError);
+  function handleAgentChange(event: Event) {
+    const next = (event.currentTarget as HTMLSelectElement).value;
+    selectedAgent = next;
+    if (appliedSignatures[next] !== currentSignature) {
+      // Never applied, or the YAML binding changed since last apply: resolve fully.
+      void applyYamlWorkspace();
+      return;
+    }
+    // Binding already resolved and unchanged for this agent: re-point the file
+    // list at its workspace without a redundant binding round-trip. Switching
+    // agents must always refresh the file store, otherwise the previous agent's
+    // files remain visible.
+    if (isValid && resolvedProjectKey) {
+      workspaceFiles.setWorkspace(resolvedProjectKey, workspacePath);
+    } else {
+      workspaceFiles.setWorkspace('', '');
+    }
+  }
 
-  let recreating = $state(false);
+  function handleReload() {
+    if (applying || !hasPendingChanges) return;
+    void applyYamlWorkspace();
+  }
+
+  const loadError = $derived(bindingError ? { message: bindingError } : workspaceFiles.lastError);
 
   async function retryLoad() {
     const result = await workspaceFiles.refresh();
@@ -72,7 +145,31 @@
 </script>
 
 <div class="workspace-panel">
-  <WorkspaceBindingBar {sourcePath} />
+  {#if agentNames.length > 1}
+    <div class="agent-selector">
+      <label class="agent-label" for="workspace-agent-select">智能体</label>
+      <select
+        id="workspace-agent-select"
+        class="agent-select"
+        aria-label="选择智能体 workspace"
+        value={selectedAgent}
+        onchange={handleAgentChange}
+      >
+        {#each agentNames as name (name)}
+          <option value={name}>{name}</option>
+        {/each}
+      </select>
+    </div>
+  {/if}
+  <WorkspaceBindingBar
+    {sourcePath}
+    {binding}
+    agentName={selectedAgent}
+    {hasPendingChanges}
+    {applying}
+    onReload={handleReload}
+    disabled={hasPendingChanges}
+  />
   {#if isValid}
     <div class="workspace-body">
       {#if loadError && workspaceFiles.files.length === 0}
@@ -80,7 +177,7 @@
           <div class="error-icon">⚠</div>
           <div class="error-title">加载文件列表失败</div>
           <div class="error-desc">{loadError.message}</div>
-          <button type="button" class="retry-btn" onclick={retryLoad}>重试</button>
+          <button type="button" class="retry-btn" onclick={retryLoad} disabled={hasPendingChanges || applying}>重试</button>
         </div>
       {:else}
         <div class="workspace-left">
@@ -101,6 +198,8 @@
         <div class="placeholder-desc">
           {#if binding?.provider && binding.provider !== 'file'}
             当前 workspace 类型为 <code>{binding.provider}</code>，文件管理仅支持 <code>file</code> 类型
+          {:else if agentNames.length > 0}
+            请先在 YAML 中为智能体 <code>{selectedAgent}</code> 配置 <code>workspace.path</code>
           {:else}
             请先在 YAML 中配置 <code>agents.&lt;name&gt;.workspace.path</code>
           {/if}
@@ -116,6 +215,42 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
+  }
+  .agent-selector {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+    padding: 4px 10px;
+  }
+  .agent-label {
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-weight: 600;
+  }
+  .agent-select {
+    flex: 1;
+    min-width: 0;
+    max-width: 240px;
+    padding: 3px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: var(--font-size-xs);
+    font-family: var(--font-sans);
+    cursor: pointer;
+  }
+  .agent-select:hover {
+    border-color: var(--accent-blue);
+  }
+  .agent-select:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 1px;
   }
   .workspace-body {
     flex: 1;
