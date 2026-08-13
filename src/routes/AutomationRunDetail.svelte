@@ -14,6 +14,7 @@
   import type { RunSummary } from '../gen/agentcompose/v2/agentcompose_pb.js';
   import { parseAutomationResult } from '../model/automation-result';
   import { compactIdentifier } from '../model/identifiers';
+  import { appPath } from '../paths';
   import { triggerKindLabel } from '../model/presentation';
   import { timestampToISOString } from '../model/timestamps';
   import { t } from '$lib/i18n.svelte';
@@ -96,6 +97,15 @@
     if (itemTime < startedAt - 10_000) return false;
     return !Number.isFinite(completedAt) || itemTime <= completedAt + 10_000;
   }
+
+  function copyableValue(value: string): string {
+    return value.trim();
+  }
+
+  function previewValue(value: string, limit = 240): string {
+    const normalized = value.replace(/\s+/g, ' ').trim();
+    return normalized.length > limit ? `${normalized.slice(0, limit)}…` : normalized;
+  }
 </script>
 
 <PageHeader title={t('自动化运行详情')}>
@@ -135,23 +145,44 @@
         <dt class="text-muted-foreground">完成时间</dt>
         <dd><Timestamp value={run.completedAt} mode="full" /></dd>
         <dt class="text-muted-foreground">错误</dt>
-        <dd class:text-destructive={Boolean(run.error)}>{run.error || '—'}</dd>
+        <dd class="min-w-0">
+          {#if run.error}
+            <CopyableText
+              value={copyableValue(run.error)}
+              display={previewValue(run.error)}
+              label="错误"
+              class="max-w-full text-destructive"
+            />
+          {:else}
+            <span>—</span>
+          {/if}
+        </dd>
       </dl>
     </section>
     {#if result.output || run.error}<section class="rounded-lg border border-border bg-card p-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 class="font-medium">执行结果</h2>
-          {#if result.sandboxId}<Button variant="outline" size="sm" href={`/sandboxes/${result.sandboxId}`}
-              >查看执行环境</Button
+          {#if result.sandboxId}<Button
+              variant="outline"
+              size="sm"
+              href={appPath(`/sandboxes/${encodeURIComponent(result.sandboxId)}`)}>查看执行环境</Button
             >{/if}
         </div>
-        {#if result.output}<pre
-            data-automation-output
-            class="mt-3 max-h-[28rem] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-slate-700 bg-[#0b1018] p-4 font-mono text-xs leading-5 text-[#cdd6e3]">{result.output}</pre>{:else}<p
-            class="mt-3 text-sm text-destructive"
-          >
-            {run.error}
-          </p>{/if}
+        {#if result.output}
+          <CopyableText
+            value={copyableValue(result.output)}
+            display={previewValue(result.output)}
+            label="执行结果"
+            class="mt-3 block max-w-full rounded-lg border border-slate-700 bg-[#0b1018] p-3 font-mono text-xs leading-5 text-[#cdd6e3]"
+          />
+        {:else if run.error}
+          <CopyableText
+            value={copyableValue(run.error)}
+            display={previewValue(run.error)}
+            label="错误"
+            class="mt-3 block max-w-full rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+          />
+        {/if}
         {#if result.success !== undefined || result.exitCode !== undefined}<div
             class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"
           >
@@ -178,8 +209,10 @@
                 label={t('执行环境 ID')}
                 class="font-mono text-xs"
               />
-              <Button variant="outline" size="sm" href={`/sandboxes/${encodeURIComponent(environment.sandboxId)}`}
-                >{t('查看执行环境')}</Button
+              <Button
+                variant="outline"
+                size="sm"
+                href={appPath(`/sandboxes/${encodeURIComponent(environment.sandboxId)}`)}>{t('查看执行环境')}</Button
               >
             </div>
             {#if environment.runs.length}
@@ -200,7 +233,7 @@
                         {#if agentRun.durationMs > 0}<span>{durationName(agentRun.durationMs)}</span>{/if}
                       </div>
                     </div>
-                    <Button variant="ghost" size="sm" href={`/runs/${encodeURIComponent(agentRun.runId)}`}
+                    <Button variant="ghost" size="sm" href={appPath(`/runs/${encodeURIComponent(agentRun.runId)}`)}
                       >{t('查看 Run')}</Button
                     >
                   </div>
