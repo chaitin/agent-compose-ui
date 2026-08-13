@@ -96,6 +96,22 @@ export function allNavItems(): NavItem[] {
 export function breadcrumbs(path: string): { label: string; href?: string }[] {
   if (path === '/') return [{ label: t('概览') }];
   if (path === '/account/tokens') return [{ label: t('个人') }, { label: t('API 令牌') }];
+  if (startsWith('/automation-runs')(path)) {
+    const runId = path.slice('/automation-runs'.length).split('/').filter(Boolean)[0];
+    return [
+      { label: t('自动化'), href: '/automations' },
+      { label: t('自动化执行') },
+      ...(runId ? [{ label: compactIdentifier(runId) }] : []),
+    ];
+  }
+  const automationRunsMatch = path.match(/^\/automations\/([^/]+)\/runs$/);
+  if (automationRunsMatch) {
+    return [
+      { label: t('自动化'), href: '/automations' },
+      { label: compactIdentifier(decodeURIComponent(automationRunsMatch[1])) },
+      { label: t('执行历史') },
+    ];
+  }
   if (path === '/runs/unlinked') return [{ label: t('运行记录'), href: '/sandboxes' }, { label: t('运行异常') }];
   if (startsWith('/runs')(path)) {
     const runId = path.slice('/runs'.length).split('/').filter(Boolean)[0];

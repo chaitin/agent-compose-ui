@@ -4,7 +4,7 @@
 // @ts-nocheck
 
 import type { BinaryReadOptions, FieldList, JsonReadOptions, JsonValue, PartialMessage, PlainMessage } from "@bufbuild/protobuf";
-import { Message, proto3, protoInt64, Timestamp } from "@bufbuild/protobuf";
+import { Duration, Message, proto3, protoInt64, Timestamp } from "@bufbuild/protobuf";
 
 /**
  * @generated from enum agentcompose.v2.ProjectValidationSeverity
@@ -264,6 +264,70 @@ proto3.util.setEnumType(SandboxStatus, "agentcompose.v2.SandboxStatus", [
   { no: 3, name: "SANDBOX_STATUS_STOPPED" },
   { no: 4, name: "SANDBOX_STATUS_FAILED" },
   { no: 5, name: "SANDBOX_STATUS_DELETING" },
+]);
+
+/**
+ * @generated from enum agentcompose.v2.SandboxStopMode
+ */
+export enum SandboxStopMode {
+  /**
+   * @generated from enum value: SANDBOX_STOP_MODE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: SANDBOX_STOP_MODE_FORCE = 1;
+   */
+  FORCE = 1,
+
+  /**
+   * @generated from enum value: SANDBOX_STOP_MODE_GRACEFUL = 2;
+   */
+  GRACEFUL = 2,
+}
+// Retrieve enum metadata with: proto3.getEnumType(SandboxStopMode)
+proto3.util.setEnumType(SandboxStopMode, "agentcompose.v2.SandboxStopMode", [
+  { no: 0, name: "SANDBOX_STOP_MODE_UNSPECIFIED" },
+  { no: 1, name: "SANDBOX_STOP_MODE_FORCE" },
+  { no: 2, name: "SANDBOX_STOP_MODE_GRACEFUL" },
+]);
+
+/**
+ * @generated from enum agentcompose.v2.SandboxStopOutcome
+ */
+export enum SandboxStopOutcome {
+  /**
+   * @generated from enum value: SANDBOX_STOP_OUTCOME_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: SANDBOX_STOP_OUTCOME_FORCE = 1;
+   */
+  FORCE = 1,
+
+  /**
+   * @generated from enum value: SANDBOX_STOP_OUTCOME_GRACEFUL = 2;
+   */
+  GRACEFUL = 2,
+
+  /**
+   * @generated from enum value: SANDBOX_STOP_OUTCOME_FORCE_AFTER_GRACE_TIMEOUT = 3;
+   */
+  FORCE_AFTER_GRACE_TIMEOUT = 3,
+
+  /**
+   * @generated from enum value: SANDBOX_STOP_OUTCOME_FORCE_AFTER_GRACE_ERROR = 4;
+   */
+  FORCE_AFTER_GRACE_ERROR = 4,
+}
+// Retrieve enum metadata with: proto3.getEnumType(SandboxStopOutcome)
+proto3.util.setEnumType(SandboxStopOutcome, "agentcompose.v2.SandboxStopOutcome", [
+  { no: 0, name: "SANDBOX_STOP_OUTCOME_UNSPECIFIED" },
+  { no: 1, name: "SANDBOX_STOP_OUTCOME_FORCE" },
+  { no: 2, name: "SANDBOX_STOP_OUTCOME_GRACEFUL" },
+  { no: 3, name: "SANDBOX_STOP_OUTCOME_FORCE_AFTER_GRACE_TIMEOUT" },
+  { no: 4, name: "SANDBOX_STOP_OUTCOME_FORCE_AFTER_GRACE_ERROR" },
 ]);
 
 /**
@@ -968,6 +1032,50 @@ proto3.util.setEnumType(ResourceKind, "agentcompose.v2.ResourceKind", [
   { no: 4, name: "RESOURCE_KIND_SANDBOX" },
   { no: 5, name: "RESOURCE_KIND_IMAGE" },
   { no: 6, name: "RESOURCE_KIND_CACHE" },
+]);
+
+/**
+ * @generated from enum agentcompose.v2.AgentModelSource
+ */
+export enum AgentModelSource {
+  /**
+   * @generated from enum value: AGENT_MODEL_SOURCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: AGENT_MODEL_SOURCE_PROJECT = 1;
+   */
+  PROJECT = 1,
+
+  /**
+   * @generated from enum value: AGENT_MODEL_SOURCE_AGENT_ENV = 2;
+   */
+  AGENT_ENV = 2,
+
+  /**
+   * @generated from enum value: AGENT_MODEL_SOURCE_DAEMON_DEFAULT = 3;
+   */
+  DAEMON_DEFAULT = 3,
+
+  /**
+   * @generated from enum value: AGENT_MODEL_SOURCE_PROVIDER_DEFAULT = 4;
+   */
+  PROVIDER_DEFAULT = 4,
+
+  /**
+   * @generated from enum value: AGENT_MODEL_SOURCE_UNRESOLVED = 5;
+   */
+  UNRESOLVED = 5,
+}
+// Retrieve enum metadata with: proto3.getEnumType(AgentModelSource)
+proto3.util.setEnumType(AgentModelSource, "agentcompose.v2.AgentModelSource", [
+  { no: 0, name: "AGENT_MODEL_SOURCE_UNSPECIFIED" },
+  { no: 1, name: "AGENT_MODEL_SOURCE_PROJECT" },
+  { no: 2, name: "AGENT_MODEL_SOURCE_AGENT_ENV" },
+  { no: 3, name: "AGENT_MODEL_SOURCE_DAEMON_DEFAULT" },
+  { no: 4, name: "AGENT_MODEL_SOURCE_PROVIDER_DEFAULT" },
+  { no: 5, name: "AGENT_MODEL_SOURCE_UNRESOLVED" },
 ]);
 
 /**
@@ -2089,6 +2197,18 @@ export class ProjectAgent extends Message<ProjectAgent> {
    */
   description = "";
 
+  /**
+   * Model selected for a new run when no request- or session-level override is present.
+   *
+   * @generated from field: string resolved_model = 16;
+   */
+  resolvedModel = "";
+
+  /**
+   * @generated from field: agentcompose.v2.AgentModelSource model_source = 17;
+   */
+  modelSource = AgentModelSource.UNSPECIFIED;
+
   constructor(data?: PartialMessage<ProjectAgent>) {
     super();
     proto3.util.initPartial(data, this);
@@ -2112,6 +2232,8 @@ export class ProjectAgent extends Message<ProjectAgent> {
     { no: 13, name: "latest_run", kind: "message", T: ProjectAgentLatestRun },
     { no: 14, name: "display_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 15, name: "description", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 16, name: "resolved_model", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 17, name: "model_source", kind: "enum", T: proto3.getEnumType(AgentModelSource) },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ProjectAgent {
@@ -5141,6 +5263,11 @@ export class SchedulerSpec extends Message<SchedulerSpec> {
    */
   concurrencyPolicy = SchedulerConcurrencyPolicy.UNSPECIFIED;
 
+  /**
+   * @generated from field: string model = 8;
+   */
+  model = "";
+
   constructor(data?: PartialMessage<SchedulerSpec>) {
     super();
     proto3.util.initPartial(data, this);
@@ -5156,6 +5283,7 @@ export class SchedulerSpec extends Message<SchedulerSpec> {
     { no: 5, name: "display_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 6, name: "description", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 7, name: "concurrency_policy", kind: "enum", T: proto3.getEnumType(SchedulerConcurrencyPolicy) },
+    { no: 8, name: "model", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SchedulerSpec {
@@ -6194,6 +6322,13 @@ export class ListRunsRequest extends Message<ListRunsRequest> {
    */
   sandboxId = "";
 
+  /**
+   * Optional exact scheduler run association for automation-originated Agent Runs.
+   *
+   * @generated from field: string scheduler_run_id = 11;
+   */
+  schedulerRunId = "";
+
   constructor(data?: PartialMessage<ListRunsRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -6212,6 +6347,7 @@ export class ListRunsRequest extends Message<ListRunsRequest> {
     { no: 8, name: "offset", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
     { no: 9, name: "limit", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
     { no: 10, name: "sandbox_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 11, name: "scheduler_run_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListRunsRequest {
@@ -7622,6 +7758,16 @@ export class StopSandboxRequest extends Message<StopSandboxRequest> {
    */
   sandboxId = "";
 
+  /**
+   * @generated from field: agentcompose.v2.SandboxStopMode mode = 2;
+   */
+  mode = SandboxStopMode.UNSPECIFIED;
+
+  /**
+   * @generated from field: google.protobuf.Duration grace_period = 3;
+   */
+  gracePeriod?: Duration;
+
   constructor(data?: PartialMessage<StopSandboxRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -7631,6 +7777,8 @@ export class StopSandboxRequest extends Message<StopSandboxRequest> {
   static readonly typeName = "agentcompose.v2.StopSandboxRequest";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "sandbox_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "mode", kind: "enum", T: proto3.getEnumType(SandboxStopMode) },
+    { no: 3, name: "grace_period", kind: "message", T: Duration },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): StopSandboxRequest {
@@ -7659,6 +7807,11 @@ export class StopSandboxResponse extends Message<StopSandboxResponse> {
    */
   sandbox?: Sandbox;
 
+  /**
+   * @generated from field: agentcompose.v2.SandboxStopOutcome outcome = 2;
+   */
+  outcome = SandboxStopOutcome.UNSPECIFIED;
+
   constructor(data?: PartialMessage<StopSandboxResponse>) {
     super();
     proto3.util.initPartial(data, this);
@@ -7668,6 +7821,7 @@ export class StopSandboxResponse extends Message<StopSandboxResponse> {
   static readonly typeName = "agentcompose.v2.StopSandboxResponse";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "sandbox", kind: "message", T: Sandbox },
+    { no: 2, name: "outcome", kind: "enum", T: proto3.getEnumType(SandboxStopOutcome) },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): StopSandboxResponse {
@@ -8028,6 +8182,13 @@ export class RunSummary extends Message<RunSummary> {
    */
   sandboxShortId = "";
 
+  /**
+   * Present when this Agent Run was created by a SchedulerRun.
+   *
+   * @generated from field: string scheduler_run_id = 22;
+   */
+  schedulerRunId = "";
+
   constructor(data?: PartialMessage<RunSummary>) {
     super();
     proto3.util.initPartial(data, this);
@@ -8057,6 +8218,7 @@ export class RunSummary extends Message<RunSummary> {
     { no: 19, name: "sandbox_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 20, name: "run_short_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 21, name: "sandbox_short_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 22, name: "scheduler_run_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): RunSummary {
@@ -8130,6 +8292,11 @@ export class RunDetail extends Message<RunDetail> {
    */
   warnings: string[] = [];
 
+  /**
+   * @generated from field: string error_stack = 11;
+   */
+  errorStack = "";
+
   constructor(data?: PartialMessage<RunDetail>) {
     super();
     proto3.util.initPartial(data, this);
@@ -8148,6 +8315,7 @@ export class RunDetail extends Message<RunDetail> {
     { no: 8, name: "driver", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 9, name: "image_ref", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 10, name: "warnings", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 11, name: "error_stack", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): RunDetail {

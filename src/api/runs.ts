@@ -6,16 +6,17 @@ import {
   RunSummary,
 } from '../gen/agentcompose/v2/agentcompose_pb.js';
 import type { JsonValue } from '@bufbuild/protobuf';
-import { projectClient, runClient } from './client';
+import { runClient } from './client';
 import { t } from '$lib/i18n.svelte';
-import { nextPageOffset, projectById } from './project-ref';
 import { apiFetchJson } from './http';
 import { isoStringToTimestamp } from '../model/timestamps';
+import { listProjectViews } from './projects';
 
 export type RunFilter = {
   projectId?: string;
   agentName?: string;
   schedulerId?: string;
+  schedulerRunId?: string;
   sandboxId?: string;
   status?: RunStatus;
   source?: RunSource;
@@ -37,6 +38,7 @@ export async function listRuns(filter: RunFilter = {}): Promise<RunSummary[]> {
     projectId: filter.projectId,
     agentName: filter.agentName,
     schedulerId: filter.schedulerId,
+    schedulerRunId: filter.schedulerRunId,
     sandboxId: filter.sandboxId,
     status: filter.status,
     source: filter.source,
@@ -64,29 +66,15 @@ export async function listUnlinkedRuns(
 
 export async function listRunActors(): Promise<RunActor[]> {
   const actors: RunActor[] = [];
-  let offset = 0;
-  for (;;) {
-    const page = await projectClient.listProjects({ limit: 200, offset });
-    const projects = await Promise.all(
-      page.projects.map((summary) =>
-        projectClient.getProject({ project: projectById(summary.projectId), includeSpec: false }),
-      ),
-    );
-    for (const response of projects) {
-      const project = response.project;
-      if (!project?.summary) continue;
-      for (const agent of project.agents) {
-        actors.push({
-          projectId: project.summary.projectId,
-          projectName: project.summary.name,
-          agentName: agent.agentName,
-          agentLabel: agent.displayName || agent.agentName,
-        });
-      }
+  for (const project of await listProjectViews()) {
+    for (const agent of project.agents) {
+      actors.push({
+        projectId: project.projectId,
+        projectName: project.name,
+        agentName: agent.agentName,
+        agentLabel: agent.displayName || agent.agentName,
+      });
     }
-    const next = nextPageOffset(offset, page.projects.length, page.total);
-    if (next === undefined) break;
-    offset = next;
   }
   return actors.sort(
     (left, right) =>

@@ -78,7 +78,7 @@ export function routeForTarget(target: ResourceTarget): string | null {
       ? `/projects/${encodeURIComponent(target.projectId)}/agents/${encodeURIComponent(target.agentName)}`
       : `/agents/${encodeURIComponent(target.id)}`;
   if (target.kind === ResourceKind.RUN) return `/runs/${encodeURIComponent(target.id)}`;
-  if (target.kind === ResourceKind.SANDBOX) return `/runs?sandboxId=${encodeURIComponent(target.id)}`;
+  if (target.kind === ResourceKind.SANDBOX) return `/sandboxes/${encodeURIComponent(target.id)}`;
   if (target.kind === ResourceKind.IMAGE) return `/images?q=${encodeURIComponent(target.id)}`;
   if (target.kind === ResourceKind.CACHE) return `/settings/caches?q=${encodeURIComponent(target.id)}`;
   return null;

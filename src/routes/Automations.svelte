@@ -252,7 +252,7 @@
       JSON.parse(runPayload);
       const run = await runAutomationTaskNow(runTask.id, runPayload, runTriggerId);
       runTask = null;
-      navigate(`/automation-runs/${encodeURIComponent(run.id)}`);
+      navigate(`/automation-runs/${encodeURIComponent(run.id)}?loaderId=${encodeURIComponent(run.loaderId)}`);
     } catch (cause) {
       error = errorMessage(cause);
     } finally {
@@ -522,6 +522,7 @@
       {projects}
       {loading}
       onRun={prepareRun}
+      onHistory={(task) => navigate(`/automations/${encodeURIComponent(task.id)}/runs`)}
       onEdit={(task) => beginEdit(task.id)}
       onToggle={toggle}
       onRemove={remove}

@@ -19,10 +19,12 @@
     getSandboxContext,
     listSandboxExecutionEvents,
     listSandboxHistoryCells,
+    listSandboxHistoryEvents,
     resumeSandboxContext,
     stopSandboxContext,
     watchSandbox,
     type SandboxContextDetail,
+    type SandboxHistoryEvent,
     type SandboxRunTarget,
   } from '../../api/sessions';
   import { listRuns } from '../../api/runs';
@@ -37,6 +39,7 @@
   import { jupyterEntryHref } from '../../model/jupyter';
   import { stoppedRuntimePresentation } from '../../model/stopped-runtime';
   import { conversationTurns, type ConversationTurn } from '../../model/conversation';
+  import { formatBeijingTime } from '../../time';
   import ExternalLink from '@lucide/svelte/icons/external-link';
 
   let {
@@ -55,6 +58,7 @@
   let runs = $state<RunSummary[]>([]);
   let conversationRuns = $state<RunSummary[]>([]);
   let events = $state<RunEvent[]>([]);
+  let historyEvents = $state<SandboxHistoryEvent[]>([]);
   let turns = $state<ConversationTurn[]>([]);
   let target = $state<SandboxRunTarget | undefined>();
   let selectedTargetKey = $state('');
@@ -81,15 +85,22 @@
   const activeStream = $derived(runStreams.forSandbox(sandboxId));
   const hasConversation = $derived(conversationRuns.length > 0 || Boolean(activeStream?.prompt));
   const combinedContextLog = $derived([contextLog.trimEnd(), liveContextLog.trimEnd()].filter(Boolean).join('\n'));
-  const visibleContextLog = $derived(
+  const historyLog = $derived(
+    historyEvents
+      .map((event) => `[${formatBeijingTime(event.createdAt)}] ${event.type}\n${event.message}`)
+      .filter(Boolean)
+      .join('\n\n'),
+  );
+  const combinedLog = $derived([combinedContextLog.trimEnd(), historyLog.trimEnd()].filter(Boolean).join('\n'));
+  const visibleCombinedLog = $derived(
     contextLogQuery.trim()
-      ? combinedContextLog
+      ? combinedLog
           .split('\n')
           .filter((line) => line.toLowerCase().includes(contextLogQuery.toLowerCase()))
           .join('\n')
-      : combinedContextLog,
+      : combinedLog,
   );
-  const contextLogLineCount = $derived(combinedContextLog ? combinedContextLog.split('\n').length : 0);
+  const combinedLogLineCount = $derived(combinedLog ? combinedLog.split('\n').length : 0);
   const targets = $derived.by(() => {
     const values = runs
       .filter((run) => run.projectId && run.agentName)
@@ -162,10 +173,11 @@
     error = '';
     resetTerminal();
     try {
-      const [nextSandbox, nextRuns, nextEvents, cells] = await Promise.all([
+      const [nextSandbox, nextRuns, nextEvents, nextHistoryEvents, cells] = await Promise.all([
         getSandboxContext(targetSandboxId),
         listRuns({ sandboxId: targetSandboxId, limit: 200 }),
         listSandboxExecutionEvents(targetSandboxId),
+        listSandboxHistoryEvents(targetSandboxId),
         listSandboxHistoryCells(targetSandboxId),
       ]);
       if (loadedSandboxId !== targetSandboxId) return;
@@ -176,11 +188,12 @@
       runs = nextRuns;
       conversationRuns = nextConversationRuns;
       events = nextEvents;
+      historyEvents = nextHistoryEvents;
       turns = nextTurns;
       target = nextTarget;
       selectedTargetKey = targetKey(nextTarget ?? firstTarget(nextRuns));
       const conversationAvailable = nextConversationRuns.length > 0;
-      const logsAvailable = nextRuns.length > 0 || Boolean(combinedContextLog.trim());
+      const logsAvailable = nextRuns.length > 0 || nextHistoryEvents.length > 0 || Boolean(combinedContextLog.trim());
       tab =
         initialTab === 'records'
           ? 'records'
@@ -200,6 +213,7 @@
       runs = [];
       conversationRuns = [];
       events = [];
+      historyEvents = [];
       turns = [];
     } finally {
       if (loadedSandboxId === targetSandboxId) loading = false;
@@ -358,7 +372,7 @@
   }
 
   function downloadContextLog(): void {
-    const url = URL.createObjectURL(new Blob([combinedContextLog], { type: 'text/plain' }));
+    const url = URL.createObjectURL(new Blob([combinedLog], { type: 'text/plain' }));
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = `sandbox-${compactIdentifier(sandboxId)}.log`;
@@ -490,7 +504,9 @@
     <Tabs.Root bind:value={tab} class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <Tabs.List data-tab-scroll class="shrink-0 justify-start">
         {#if hasConversation || runnable}<Tabs.Trigger value="conversation">{t('对话')}</Tabs.Trigger>{/if}
-        {#if runs.length || combinedContextLog}<Tabs.Trigger value="logs">{t('运行日志')}</Tabs.Trigger>{/if}
+        {#if runs.length || combinedContextLog || historyEvents.length}<Tabs.Trigger value="logs"
+            >{t('运行日志')}</Tabs.Trigger
+          >{/if}
         <Tabs.Trigger value="records">{t('智能体记录')}</Tabs.Trigger>
         {#if terminalAvailable}<Tabs.Trigger value="terminal">{t('终端')}</Tabs.Trigger>{/if}
       </Tabs.List>
@@ -502,8 +518,8 @@
         {#if runs.length}<SandboxLogRuns {sandboxId} {runs} {events} {activeStream} />
         {:else}<RunLogViewer
             query={contextLogQuery}
-            content={visibleContextLog}
-            lineCount={contextLogLineCount}
+            content={visibleCombinedLog}
+            lineCount={combinedLogLineCount}
             onQuery={(value) => (contextLogQuery = value)}
             onDownload={downloadContextLog}
           />{/if}

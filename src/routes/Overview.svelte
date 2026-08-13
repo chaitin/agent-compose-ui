@@ -110,7 +110,7 @@
     <div class="grid shrink-0 grid-cols-2 gap-2 lg:grid-cols-4">
       <button
         type="button"
-        onclick={() => navigate('/runs')}
+        onclick={() => navigate('/sandboxes')}
         class="flex min-w-0 items-center gap-3 rounded-lg border border-info/30 bg-info/5 px-3 py-2.5 text-left transition-colors hover:bg-info/10"
       >
         <span class="grid size-8 shrink-0 place-items-center rounded-full bg-info/15 text-info"
@@ -124,7 +124,7 @@
       </button>
       <button
         type="button"
-        onclick={() => navigate('/runs')}
+        onclick={() => navigate('/sandboxes')}
         class="flex min-w-0 items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-left transition-colors hover:bg-destructive/10"
       >
         <span class="grid size-8 shrink-0 place-items-center rounded-full bg-destructive/15 text-destructive"
@@ -138,7 +138,7 @@
       </button>
       <button
         type="button"
-        onclick={() => navigate('/runs')}
+        onclick={() => navigate('/sandboxes')}
         class="flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent/50"
       >
         <span class="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-foreground"
@@ -172,7 +172,7 @@
           </div>
           <button
             type="button"
-            onclick={() => navigate('/runs')}
+            onclick={() => navigate('/sandboxes')}
             class="flex items-center gap-0.5 text-xs font-medium text-primary hover:underline"
             >{t('全部运行')} <ChevronRight class="size-3.5" /></button
           >
