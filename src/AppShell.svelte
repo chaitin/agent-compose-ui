@@ -11,6 +11,7 @@
   import Overview from './routes/Overview.svelte';
   import Projects from './routes/Projects.svelte';
   import Automations from './routes/Automations.svelte';
+  import AutomationRuns from './routes/AutomationRuns.svelte';
   import AutomationRunDetail from './routes/AutomationRunDetail.svelte';
   import Sandboxes from './routes/Sandboxes.svelte';
   import SandboxDetail from './routes/SandboxDetail.svelte';
@@ -62,6 +63,7 @@
     if (path === '/ui' || path === '/workbench') target = '/';
     else if (path === '/automation-tasks') target = '/automations';
     else if (path === '/agents') target = '/projects';
+    else if (path === '/runs') target = '/sandboxes';
     else if (path.startsWith('/debug/runs/')) target = `/runs/${path.slice('/debug/runs/'.length)}/terminal`;
     if (target) router.replace(target);
   }
@@ -194,7 +196,9 @@
         {:else if p.startsWith('/projects') || p.startsWith('/agents')}
           <Projects />
         {:else if p.startsWith('/automation-runs/')}
-          <AutomationRunDetail />
+          {#key p}<AutomationRunDetail />{/key}
+        {:else if /^\/automations\/[^/]+\/runs$/.test(p)}
+          {#key p}<AutomationRuns />{/key}
         {:else if p.startsWith('/automations')}
           <Automations />
         {:else if p.startsWith('/events/')}

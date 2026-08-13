@@ -1,9 +1,8 @@
 import { apiFetchJson } from './http';
-import { projectClient, runClient } from './client';
+import { projectClient } from './client';
 import {
   EventTriggerSpec,
   ProjectValidationSeverity,
-  RunSource,
   SchedulerRunStatus,
   TriggerSpec,
   type Project,
@@ -113,7 +112,6 @@ export type ValidateAutomationTaskResult = {
 
 export type AutomationRun = {
   id: string;
-  agentRunId: string;
   loaderId: string;
   triggerId: string;
   triggerKind: string;
@@ -126,6 +124,7 @@ export type AutomationRun = {
   resultJson: string;
   payloadJson: string;
   artifactsDir: string;
+  sandboxIds: string[];
 };
 
 export type AutomationEvent = {
@@ -379,7 +378,6 @@ export async function runAutomationTaskNow(
   });
   if (!response.run) throw new Error('自动化任务运行失败');
   const result = runFromScheduler(response.run);
-  result.agentRunId = await findLinkedAgentRunId(response.run);
   return result;
 }
 
@@ -401,6 +399,25 @@ export async function getAutomationRunById(runId: string): Promise<AutomationRun
     }
   }
   throw new Error('调度运行不存在');
+}
+
+export async function listAutomationRuns(
+  loaderId: string,
+  options: { offset?: number; limit?: number; triggerId?: string; status?: string } = {},
+): Promise<{ runs: AutomationRun[]; total: number }> {
+  const scheduler = await requireScheduler(loaderId);
+  const response = await projectClient.listSchedulerRuns({
+    project: projectById(scheduler.projectId),
+    agentName: scheduler.agentName,
+    offset: options.offset ?? 0,
+    limit: Math.min(Math.max(options.limit ?? 50, 1), 500),
+    triggerId: options.triggerId,
+    status: schedulerRunStatusFromString(options.status),
+  });
+  return {
+    runs: response.runs.map(runFromScheduler),
+    total: response.total,
+  };
 }
 
 export async function listRecentAutomationRuns(loaderIds: string[], limit = 10): Promise<AutomationRun[]> {
@@ -580,7 +597,6 @@ function triggerFromResolved(item: ResolvedTrigger): AutomationTrigger {
 function runFromScheduler(item: SchedulerRun): AutomationRun {
   return {
     id: item.runId,
-    agentRunId: '',
     loaderId: item.schedulerId,
     triggerId: item.triggerId,
     triggerKind: triggerKindToString(item.triggerKind),
@@ -593,22 +609,8 @@ function runFromScheduler(item: SchedulerRun): AutomationRun {
     resultJson: item.resultJson,
     payloadJson: item.payloadJson,
     artifactsDir: item.artifactsDir,
+    sandboxIds: [...(item.sandboxIds ?? [])],
   };
-}
-
-async function findLinkedAgentRunId(schedulerRun: SchedulerRun): Promise<string> {
-  const sandboxIds = new Set(schedulerRun.sandboxIds);
-  const response = await runClient.listRuns({ source: RunSource.SCHEDULER, limit: 200 });
-  return (
-    response.runs.find(
-      (run) =>
-        run.projectId === schedulerRun.projectId &&
-        run.agentName === schedulerRun.agentName &&
-        run.schedulerId === schedulerRun.schedulerId &&
-        run.triggerId === schedulerRun.triggerId &&
-        (sandboxIds.size === 0 || sandboxIds.has(run.sandboxId)),
-    )?.runId ?? ''
-  );
 }
 
 function schedulerRunStatus(status: SchedulerRunStatus): string {
@@ -625,6 +627,24 @@ function schedulerRunStatus(status: SchedulerRunStatus): string {
       return 'SKIPPED';
     default:
       return 'UNSPECIFIED';
+  }
+}
+
+function schedulerRunStatusFromString(status: string | undefined): SchedulerRunStatus {
+  switch (status?.trim().toUpperCase()) {
+    case 'RUNNING':
+      return SchedulerRunStatus.RUNNING;
+    case 'SUCCEEDED':
+      return SchedulerRunStatus.SUCCEEDED;
+    case 'FAILED':
+      return SchedulerRunStatus.FAILED;
+    case 'CANCELED':
+    case 'CANCELLED':
+      return SchedulerRunStatus.CANCELED;
+    case 'SKIPPED':
+      return SchedulerRunStatus.SKIPPED;
+    default:
+      return SchedulerRunStatus.UNSPECIFIED;
   }
 }
 function parseDuration(value: string) {

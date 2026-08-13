@@ -19,6 +19,7 @@
     projects,
     loading,
     onRun,
+    onHistory,
     onEdit,
     onToggle,
     onRemove,
@@ -28,6 +29,7 @@
     projects: ProjectView[];
     loading: boolean;
     onRun: (task: AutomationTask) => void;
+    onHistory: (task: AutomationTask) => void;
     onEdit: (task: AutomationTask) => void;
     onToggle: (task: AutomationTask) => void;
     onRemove: (task: AutomationTask) => void;
@@ -159,6 +161,7 @@
             <td class="px-4 py-3">
               <div class="flex justify-end gap-1">
                 <Button size="sm" onclick={() => onRun(task)}><Play class="size-3.5" />{t('运行')}</Button>
+                <Button size="sm" variant="outline" onclick={() => onHistory(task)}>{t('执行历史')}</Button>
                 <Button
                   size="sm"
                   variant="outline"
@@ -211,6 +214,7 @@
           </p>{/if}
         <div class="mt-4 flex flex-wrap gap-2">
           <Button size="sm" onclick={() => onRun(task)}>{t('运行')}</Button>
+          <Button size="sm" variant="outline" onclick={() => onHistory(task)}>{t('执行历史')}</Button>
           <Button size="sm" variant="outline" disabled={!taskEditable(task)} onclick={() => onEdit(task)}
             >{t('编辑')}</Button
           >

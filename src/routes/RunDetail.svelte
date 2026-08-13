@@ -350,7 +350,9 @@
       class="mx-auto flex w-full max-w-[112rem] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5 xl:px-6"
     >
       {#if summary}<div class="flex min-w-0 items-center gap-3">
-          <Button variant="ghost" size="icon" onclick={() => navigate('/runs')}><ArrowLeft class="size-4" /></Button>
+          <Button variant="ghost" size="icon" onclick={() => navigate('/sandboxes')}
+            ><ArrowLeft class="size-4" /></Button
+          >
           <div class="min-w-0">
             <div class="truncate text-sm font-semibold">{summary.agentName}</div>
             <div class="flex items-center gap-2 text-[11px] text-muted-foreground">
