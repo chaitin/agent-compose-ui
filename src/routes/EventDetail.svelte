@@ -12,7 +12,7 @@
   import Timestamp from '$lib/components/timestamp.svelte';
   import { router } from '$lib/router.svelte';
   import { getTopicEventTrace, type TopicEvent, type TopicEventTraceSandbox } from '../api/loaders';
-  import type { EventRunTrace as RunTrace } from '../model/event-detail';
+  import type { EventRunTrace as RunTrace, EventTimelineItem } from '../model/event-detail';
   import { dispatchStatus } from '../model/event-status';
   import { compactIdentifier } from '../model/identifiers';
   import { t } from '$lib/i18n.svelte';
@@ -84,12 +84,17 @@
       .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
   }
 
-  function sandboxLog(sandboxId: string): string {
+  function sandboxLogEntries(sandboxId: string): EventTimelineItem[] {
     return runTraces
       .filter((trace) => trace.events.some((item) => item.linkedSessionId === sandboxId))
-      .flatMap((trace) => trace.events)
-      .map((item) => `[${item.createdAt}] ${item.type}${item.message ? `\n${item.message}` : ''}`)
-      .join('\n');
+      .flatMap((trace) =>
+        trace.events.map((item) => ({
+          id: item.id,
+          createdAt: item.createdAt,
+          type: item.type,
+          message: item.message,
+        })),
+      );
   }
 
   const errorMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : t('请求失败'));
@@ -135,7 +140,7 @@
             <div data-selected-sandbox-id={selectedSandboxId} class="min-h-0">
               {#key selectedSandboxId}<SandboxWorkbench
                   sandboxId={selectedSandboxId}
-                  contextLog={sandboxLog(selectedSandboxId)}
+                  contextLogEntries={sandboxLogEntries(selectedSandboxId)}
                   embedded
                 />{/key}
             </div>
