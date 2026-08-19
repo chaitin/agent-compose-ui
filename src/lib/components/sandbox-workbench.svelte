@@ -39,6 +39,7 @@
   import { jupyterEntryHref } from '../../model/jupyter';
   import { stoppedRuntimePresentation } from '../../model/stopped-runtime';
   import { conversationTurns, type ConversationTurn } from '../../model/conversation';
+  import type { EventTimelineItem } from '../../model/event-detail';
   import { formatBeijingTime } from '../../time';
   import ExternalLink from '@lucide/svelte/icons/external-link';
 
@@ -46,12 +47,12 @@
     sandboxId,
     initialTab,
     embedded = false,
-    contextLog = '',
+    contextLogEntries = [],
   }: {
     sandboxId: string;
     initialTab?: 'conversation' | 'logs' | 'records' | 'terminal';
     embedded?: boolean;
-    contextLog?: string;
+    contextLogEntries?: EventTimelineItem[];
   } = $props();
 
   let sandbox = $state<SandboxContextDetail | null>(null);
@@ -79,19 +80,24 @@
   let terminalAutoAttempts = 0;
   let terminalRetryTimer: number | undefined;
   let contextLogQuery = $state('');
-  let liveContextLog = $state('');
+  let liveEntries = $state<EventTimelineItem[]>([]);
+  let liveEntrySeq = 0;
   let discoveringRuns = false;
 
   const activeStream = $derived(runStreams.forSandbox(sandboxId));
   const hasConversation = $derived(conversationRuns.length > 0 || Boolean(activeStream?.prompt));
-  const combinedContextLog = $derived([contextLog.trimEnd(), liveContextLog.trimEnd()].filter(Boolean).join('\n'));
-  const historyLog = $derived(
-    historyEvents
-      .map((event) => `[${formatBeijingTime(event.createdAt)}] ${event.type}\n${event.message}`)
-      .filter(Boolean)
-      .join('\n\n'),
+  const sortedLogEntries = $derived(
+    [...contextLogEntries, ...liveEntries, ...historyEvents].sort((left, right) => sortTime(left) - sortTime(right)),
   );
-  const combinedLog = $derived([combinedContextLog.trimEnd(), historyLog.trimEnd()].filter(Boolean).join('\n'));
+  const combinedLog = $derived(
+    sortedLogEntries
+      .map((entry) => {
+        const head = `[${formatBeijingTime(entry.createdAt)}]${entry.type ? ` ${entry.type}` : ''}`;
+        const body = entry.message ? `\n${entry.message}` : '';
+        return `${head}${body}`;
+      })
+      .join('\n'),
+  );
   const visibleCombinedLog = $derived(
     contextLogQuery.trim()
       ? combinedLog
@@ -128,7 +134,7 @@
     const targetSandboxId = sandboxId;
     if (targetSandboxId && targetSandboxId !== loadedSandboxId) {
       loadedSandboxId = targetSandboxId;
-      liveContextLog = '';
+      liveEntries = [];
       void load(targetSandboxId);
     }
   });
@@ -193,7 +199,7 @@
       target = nextTarget;
       selectedTargetKey = targetKey(nextTarget ?? firstTarget(nextRuns));
       const conversationAvailable = nextConversationRuns.length > 0;
-      const logsAvailable = nextRuns.length > 0 || nextHistoryEvents.length > 0 || Boolean(combinedContextLog.trim());
+      const logsAvailable = nextRuns.length > 0 || nextHistoryEvents.length > 0 || contextLogEntries.length > 0;
       tab =
         initialTab === 'records'
           ? 'records'
@@ -223,7 +229,10 @@
   function handleSandboxWatchEvent(watchedSandboxId: string, event: WatchSandboxResponse): void {
     if (watchedSandboxId !== sandboxId) return;
     if (event.eventType === SandboxWatchEventType.CELL_OUTPUT && event.chunk) {
-      liveContextLog += event.chunk;
+      liveEntries = [
+        ...liveEntries,
+        { id: `live-${liveEntrySeq++}`, createdAt: new Date().toISOString(), type: '', message: event.chunk },
+      ];
       return;
     }
     if (event.eventType === SandboxWatchEventType.CELL_STARTED) {
@@ -409,6 +418,11 @@
     return items.filter((run) => ids.has(run.runId));
   }
 
+  function sortTime(entry: { createdAt: string }): number {
+    const parsed = Date.parse(entry.createdAt);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+
   const errorMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : t('请求失败'));
 </script>
 
@@ -504,8 +518,8 @@
     <Tabs.Root bind:value={tab} class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <Tabs.List data-tab-scroll class="shrink-0 justify-start">
         {#if hasConversation || runnable}<Tabs.Trigger value="conversation">{t('对话')}</Tabs.Trigger>{/if}
-        {#if runs.length || combinedContextLog || historyEvents.length}<Tabs.Trigger value="logs"
-            >{t('运行日志')}</Tabs.Trigger
+        {#if runs.length || contextLogEntries.length || liveEntries.length || historyEvents.length}<Tabs.Trigger
+            value="logs">{t('运行日志')}</Tabs.Trigger
           >{/if}
         <Tabs.Trigger value="records">{t('智能体记录')}</Tabs.Trigger>
         {#if terminalAvailable}<Tabs.Trigger value="terminal">{t('终端')}</Tabs.Trigger>{/if}
