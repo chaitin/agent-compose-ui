@@ -72,11 +72,11 @@
   async function loadRuns(items: RunSummary[]): Promise<void> {
     const completed = items.filter((run) => run.status !== RunStatus.RUNNING);
     const running = items.filter((run) => run.status === RunStatus.RUNNING);
-    for (const run of completed) await load(run.runId, false);
-    for (const run of running) void load(run.runId, true);
+    for (const run of completed) await load(run.runId, false, run.projectId);
+    for (const run of running) void load(run.runId, true, run.projectId);
   }
 
-  async function load(runId: string, follow: boolean): Promise<void> {
+  async function load(runId: string, follow: boolean, projectId: string): Promise<void> {
     const controller = new AbortController();
     controllers.set(runId, controller);
     logs = { ...logs, [runId]: '' };
@@ -86,6 +86,7 @@
         (chunk) => (logs = { ...logs, [runId]: `${logs[runId] ?? ''}${chunk}` }),
         controller.signal,
         follow,
+        projectId,
       );
     } catch (cause) {
       if (!controller.signal.aborted)
