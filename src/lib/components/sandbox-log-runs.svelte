@@ -11,6 +11,7 @@
     type RunEvent,
     type RunSummary,
   } from '../../gen/agentcompose/v2/agentcompose_pb.js';
+  import type { SandboxHistoryCell } from '../../api/sessions';
   import { compactIdentifier } from '../../model/identifiers';
   import { timestampToISOString } from '../../model/timestamps';
   import { formatBeijingTime } from '../../time';
@@ -20,7 +21,14 @@
     runs,
     events,
     activeStream,
-  }: { sandboxId: string; runs: RunSummary[]; events: RunEvent[]; activeStream?: AgentStreamState } = $props();
+    legacyCells = [],
+  }: {
+    sandboxId: string;
+    runs: RunSummary[];
+    events: RunEvent[];
+    activeStream?: AgentStreamState;
+    legacyCells?: SandboxHistoryCell[];
+  } = $props();
 
   let logs = $state<Record<string, string>>({});
   let errors = $state<Record<string, string>>({});
@@ -30,7 +38,18 @@
   const requested = new SvelteSet<string>();
 
   const chronologicalRuns = $derived([...runs].reverse());
-  const content = $derived(chronologicalRuns.map(runSection).join('\n\n'));
+  const logSections = $derived(
+    [
+      ...chronologicalRuns.map((run) => ({
+        createdAt: timestampToISOString(run.startedAt || run.createdAt),
+        content: runSection(run),
+      })),
+      ...legacyCells
+        .filter((cell) => cell.source.trim() || cell.output.trim())
+        .map((cell) => ({ createdAt: cell.createdAt, content: legacyCellSection(cell) })),
+    ].sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt)),
+  );
+  const content = $derived(logSections.map((section) => section.content).join('\n\n'));
   const visibleContent = $derived(
     query.trim()
       ? content
@@ -92,6 +111,14 @@
     if (body) return `${heading}\n${body}`;
     if (errors[run.runId]) return `${heading}\n${t('日志加载失败')}：${errors[run.runId]}`;
     return `${heading}\n${t(loaded[run.runId] ? '没有日志输出' : '正在加载日志…')}`;
+  }
+
+  function legacyCellSection(cell: SandboxHistoryCell): string {
+    const at = formatBeijingTime(cell.createdAt);
+    const shortCellId = compactIdentifier(cell.id);
+    const heading = `──── ${at} · ${t('执行历史')} · ${shortCellId} · ${cell.success ? t('成功') : t('失败')} ────`;
+    const body = [cell.source.trim(), cell.output.trim(), cell.stopReason.trim()].filter(Boolean).join('\n');
+    return `${heading}\n${body}`;
   }
 
   function eventSection(runId: string): string {
