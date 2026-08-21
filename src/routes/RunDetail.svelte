@@ -142,6 +142,8 @@
           logs += chunk;
         },
         controller.signal,
+        true,
+        nextDetail.summary?.projectId,
       ).catch((cause) => {
         if (version === loadVersion && !controller?.signal.aborted)
           error = t('日志订阅断开：{error}', { error: errorMessage(cause) });
