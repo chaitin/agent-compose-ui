@@ -24,6 +24,7 @@
     stopSandboxContext,
     watchSandbox,
     type SandboxContextDetail,
+    type SandboxHistoryCell,
     type SandboxHistoryEvent,
     type SandboxRunTarget,
   } from '../../api/sessions';
@@ -60,6 +61,7 @@
   let conversationRuns = $state<RunSummary[]>([]);
   let events = $state<RunEvent[]>([]);
   let historyEvents = $state<SandboxHistoryEvent[]>([]);
+  let historyCells = $state<SandboxHistoryCell[]>([]);
   let turns = $state<ConversationTurn[]>([]);
   let target = $state<SandboxRunTarget | undefined>();
   let selectedTargetKey = $state('');
@@ -86,8 +88,20 @@
 
   const activeStream = $derived(runStreams.forSandbox(sandboxId));
   const hasConversation = $derived(conversationRuns.length > 0 || Boolean(activeStream?.prompt));
+  const legacyHistoryEntries = $derived(
+    historyCells
+      .filter((cell) => (!runs.length || !cell.runId) && (cell.source.trim() || cell.output.trim()))
+      .map((cell) => ({
+        id: `history-cell-${cell.id}`,
+        createdAt: cell.createdAt,
+        type: 'history.cell',
+        message: [cell.source.trim(), cell.output.trim()].filter(Boolean).join('\n'),
+      })),
+  );
   const sortedLogEntries = $derived(
-    [...contextLogEntries, ...liveEntries, ...historyEvents].sort((left, right) => sortTime(left) - sortTime(right)),
+    [...contextLogEntries, ...liveEntries, ...historyEvents, ...legacyHistoryEntries].sort(
+      (left, right) => sortTime(left) - sortTime(right),
+    ),
   );
   const combinedLog = $derived(
     sortedLogEntries
@@ -195,11 +209,13 @@
       conversationRuns = nextConversationRuns;
       events = nextEvents;
       historyEvents = nextHistoryEvents;
+      historyCells = cells;
       turns = nextTurns;
       target = nextTarget;
       selectedTargetKey = targetKey(nextTarget ?? firstTarget(nextRuns));
       const conversationAvailable = nextConversationRuns.length > 0;
-      const logsAvailable = nextRuns.length > 0 || nextHistoryEvents.length > 0 || contextLogEntries.length > 0;
+      const logsAvailable =
+        nextRuns.length > 0 || nextHistoryEvents.length > 0 || cells.length > 0 || contextLogEntries.length > 0;
       tab =
         initialTab === 'records'
           ? 'records'
@@ -220,6 +236,7 @@
       conversationRuns = [];
       events = [];
       historyEvents = [];
+      historyCells = [];
       turns = [];
     } finally {
       if (loadedSandboxId === targetSandboxId) loading = false;
@@ -303,6 +320,7 @@
       runs = nextRuns;
       conversationRuns = nextConversationRuns;
       events = nextEvents;
+      historyCells = cells;
       turns = nextTurns;
       sandbox = nextSandbox;
       if (activeStream?.prompt) tab = 'conversation';
@@ -518,7 +536,7 @@
     <Tabs.Root bind:value={tab} class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <Tabs.List data-tab-scroll class="shrink-0 justify-start">
         {#if hasConversation || runnable}<Tabs.Trigger value="conversation">{t('对话')}</Tabs.Trigger>{/if}
-        {#if runs.length || contextLogEntries.length || liveEntries.length || historyEvents.length}<Tabs.Trigger
+        {#if runs.length || contextLogEntries.length || liveEntries.length || historyEvents.length || historyCells.length}<Tabs.Trigger
             value="logs">{t('运行日志')}</Tabs.Trigger
           >{/if}
         <Tabs.Trigger value="records">{t('智能体记录')}</Tabs.Trigger>
@@ -529,7 +547,13 @@
         <SandboxConversation runs={conversationRuns} {events} {turns} {activeStream} />
       </Tabs.Content>
       <Tabs.Content value="logs" class="mt-3 min-h-0 flex-1 overflow-hidden">
-        {#if runs.length}<SandboxLogRuns {sandboxId} {runs} {events} {activeStream} />
+        {#if runs.length}<SandboxLogRuns
+            {sandboxId}
+            {runs}
+            {events}
+            {activeStream}
+            legacyCells={historyCells.filter((cell) => !cell.runId && !cell.id.endsWith('-legacy-log'))}
+          />
         {:else}<RunLogViewer
             query={contextLogQuery}
             content={visibleCombinedLog}

@@ -100,9 +100,15 @@ export async function followRunLogs(
   onChunk: (data: string, final: boolean) => void,
   signal?: AbortSignal,
   follow = true,
+  projectId?: string,
 ): Promise<void> {
-  for await (const chunk of runClient.followRunLogs({ runId, follow, includeMetadata: true }, { signal }))
-    onChunk(chunk.data, chunk.isFinal);
+  // Always request the complete persisted log before following live output.
+  // In particular, do not use a tail/start offset when opening a run detail
+  // page: the server treats an omitted tail as the full log history.
+  for await (const chunk of runClient.followRunLogs(
+    { projectId, runId, follow, includeMetadata: true, startOffset: 0n, tailLines: 0, tailSet: false },
+    { signal },
+  )) onChunk(chunk.data, chunk.isFinal);
 }
 
 export type ProjectRunDebugTarget = { runId: string; sandboxId: string };
