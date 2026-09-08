@@ -1,19 +1,21 @@
-name: Image
+name: Devboard Image
 
 on:
   push:
-    branches:
-      - main
     tags:
-      - '*'
-      - '!*-devboard'
+      - '*-devboard'
   workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Docker image tag without repository
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: image-${{ github.ref }}
+  group: devboard-image-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -22,7 +24,7 @@ env:
 
 jobs:
   image:
-    name: Build and push UI image
+    name: Build and push Devboard UI image
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,10 +37,8 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=ref,event=branch
             type=ref,event=tag
-            type=sha,prefix=sha-
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=${{ inputs.image_tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -56,3 +56,5 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            AGENT_COMPOSE_BASE=/agent-compose/
