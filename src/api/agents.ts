@@ -11,6 +11,7 @@ import {
 import { timestampToISOString as timestampString } from '../model/timestamps';
 import { projectClient } from './client';
 import { listWorkspacePresets, type WorkspacePreset } from './config';
+import { apiFetchJson } from './http';
 import { nextPageOffset, projectById } from './project-ref';
 
 export type AgentWorkFiles = {
@@ -53,6 +54,28 @@ export type AgentDefinition = {
   projectId?: string;
   projectName: string;
 };
+
+export type ProjectAgentContextProject = {
+  projectId: string;
+  name: string;
+  editable: boolean;
+};
+
+export type ProjectAgentContextAgent = {
+  id: string;
+  agentName: string;
+  name: string;
+  projectId: string;
+  projectName: string;
+};
+
+export async function listProjectAgentContext(): Promise<{
+  agents: ProjectAgentContextAgent[];
+  projects: ProjectAgentContextProject[];
+}> {
+  return apiFetchJson('/api/ui/v1/project-agent-context');
+}
+
 export async function listAgentDefinitions(query = ''): Promise<AgentDefinition[]> {
   const [projects, presets] = await Promise.all([listProjects(), listWorkspacePresets()]);
   const result: AgentDefinition[] = [];

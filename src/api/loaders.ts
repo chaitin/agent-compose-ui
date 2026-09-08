@@ -76,6 +76,8 @@ export type AutomationTaskDetail = AutomationTask & {
 
 export type SaveAutomationTaskInput = {
   id?: string;
+  projectId?: string;
+  agentName?: string;
   name: string;
   description: string;
   runtime: string;
@@ -257,7 +259,11 @@ export async function resolveAutomationSessionTarget(
 }
 
 export async function previewAutomationTask(input: SaveAutomationTaskInput): Promise<ProjectDeploymentPreview> {
-  const target = input.id ? await findScheduler(input.id) : await findProjectAgent(input.agentId || input.defaultAgent);
+  const target = input.id
+    ? await findScheduler(input.id)
+    : input.projectId && input.agentName
+      ? { projectId: input.projectId, agentName: input.agentName }
+      : undefined;
   if (!target) throw new Error('自动化任务必须关联项目智能体');
   const project = await getProjectView(target.projectId);
   return previewProjectMutation({
@@ -508,20 +514,6 @@ async function loadProject(projectId: string): Promise<Project> {
   const response = await projectClient.getProject({ project: projectById(projectId), includeSpec: true });
   if (!response.project) throw new Error('项目不存在');
   return response.project;
-}
-async function findProjectAgent(id: string): Promise<{ projectId: string; agentName: string } | undefined> {
-  let offset = 0;
-  for (;;) {
-    const listed = await projectClient.listProjects({ limit: 200, offset });
-    for (const summary of listed.projects) {
-      const project = await loadProject(summary.projectId);
-      const agent = project.agents.find((value) => value.managedAgentId === id || value.agentName === id);
-      if (agent) return { projectId: summary.projectId, agentName: agent.agentName };
-    }
-    const next = nextPageOffset(offset, listed.projects.length, listed.total);
-    if (next === undefined) return undefined;
-    offset = next;
-  }
 }
 function taskFromV2(item: SchedulerSummary): AutomationTask {
   return {

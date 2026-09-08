@@ -172,6 +172,85 @@ func TestListProjectsUsesTotalOffsetPagination(t *testing.T) {
 	}
 }
 
+func TestListProjectSummariesDoesNotLoadProjectSpecs(t *testing.T) {
+	getProjectCalls := 0
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		switch r.URL.Path {
+		case "/agentcompose.v2.ProjectService/ListProjects":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"projects": []any{map[string]any{
+					"projectId": "project-1", "name": "One", "currentRevision": "3",
+					"agentCount": 2, "schedulerCount": 1, "runningRunCount": 0,
+				}}, "total": 1,
+			})
+		case "/agentcompose.v2.ProjectService/GetProject":
+			getProjectCalls++
+			t.Fatalf("summary endpoint unexpectedly loaded project: %#v", body)
+		default:
+			t.Fatalf("unexpected backend path %s", r.URL.Path)
+		}
+	}))
+	defer backend.Close()
+
+	response := performJSON(t, New(mustURL(t, backend.URL)), http.MethodGet, "/api/ui/v1/project-summaries", nil, "local:admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("summaries = %d: %s", response.Code, response.Body.String())
+	}
+	var body struct {
+		Projects []ProjectView `json:"projects"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Projects) != 1 || body.Projects[0].ProjectID != "project-1" || body.Projects[0].AgentCount != 2 || getProjectCalls != 0 {
+		t.Fatalf("summaries = %#v, getProject calls = %d", body.Projects, getProjectCalls)
+	}
+}
+
+func TestProjectAgentContextLoadsRuntimeAgentsWithoutSpecs(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		switch r.URL.Path {
+		case "/agentcompose.v2.ProjectService/ListProjects":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"projects": []any{map[string]any{"projectId": "project-1", "name": "One"}}, "total": 1,
+			})
+		case "/agentcompose.v2.ProjectService/GetProject":
+			if boolValue(body["includeSpec"]) {
+				t.Fatal("project-agent context requested project spec")
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"project": map[string]any{
+				"summary": map[string]any{"projectId": "project-1", "name": "One"},
+				"agents": []any{map[string]any{
+					"managedAgentId": "agent-1", "agentName": "worker", "displayName": "Worker",
+				}},
+			}})
+		default:
+			t.Fatalf("unexpected backend path %s", r.URL.Path)
+		}
+	}))
+	defer backend.Close()
+
+	response := performJSON(t, New(mustURL(t, backend.URL)), http.MethodGet, "/api/ui/v1/project-agent-context", nil, "local:admin")
+	if response.Code != http.StatusOK {
+		t.Fatalf("context = %d: %s", response.Code, response.Body.String())
+	}
+	var body struct {
+		Projects []ProjectAgentContextProject `json:"projects"`
+		Agents   []ProjectAgentContextAgent   `json:"agents"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Projects) != 1 || body.Projects[0].Name != "One" || len(body.Agents) != 1 ||
+		body.Agents[0].ID != "agent-1" || body.Agents[0].Name != "Worker" {
+		t.Fatalf("context = %#v", body)
+	}
+}
+
 func TestProjectViewIncludesStoppedRuntimePolicy(t *testing.T) {
 	project := objectValue(projectFixture(false)["project"])
 	view := projectView(project)

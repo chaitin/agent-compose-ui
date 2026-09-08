@@ -21,10 +21,11 @@ import (
 )
 
 const (
-	previewTTL            = 5 * time.Minute
-	backendRequestTimeout = 2 * time.Minute
-	redactedSecret        = "********"
-	maxResponseBytes      = 32 << 20
+	previewTTL             = 5 * time.Minute
+	backendRequestTimeout  = 2 * time.Minute
+	redactedSecret         = "********"
+	maxResponseBytes       = 32 << 20
+	projectLoadConcurrency = 8
 )
 
 type Handler struct {
@@ -126,6 +127,20 @@ type AgentView struct {
 	HasBuild             bool           `json:"hasBuild"`
 }
 
+type ProjectAgentContextProject struct {
+	ProjectID string `json:"projectId"`
+	Name      string `json:"name"`
+	Editable  bool   `json:"editable"`
+}
+
+type ProjectAgentContextAgent struct {
+	ID          string `json:"id"`
+	AgentName   string `json:"agentName"`
+	Name        string `json:"name"`
+	ProjectID   string `json:"projectId"`
+	ProjectName string `json:"projectName"`
+}
+
 type listProjectsResponse struct {
 	Projects []map[string]any `json:"projects"`
 	Total    int              `json:"total"`
@@ -141,6 +156,8 @@ func New(backend *url.URL) *Handler {
 		mux:      http.NewServeMux(),
 	}
 	h.mux.HandleFunc("GET /api/ui/v1/projects", h.listProjects)
+	h.mux.HandleFunc("GET /api/ui/v1/project-summaries", h.listProjectSummaries)
+	h.mux.HandleFunc("GET /api/ui/v1/project-agent-context", h.listProjectAgentContext)
 	h.mux.HandleFunc("GET /api/ui/v1/projects/{projectID}/yaml", h.getProjectYAML)
 	h.mux.HandleFunc("GET /api/ui/v1/projects/{projectID}", h.getProject)
 	h.mux.HandleFunc("POST /api/ui/v1/project-deployment-previews", h.preview)
@@ -156,17 +173,144 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	views := make([]ProjectView, 0, len(summaries))
-	for _, summary := range summaries {
-		project, err := h.loadProject(r.Context(), stringValue(summary["projectId"]))
-		if err != nil {
-			h.writeError(w, err)
-			return
-		}
-		views = append(views, projectView(project))
+	views, err := h.loadProjectViews(r.Context(), summaries)
+	if err != nil {
+		h.writeError(w, err)
+		return
 	}
 	sort.Slice(views, func(i, j int) bool { return strings.ToLower(views[i].Name) < strings.ToLower(views[j].Name) })
 	writeJSON(w, http.StatusOK, map[string]any{"projects": views})
+}
+
+func (h *Handler) listProjectSummaries(w http.ResponseWriter, r *http.Request) {
+	summaries, err := h.allProjectSummaries(r.Context())
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	views := make([]ProjectView, 0, len(summaries))
+	for _, summary := range summaries {
+		views = append(views, projectSummaryView(summary))
+	}
+	sort.Slice(views, func(i, j int) bool { return strings.ToLower(views[i].Name) < strings.ToLower(views[j].Name) })
+	writeJSON(w, http.StatusOK, map[string]any{"projects": views})
+}
+
+func (h *Handler) listProjectAgentContext(w http.ResponseWriter, r *http.Request) {
+	summaries, err := h.allProjectSummaries(r.Context())
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	projects, err := h.loadProjects(r.Context(), summaries, false)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	projectViews := make([]ProjectAgentContextProject, 0, len(summaries))
+	for _, summary := range summaries {
+		projectViews = append(projectViews, ProjectAgentContextProject{
+			ProjectID: stringValue(summary["projectId"]),
+			Name:      stringValue(summary["name"]),
+			Editable:  true,
+		})
+	}
+	agentViews := make([]ProjectAgentContextAgent, 0)
+	for _, project := range projects {
+		summary := objectValue(project["summary"])
+		projectID := stringValue(summary["projectId"])
+		projectName := stringValue(summary["name"])
+		for _, value := range arrayValue(project["agents"]) {
+			agent := objectValue(value)
+			agentName := stringValue(agent["agentName"])
+			id := stringValue(agent["managedAgentId"])
+			if id == "" {
+				id = "project:" + projectID + ":agent:" + agentName
+			}
+			agentViews = append(agentViews, ProjectAgentContextAgent{
+				ID: id, AgentName: agentName, Name: firstNonEmpty(stringValue(agent["displayName"]), agentName),
+				ProjectID: projectID, ProjectName: projectName,
+			})
+		}
+	}
+	sort.Slice(projectViews, func(i, j int) bool {
+		return strings.ToLower(projectViews[i].Name) < strings.ToLower(projectViews[j].Name)
+	})
+	sort.Slice(agentViews, func(i, j int) bool {
+		if agentViews[i].ProjectName != agentViews[j].ProjectName {
+			return strings.ToLower(agentViews[i].ProjectName) < strings.ToLower(agentViews[j].ProjectName)
+		}
+		return strings.ToLower(agentViews[i].Name) < strings.ToLower(agentViews[j].Name)
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"projects": projectViews, "agents": agentViews})
+}
+
+// loadProjectViews keeps the existing rich ProjectView response while
+// bounding the number of in-flight backend requests. The old serial loop made
+// a project list with N projects take N backend round trips sequentially;
+// bounded parallelism makes latency approach the slowest batch instead of the
+// sum of every project's GetProject latency, without overwhelming the daemon.
+func (h *Handler) loadProjectViews(ctx context.Context, summaries []map[string]any) ([]ProjectView, error) {
+	projects, err := h.loadProjects(ctx, summaries, true)
+	if err != nil {
+		return nil, err
+	}
+	views := make([]ProjectView, 0, len(projects))
+	for _, project := range projects {
+		views = append(views, projectView(project))
+	}
+	return views, nil
+}
+
+func (h *Handler) loadProjects(ctx context.Context, summaries []map[string]any, includeSpec bool) ([]map[string]any, error) {
+	if len(summaries) == 0 {
+		return []map[string]any{}, nil
+	}
+	loadCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	projects := make([]map[string]any, len(summaries))
+	jobs := make(chan int)
+	workers := projectLoadConcurrency
+	if workers > len(summaries) {
+		workers = len(summaries)
+	}
+	var wg sync.WaitGroup
+	var firstErr error
+	var errMu sync.Mutex
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for index := range jobs {
+				project, err := h.loadProjectWithSpec(loadCtx, stringValue(summaries[index]["projectId"]), includeSpec)
+				if err != nil {
+					errMu.Lock()
+					if firstErr == nil {
+						firstErr = err
+						cancel()
+					}
+					errMu.Unlock()
+					continue
+				}
+				projects[index] = project
+			}
+		}()
+	}
+sendJobs:
+	for index := range summaries {
+		select {
+		case jobs <- index:
+		case <-loadCtx.Done():
+			break sendJobs
+		}
+	}
+	close(jobs)
+	wg.Wait()
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	return projects, nil
 }
 
 func (h *Handler) getProject(w http.ResponseWriter, r *http.Request) {
@@ -728,6 +872,23 @@ func projectView(project map[string]any) ProjectView {
 	}
 }
 
+func projectSummaryView(summary map[string]any) ProjectView {
+	return ProjectView{
+		ProjectID:       stringValue(summary["projectId"]),
+		Name:            stringValue(summary["name"]),
+		SourcePath:      stringValue(summary["sourcePath"]),
+		CurrentRevision: fmt.Sprint(summary["currentRevision"]),
+		SpecHash:        stringValue(summary["specHash"]),
+		AgentCount:      intValue(summary["agentCount"]),
+		SchedulerCount:  intValue(summary["schedulerCount"]),
+		RunningRunCount: intValue(summary["runningRunCount"]),
+		UpdatedAt:       stringValue(summary["updatedAt"]),
+		Editable:        true,
+		Variables:       []any{},
+		Agents:          []AgentView{},
+	}
+}
+
 func environmentView(value any) []any {
 	items := arrayValue(value)
 	result := make([]any, 0, len(items))
@@ -773,12 +934,16 @@ func (h *Handler) projectNameExists(ctx context.Context, name string) (bool, err
 }
 
 func (h *Handler) loadProject(ctx context.Context, projectID string) (map[string]any, error) {
+	return h.loadProjectWithSpec(ctx, projectID, true)
+}
+
+func (h *Handler) loadProjectWithSpec(ctx context.Context, projectID string, includeSpec bool) (map[string]any, error) {
 	if strings.TrimSpace(projectID) == "" {
 		return nil, apiError{http.StatusBadRequest, "invalid_request", "项目 ID 必填"}
 	}
 	var response map[string]any
 	if err := h.connect(ctx, "GetProject", map[string]any{
-		"project": map[string]any{"projectId": projectID}, "includeSpec": true,
+		"project": map[string]any{"projectId": projectID}, "includeSpec": includeSpec,
 	}, &response); err != nil {
 		return nil, err
 	}

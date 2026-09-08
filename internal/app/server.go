@@ -269,6 +269,8 @@ func registerRoutes(
 	app.Any("/api/ui/v1/audit/*", authManager.Protect(echo.WrapHandler(audits.Management)))
 	app.Any("/api/ui/v1/projects", authManager.Protect(echo.WrapHandler(projectDeploy)))
 	app.Any("/api/ui/v1/projects/*", authManager.Protect(echo.WrapHandler(projectDeploy)))
+	app.Any("/api/ui/v1/project-summaries", authManager.Protect(echo.WrapHandler(projectDeploy)))
+	app.Any("/api/ui/v1/project-agent-context", authManager.Protect(echo.WrapHandler(projectDeploy)))
 	app.Any("/api/ui/v1/project-deployment-previews", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(projectDeploy))))
 	app.Any("/api/ui/v1/project-deployment-previews/*", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(projectDeploy))))
 	app.GET("/api/ui/v1/runs/unlinked", authManager.Protect(echo.WrapHandler(runIndex)))

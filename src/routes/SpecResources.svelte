@@ -8,8 +8,7 @@
   import { preloadMonaco } from '$lib/monaco';
   import { navigate } from '$lib/router.svelte';
   import {
-    listSpecResources,
-    listSpecResourceTargets,
+    listSpecResourcesAndTargets,
     removeSpecResource,
     saveSpecResource,
     type SpecResource,
@@ -38,7 +37,9 @@
     loading = true;
     error = '';
     try {
-      [items, targets] = await Promise.all([listSpecResources(kind), listSpecResourceTargets(kind)]);
+      const result = await listSpecResourcesAndTargets(kind);
+      items = result.items;
+      targets = result.targets;
       if (!targetKey && targets[0]) targetKey = targets[0].key;
     } catch (cause) {
       error = message(cause);

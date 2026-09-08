@@ -13,8 +13,9 @@
   import { navigate, router } from '$lib/router.svelte';
   import {
     applyProjectPreview,
+    getProjectView,
     getProjectYAML,
-    listProjectViews,
+    listProjectSummaries,
     previewProjectMutation,
     type AgentEditableSpec,
     type ProjectAgent,
@@ -80,6 +81,9 @@
   let capabilitySets = $state<CapabilitySet[]>([]);
   let query = $state('');
   let loading = $state(true);
+  let summariesLoaded = $state(false);
+  let detailLoadedIDs = $state<string[]>([]);
+  let detailLoading = $state(false);
   let saving = $state(false);
   let error = $state('');
   let auxiliaryWarning = $state('');
@@ -108,24 +112,25 @@
   const editingProjectVariables = $derived(pathParts[2] === 'settings');
   const editing = $derived(creatingProject || creatingAgent || editingAgent);
   const editorDirty = $derived((editing || editingProjectVariables) && editorSignature() !== editorBaseline);
-  const selectedProject = $derived(
-    projects.find((project) => project.projectId === projectID) ??
-      (router.path === '/projects' ? projects[0] : undefined),
-  );
+  const selectedProject = $derived(projects.find((project) => project.projectId === projectID));
   const selectedAgent = $derived(selectedProject?.agents.find((agent) => agent.agentName === agentName));
   const presentedChanges = $derived(preview ? presentProjectChanges(preview.changes) : []);
   const visibleProjects = $derived(
     projects.filter((project) =>
       query.trim()
-        ? `${project.name} ${project.projectId} ${project.agents.map((agent) => agent.displayName).join(' ')}`
-            .toLowerCase()
-            .includes(query.trim().toLowerCase())
+        ? `${project.name} ${project.projectId}`.toLowerCase().includes(query.trim().toLowerCase())
         : true,
     ),
   );
   const assignableWorkspaces = $derived(workspaces.filter((workspace) => workspace.type === 'git'));
 
   onMount(() => void load());
+
+  $effect(() => {
+    if (!summariesLoaded || !projectID) return;
+    if (detailLoadedIDs.includes(projectID)) return;
+    void loadProjectDetail(projectID);
+  });
 
   $effect(() => {
     if (!editing && !editingProjectVariables) return;
@@ -147,12 +152,14 @@
     auxiliaryWarning = '';
     try {
       const [projectResult, workspaceResult, capabilityResult] = await Promise.allSettled([
-        listProjectViews(),
+        listProjectSummaries(),
         listWorkspacePresets(),
         listCapabilitySets(),
       ]);
       if (projectResult.status === 'rejected') throw projectResult.reason;
+      detailLoadedIDs = [];
       projects = projectResult.value;
+      summariesLoaded = true;
       const warnings: string[] = [];
       if (workspaceResult.status === 'fulfilled') {
         workspaces = workspaceResult.value;
@@ -177,6 +184,25 @@
       error = errorMessage(cause);
     } finally {
       loading = false;
+    }
+  }
+
+  async function loadProjectDetail(id: string): Promise<void> {
+    detailLoading = true;
+    try {
+      const detail = await getProjectView(id);
+      const index = projects.findIndex((project) => project.projectId === id);
+      if (index === -1) {
+        projects = [...projects, detail];
+      } else {
+        projects = projects.map((project, itemIndex) => (itemIndex === index ? detail : project));
+      }
+      if (!detailLoadedIDs.includes(id)) detailLoadedIDs = [...detailLoadedIDs, id];
+      restoreEditorDraft();
+    } catch (cause) {
+      error = errorMessage(cause);
+    } finally {
+      detailLoading = false;
     }
   }
 
@@ -478,7 +504,7 @@
         : 'flex'}"
     >
       <div class="p-3">
-        <Input bind:value={query} placeholder={t('搜索项目或智能体…')} />
+        <Input bind:value={query} placeholder={t('搜索项目…')} />
       </div>
       <div data-scroll-pane class="px-2 pb-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
         {#each visibleProjects as project (project.projectId)}
@@ -720,6 +746,8 @@
             <AgentEnvironmentEditor bind:items={draft.env} class="border-t border-border pt-4" />
           </section>
         </form>
+      {:else if selectedProject && detailLoading}
+        <div class="flex min-h-64 items-center justify-center text-sm text-muted-foreground">{t('正在加载…')}</div>
       {:else if selectedProject}
         <div class="space-y-5">
           <div class="flex flex-wrap items-start justify-between gap-3">
@@ -733,7 +761,11 @@
               >
               <div>
                 <div class="flex min-w-0 flex-wrap items-center gap-2">
-                  <h2 class="min-w-0 break-words text-base font-semibold sm:text-lg">{selectedProject.name}</h2>
+                  <h2 class="min-w-0 break-words text-base font-semibold sm:text-lg">
+                    {selectedProject.name}{#if detailLoading}<span class="ml-2 text-xs font-normal text-muted-foreground"
+                        >{t('正在加载…')}</span
+                      >{/if}
+                  </h2>
                   <StatusBadge
                     status={selectedProject.editable ? 'enabled' : 'warning'}
                     label={selectedProject.editable ? '可部署' : '只读'}
