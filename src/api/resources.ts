@@ -103,41 +103,17 @@ export type SpecResourceTarget = {
 };
 
 export async function listSpecResources(kind: 'mcp' | 'skills'): Promise<SpecResource[]> {
-  const projects: Project[] = [];
-  let offset = 0;
-  for (;;) {
-    const page = await projectClient.listProjects({ limit: 200, offset });
-    for (const summary of page.projects) {
-      const project = (await projectClient.getProject({ project: projectById(summary.projectId), includeSpec: true }))
-        .project;
-      if (project) projects.push(project);
-    }
-    const next = nextPageOffset(offset, page.projects.length, page.total);
-    if (next === undefined) break;
-    offset = next;
-  }
-  const result: SpecResource[] = [];
-  for (const project of projects) {
-    const projectId = project.summary?.projectId ?? '';
-    const projectName = project.summary?.name ?? project.spec?.name ?? projectId;
-    if (kind === 'mcp') {
-      for (const item of project.spec?.mcpServers ?? [])
-        result.push(specResource(item.name, '项目', projectId, projectName, '', item.toJsonString()));
-      for (const agent of project.spec?.agents ?? [])
-        for (const item of agent.mcpServers)
-          result.push(specResource(item.name, '智能体', projectId, projectName, agent.name, item.toJsonString()));
-    } else {
-      for (const agent of project.spec?.agents ?? [])
-        for (const item of agent.skills)
-          result.push(specResource(item.name, '智能体', projectId, projectName, agent.name, item.toJsonString()));
-    }
-  }
-  return result;
+  return (await listSpecResourcesAndTargets(kind)).items;
 }
 
-export async function listSpecResourceTargets(kind: 'mcp' | 'skills'): Promise<SpecResourceTarget[]> {
+export async function listSpecResourcesAndTargets(kind: 'mcp' | 'skills'): Promise<{
+	items: SpecResource[];
+	targets: SpecResourceTarget[];
+}> {
+  const projects = await listProjectsWithSpecs();
+  const result: SpecResource[] = [];
   const targets: SpecResourceTarget[] = [];
-  for (const project of await listProjectsWithSpecs()) {
+  for (const project of projects) {
     const projectId = project.summary?.projectId ?? '';
     const projectName = project.summary?.name ?? project.spec?.name ?? projectId;
     if (kind === 'mcp') {
@@ -148,6 +124,17 @@ export async function listSpecResourceTargets(kind: 'mcp' | 'skills'): Promise<S
         agentName: '',
         label: `${projectName} / 项目级`,
       });
+      for (const item of project.spec?.mcpServers ?? [])
+        result.push(specResource(item.name, '项目', projectId, projectName, '', item.toJsonString()));
+      for (const agent of project.spec?.agents ?? []) {
+        for (const item of agent.mcpServers)
+          result.push(specResource(item.name, '智能体', projectId, projectName, agent.name, item.toJsonString()));
+      }
+    } else {
+      for (const agent of project.spec?.agents ?? []) {
+        for (const item of agent.skills)
+          result.push(specResource(item.name, '智能体', projectId, projectName, agent.name, item.toJsonString()));
+      }
     }
     for (const agent of project.spec?.agents ?? []) {
       targets.push({
@@ -159,7 +146,11 @@ export async function listSpecResourceTargets(kind: 'mcp' | 'skills'): Promise<S
       });
     }
   }
-  return targets;
+  return { items: result, targets };
+}
+
+export async function listSpecResourceTargets(kind: 'mcp' | 'skills'): Promise<SpecResourceTarget[]> {
+  return (await listSpecResourcesAndTargets(kind)).targets;
 }
 
 export async function saveSpecResource(

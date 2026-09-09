@@ -10,7 +10,7 @@ import { runClient } from './client';
 import { t } from '$lib/i18n.svelte';
 import { apiFetchJson } from './http';
 import { isoStringToTimestamp } from '../model/timestamps';
-import { listProjectViews } from './projects';
+import { listProjectAgentContext } from './agents';
 
 export type RunFilter = {
   projectId?: string;
@@ -65,17 +65,13 @@ export async function listUnlinkedRuns(
 }
 
 export async function listRunActors(): Promise<RunActor[]> {
-  const actors: RunActor[] = [];
-  for (const project of await listProjectViews()) {
-    for (const agent of project.agents) {
-      actors.push({
-        projectId: project.projectId,
-        projectName: project.name,
-        agentName: agent.agentName,
-        agentLabel: agent.displayName || agent.agentName,
-      });
-    }
-  }
+  const context = await listProjectAgentContext();
+  const actors = context.agents.map((agent) => ({
+    projectId: agent.projectId,
+    projectName: agent.projectName,
+    agentName: agent.agentName,
+    agentLabel: agent.name,
+  }));
   return actors.sort(
     (left, right) =>
       left.projectName.localeCompare(right.projectName) || left.agentLabel.localeCompare(right.agentLabel),
@@ -108,7 +104,8 @@ export async function followRunLogs(
   for await (const chunk of runClient.followRunLogs(
     { projectId, runId, follow, includeMetadata: true, startOffset: 0n, tailLines: 0, tailSet: false },
     { signal },
-  )) onChunk(chunk.data, chunk.isFinal);
+  ))
+    onChunk(chunk.data, chunk.isFinal);
 }
 
 export type ProjectRunDebugTarget = { runId: string; sandboxId: string };

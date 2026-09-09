@@ -196,6 +196,7 @@ const english: Record<string, string> = {
   项目名称: 'Project name',
   项目名称必填: 'Project name is required',
   '搜索项目或智能体…': 'Search projects or agents…',
+  '搜索项目…': 'Search projects…',
   暂无项目: 'No projects yet',
   没有匹配的项目: 'No matching projects',
   请选择项目: 'Select a project',

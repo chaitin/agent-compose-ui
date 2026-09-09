@@ -7,9 +7,8 @@
   import Timestamp from '$lib/components/timestamp.svelte';
   import { preloadMonaco } from '$lib/monaco';
   import { navigate } from '$lib/router.svelte';
-  import type { AgentDefinition } from '../api/agents';
+  import type { ProjectAgentContextAgent, ProjectAgentContextProject } from '../api/agents';
   import type { AutomationTask } from '../api/loaders';
-  import type { ProjectView } from '../api/projects';
   import Play from '@lucide/svelte/icons/play';
   import { t } from '$lib/i18n.svelte';
 
@@ -25,8 +24,8 @@
     onRemove,
   }: {
     tasks: AutomationTask[];
-    agents: AgentDefinition[];
-    projects: ProjectView[];
+    agents: ProjectAgentContextAgent[];
+    projects: ProjectAgentContextProject[];
     loading: boolean;
     onRun: (task: AutomationTask) => void;
     onHistory: (task: AutomationTask) => void;
@@ -49,7 +48,7 @@
   );
   const visibleTasks = $derived(filterTasks(tasks, query, statusFilter, projectFilter));
 
-  function agentForTask(task: AutomationTask): AgentDefinition | undefined {
+  function agentForTask(task: AutomationTask): ProjectAgentContextAgent | undefined {
     return agents.find((agent) => agent.projectId === task.projectId && agent.agentName === task.agentName);
   }
 

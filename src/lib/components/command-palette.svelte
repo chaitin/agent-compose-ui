@@ -6,12 +6,12 @@
   import { compactIdentifier } from '../../model/identifiers';
   import { navigate } from '$lib/router.svelte';
   import { command } from '$lib/command.svelte';
-  import { listAgentDefinitions, type AgentDefinition } from '../../api/agents';
+  import { listProjectAgentContext, type ProjectAgentContextAgent } from '../../api/agents';
   import { listRuns } from '../../api/runs';
   import { resolveResource, routeForTarget } from '../../api/resources';
   import type { RunSummary } from '../../gen/agentcompose/v2/agentcompose_pb.js';
 
-  let agents = $state<AgentDefinition[]>([]);
+  let agents = $state<ProjectAgentContextAgent[]>([]);
   let runs = $state<RunSummary[]>([]);
   let query = $state('');
   let resolveError = $state('');
@@ -31,9 +31,9 @@
   $effect(() => {
     if (!command.open || loaded) return;
     loaded = true;
-    void Promise.all([listAgentDefinitions(), listRuns({ limit: 50 })])
-      .then(([agentItems, runItems]) => {
-        agents = agentItems;
+    void Promise.all([listProjectAgentContext(), listRuns({ limit: 50 })])
+      .then(([context, runItems]) => {
+        agents = context.agents;
         runs = runItems;
       })
       .catch(() => {

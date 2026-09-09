@@ -12,7 +12,11 @@
   import TechnicalDetails from '$lib/components/technical-details.svelte';
   import { preloadMonaco } from '$lib/monaco';
   import { navigate, router } from '$lib/router.svelte';
-  import { listAgentDefinitions, type AgentDefinition } from '../api/agents';
+  import {
+    listProjectAgentContext,
+    type ProjectAgentContextAgent,
+    type ProjectAgentContextProject,
+  } from '../api/agents';
   import {
     getAutomationTask,
     listAutomationTasks,
@@ -25,12 +29,7 @@
     type AutomationTaskDetail,
     type SaveAutomationTaskInput,
   } from '../api/loaders';
-  import {
-    applyProjectPreview,
-    listProjectViews,
-    type ProjectDeploymentPreview,
-    type ProjectView,
-  } from '../api/projects';
+  import { applyProjectPreview, type ProjectDeploymentPreview } from '../api/projects';
   import ArrowRight from '@lucide/svelte/icons/arrow-right';
   import FolderKanban from '@lucide/svelte/icons/folder-kanban';
   import Play from '@lucide/svelte/icons/play';
@@ -60,8 +59,8 @@
   });
 
   let tasks = $state<AutomationTask[]>([]);
-  let agents = $state<AgentDefinition[]>([]);
-  let projects = $state<ProjectView[]>([]);
+  let agents = $state<ProjectAgentContextAgent[]>([]);
+  let projects = $state<ProjectAgentContextProject[]>([]);
   let draft = $state<Draft>(emptyDraft());
   let loading = $state(true);
   let saving = $state(false);
@@ -144,11 +143,10 @@
     loading = true;
     error = '';
     try {
-      [tasks, agents, projects] = await Promise.all([
-        listAutomationTasks(),
-        listAgentDefinitions(),
-        listProjectViews(),
-      ]);
+      const [loadedTasks, context] = await Promise.all([listAutomationTasks(), listProjectAgentContext()]);
+      tasks = loadedTasks;
+      agents = context.agents;
+      projects = context.projects;
     } catch (cause) {
       error = errorMessage(cause);
     } finally {
@@ -208,7 +206,12 @@
     error = '';
     try {
       if (!(await validate())) return;
-      preview = await previewAutomationTask({ ...draft, id: creating ? undefined : taskId });
+      preview = await previewAutomationTask({
+        ...draft,
+        id: creating ? undefined : taskId,
+        projectId: creating ? selectedDraftAgent?.projectId : undefined,
+        agentName: creating ? selectedDraftAgent?.agentName : undefined,
+      });
     } catch (cause) {
       error = errorMessage(cause);
     } finally {

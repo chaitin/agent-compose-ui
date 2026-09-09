@@ -118,6 +118,12 @@ export async function listProjectViews(): Promise<ProjectView[]> {
   return normalizeProjects((await apiFetchJson<{ projects?: ProjectView[] }>('/api/ui/v1/projects')).projects ?? []);
 }
 
+export async function listProjectSummaries(): Promise<ProjectView[]> {
+  return normalizeProjects(
+    (await apiFetchJson<{ projects?: ProjectView[] }>('/api/ui/v1/project-summaries')).projects ?? [],
+  );
+}
+
 export async function getProjectView(projectId: string): Promise<ProjectView> {
   const response = await apiFetchJson<{ project: ProjectView }>(`/api/ui/v1/projects/${encodeURIComponent(projectId)}`);
   return normalizeProject(response.project);
