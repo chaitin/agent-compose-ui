@@ -5,6 +5,7 @@ import { timestampToISOString as timestampString } from '../model/timestamps';
 export type CapabilityGatewayConfig = {
   addr: string;
   tokenSet: boolean;
+  adminTokenSet: boolean;
 };
 
 export type CapabilityStatus = {
@@ -20,17 +21,29 @@ export type CapabilityStatus = {
 
 export async function getCapabilityGatewayConfig(): Promise<CapabilityGatewayConfig> {
   const response = await settingsClient.getCapabilityGatewayConfig({});
-  return { addr: response.config?.addr ?? '', tokenSet: response.config?.tokenSet ?? false };
+  return {
+    addr: response.config?.addr ?? '',
+    tokenSet: response.config?.tokenSet ?? false,
+    adminTokenSet: response.config?.adminTokenSet ?? false,
+  };
 }
 
 // updateCapabilityGatewayConfig saves the OctoBus connection. An empty token
-// clears the stored token.
-export async function updateCapabilityGatewayConfig(addr: string, token?: string): Promise<CapabilityGatewayConfig> {
+// clears that stored token; an omitted token keeps the current value.
+export async function updateCapabilityGatewayConfig(
+  addr: string,
+  tokens: { token?: string; adminToken?: string } = {},
+): Promise<CapabilityGatewayConfig> {
   const response = await settingsClient.updateCapabilityGatewayConfig({
     addr,
-    ...(token !== undefined ? { token } : {}),
+    ...(tokens.token !== undefined ? { token: tokens.token } : {}),
+    ...(tokens.adminToken !== undefined ? { adminToken: tokens.adminToken } : {}),
   });
-  return { addr: response.config?.addr ?? '', tokenSet: response.config?.tokenSet ?? false };
+  return {
+    addr: response.config?.addr ?? '',
+    tokenSet: response.config?.tokenSet ?? false,
+    adminTokenSet: response.config?.adminTokenSet ?? false,
+  };
 }
 
 export async function getCapabilityStatus(): Promise<CapabilityStatus> {

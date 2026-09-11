@@ -38,6 +38,9 @@
   let gatewayToken = $state('');
   let gatewayTokenSet = $state(false);
   let gatewayClearToken = $state(false);
+  let gatewayAdminToken = $state('');
+  let gatewayAdminTokenSet = $state(false);
+  let gatewayClearAdminToken = $state(false);
   let gatewayStatus = $state<CapabilityStatus | null>(null);
   let workspaceName = $state('');
   let workspaceType = $state('git');
@@ -78,6 +81,7 @@
       webhooks = sources;
       gatewayAddr = gateway.addr;
       gatewayTokenSet = gateway.tokenSet;
+      gatewayAdminTokenSet = gateway.adminTokenSet;
       gatewayStatus = capabilityStatus;
       auth = authStatus;
     } catch (cause) {
@@ -103,10 +107,17 @@
   async function saveGateway(): Promise<void> {
     await perform(t('能力网关已保存'), async () => {
       const tokenUpdate = gatewayClearToken ? '' : gatewayToken ? gatewayToken : undefined;
-      const result = await updateCapabilityGatewayConfig(gatewayAddr, tokenUpdate);
+      const adminTokenUpdate = gatewayClearAdminToken ? '' : gatewayAdminToken ? gatewayAdminToken : undefined;
+      const result = await updateCapabilityGatewayConfig(gatewayAddr, {
+        token: tokenUpdate,
+        adminToken: adminTokenUpdate,
+      });
       gatewayTokenSet = result.tokenSet;
+      gatewayAdminTokenSet = result.adminTokenSet;
       gatewayToken = '';
       gatewayClearToken = false;
+      gatewayAdminToken = '';
+      gatewayClearAdminToken = false;
       gatewayStatus = await getCapabilityStatus();
     });
   }
@@ -299,13 +310,21 @@
         <label class="block space-y-1"
           ><span class="text-sm">{t('网关地址')}</span><Input bind:value={gatewayAddr} /></label
         ><label class="block space-y-1"
-          ><span class="text-sm">{t('访问令牌')}</span><Input
+          ><span class="text-sm">{t('管理 Token（OctoBus Admin Token）')}</span><Input
+            bind:value={gatewayAdminToken}
+            type="password"
+            placeholder={t(gatewayAdminTokenSet ? '已设置；留空保持不变' : '可选')}
+          /></label
+        >{#if gatewayAdminTokenSet}<label class="flex items-center gap-2 text-sm"
+            ><input type="checkbox" bind:checked={gatewayClearAdminToken} />{t('清除已保存的管理 Token')}</label
+          >{/if}<label class="block space-y-1"
+          ><span class="text-sm">{t('能力调用 Token（Capset Token）')}</span><Input
             bind:value={gatewayToken}
             type="password"
             placeholder={t(gatewayTokenSet ? '已设置；留空保持不变' : '可选')}
           /></label
         >{#if gatewayTokenSet}<label class="flex items-center gap-2 text-sm"
-            ><input type="checkbox" bind:checked={gatewayClearToken} />{t('清除已保存令牌')}</label
+            ><input type="checkbox" bind:checked={gatewayClearToken} />{t('清除已保存的能力调用 Token')}</label
           >{/if}
         <div class="flex gap-2">
           <Button onclick={saveGateway} disabled={busy}>{t('保存网关')}</Button><Button

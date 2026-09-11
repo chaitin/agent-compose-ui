@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { ApplyProjectRequest, ApplyProjectResponse, AttachAgentRunRequest, AttachAgentRunResponse, AttachExecRequest, AttachExecResponse, BatchGetLatestSchedulerRunsRequest, BatchGetLatestSchedulerRunsResponse, BuildImageEvent, BuildImageRequest, CapabilityStatusResponse, CreateVolumeRequest, CreateVolumeResponse, CreateWorkspacePresetRequest, DeleteWorkspacePresetRequest, DeleteWorkspacePresetResponse, ExecRequest, ExecResponse, FollowRunLogsRequest, GenerateLLMRequest, GenerateLLMResponse, GetCapabilityCatalogRequest, GetCapabilityCatalogResponse, GetCapabilityGatewayConfigRequest, GetCapabilityGatewayConfigResponse, GetCapabilityStatusRequest, GetDashboardOverviewRequest, GetDashboardOverviewResponse, GetGlobalEnvRequest, GetGlobalEnvResponse, GetProjectRequest, GetProjectResponse, GetRunRequest, GetRunResponse, GetSandboxRequest, GetSandboxResponse, GetSandboxStatsRequest, GetSandboxStatsResponse, GetSchedulerRequest, GetSchedulerResponse, GetSchedulerRunRequest, GetSchedulerRunResponse, InspectCacheRequest, InspectCacheResponse, InspectImageRequest, InspectImageResponse, InspectVolumeRequest, InspectVolumeResponse, InvokeSchedulerRequest, InvokeSchedulerResponse, ListCachesRequest, ListCachesResponse, ListCapabilitySetsRequest, ListCapabilitySetsResponse, ListImagesRequest, ListImagesResponse, ListProjectSchedulerEventsRequest, ListProjectSchedulerEventsResponse, ListProjectsRequest, ListProjectsResponse, ListRunEventsRequest, ListRunEventsResponse, ListRunsRequest, ListRunsResponse, ListSandboxesRequest, ListSandboxesResponse, ListSandboxHistoryRequest, ListSandboxHistoryResponse, ListSandboxRunEventsRequest, ListSandboxRunEventsResponse, ListSchedulerEventsRequest, ListSchedulerEventsResponse, ListSchedulerRunsRequest, ListSchedulerRunsResponse, ListSchedulersRequest, ListSchedulersResponse, ListVolumesRequest, ListVolumesResponse, ListWorkspacePresetsRequest, ListWorkspacePresetsResponse, PatchProjectRequest, PruneCachesRequest, PruneCachesResponse, PruneSandboxesRequest, PruneSandboxesResponse, PruneSchedulerRunsRequest, PruneSchedulerRunsResponse, PruneVolumesRequest, PruneVolumesResponse, PullImageRequest, PullImageResponse, RemoveCacheRequest, RemoveCacheResponse, RemoveImageRequest, RemoveImageResponse, RemoveProjectRequest, RemoveProjectResponse, RemoveSandboxRequest, RemoveSandboxResponse, RemoveVolumeRequest, RemoveVolumeResponse, ResolveResourceIDRequest, ResolveResourceIDResponse, ResumeSandboxRequest, ResumeSandboxResponse, RunAgentRequest, RunAgentResponse, RunLogChunk, RunSchedulerRequest, RunSchedulerResponse, SetSchedulerEnabledRequest, SetSchedulerEnabledResponse, SetSchedulerTriggerEnabledRequest, SetSchedulerTriggerEnabledResponse, StartAgentRunRequest, StartAgentRunResponse, StartSchedulerRunRequest, StartSchedulerRunResponse, StopRunRequest, StopRunResponse, StopSandboxRequest, StopSandboxResponse, StopSchedulerRunRequest, StopSchedulerRunResponse, StreamAgentRunResponse, StreamExecResponse, StreamProjectSchedulerEventsRequest, StreamProjectSchedulerEventsResponse, StreamSchedulerRunsRequest, StreamSchedulerRunsResponse, UpdateCapabilityGatewayConfigRequest, UpdateCapabilityGatewayConfigResponse, UpdateGlobalEnvRequest, UpdateGlobalEnvResponse, UpdateWorkspacePresetRequest, ValidateProjectRequest, ValidateProjectResponse, WatchDashboardOverviewRequest, WatchDashboardOverviewResponse, WatchProjectRequest, WatchProjectResponse, WatchSandboxRequest, WatchSandboxResponse, WorkspacePresetResponse } from "./agentcompose_pb.js";
+import { ApplyProjectRequest, ApplyProjectResponse, AttachAgentRunRequest, AttachAgentRunResponse, AttachExecRequest, AttachExecResponse, BatchGetLatestSchedulerRunsRequest, BatchGetLatestSchedulerRunsResponse, BuildImageEvent, BuildImageRequest, CapabilityStatusResponse, CreateProviderRequest, CreateProviderResponse, CreateVolumeRequest, CreateVolumeResponse, CreateWorkspacePresetRequest, DeleteProviderRequest, DeleteProviderResponse, DeleteWorkspacePresetRequest, DeleteWorkspacePresetResponse, ExecRequest, ExecResponse, FollowRunLogsRequest, GenerateLLMRequest, GenerateLLMResponse, GetCapabilityCatalogRequest, GetCapabilityCatalogResponse, GetCapabilityGatewayConfigRequest, GetCapabilityGatewayConfigResponse, GetCapabilityStatusRequest, GetDashboardOverviewRequest, GetDashboardOverviewResponse, GetGlobalEnvRequest, GetGlobalEnvResponse, GetProjectRequest, GetProjectResponse, GetProviderRequest, GetProviderResponse, GetRunRequest, GetRunResponse, GetSandboxRequest, GetSandboxResponse, GetSandboxStatsRequest, GetSandboxStatsResponse, GetSchedulerRequest, GetSchedulerResponse, GetSchedulerRunRequest, GetSchedulerRunResponse, InspectCacheRequest, InspectCacheResponse, InspectImageRequest, InspectImageResponse, InspectVolumeRequest, InspectVolumeResponse, InvokeCapabilityRequest, InvokeCapabilityResponse, InvokeSchedulerRequest, InvokeSchedulerResponse, ListCachesRequest, ListCachesResponse, ListCapabilitySetsRequest, ListCapabilitySetsResponse, ListImagesRequest, ListImagesResponse, ListProjectSchedulerEventsRequest, ListProjectSchedulerEventsResponse, ListProjectsRequest, ListProjectsResponse, ListProvidersRequest, ListProvidersResponse, ListRunEventsRequest, ListRunEventsResponse, ListRunsRequest, ListRunsResponse, ListSandboxesRequest, ListSandboxesResponse, ListSandboxHistoryRequest, ListSandboxHistoryResponse, ListSandboxRunEventsRequest, ListSandboxRunEventsResponse, ListSchedulerEventsRequest, ListSchedulerEventsResponse, ListSchedulerRunsRequest, ListSchedulerRunsResponse, ListSchedulersRequest, ListSchedulersResponse, ListVolumesRequest, ListVolumesResponse, ListWorkspacePresetsRequest, ListWorkspacePresetsResponse, PatchProjectRequest, PruneCachesRequest, PruneCachesResponse, PruneSandboxesRequest, PruneSandboxesResponse, PruneSchedulerRunsRequest, PruneSchedulerRunsResponse, PruneVolumesRequest, PruneVolumesResponse, PullImageRequest, PullImageResponse, RemoveCacheRequest, RemoveCacheResponse, RemoveImageRequest, RemoveImageResponse, RemoveProjectRequest, RemoveProjectResponse, RemoveSandboxRequest, RemoveSandboxResponse, RemoveVolumeRequest, RemoveVolumeResponse, ResolveResourceIDRequest, ResolveResourceIDResponse, ResumeSandboxRequest, ResumeSandboxResponse, RunAgentRequest, RunAgentResponse, RunLogChunk, RunSchedulerRequest, RunSchedulerResponse, SetSchedulerEnabledRequest, SetSchedulerEnabledResponse, SetSchedulerTriggerEnabledRequest, SetSchedulerTriggerEnabledResponse, StartAgentRunRequest, StartAgentRunResponse, StartSchedulerRunRequest, StartSchedulerRunResponse, StopRunRequest, StopRunResponse, StopSandboxRequest, StopSandboxResponse, StopSchedulerRunRequest, StopSchedulerRunResponse, StreamAgentRunResponse, StreamExecResponse, StreamProjectSchedulerEventsRequest, StreamProjectSchedulerEventsResponse, StreamSchedulerRunsRequest, StreamSchedulerRunsResponse, UpdateCapabilityGatewayConfigRequest, UpdateCapabilityGatewayConfigResponse, UpdateGlobalEnvRequest, UpdateGlobalEnvResponse, UpdateProviderRequest, UpdateProviderResponse, UpdateWorkspacePresetRequest, ValidateProjectRequest, ValidateProjectResponse, WatchDashboardOverviewRequest, WatchDashboardOverviewResponse, WatchProjectRequest, WatchProjectResponse, WatchSandboxRequest, WatchSandboxResponse, WorkspacePresetResponse } from "./agentcompose_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -787,6 +787,15 @@ export const CapabilityService = {
       O: GetCapabilityCatalogResponse,
       kind: MethodKind.Unary,
     },
+    /**
+     * @generated from rpc agentcompose.v2.CapabilityService.InvokeCapability
+     */
+    invokeCapability: {
+      name: "InvokeCapability",
+      I: InvokeCapabilityRequest,
+      O: InvokeCapabilityResponse,
+      kind: MethodKind.Unary,
+    },
   }
 } as const;
 
@@ -796,6 +805,53 @@ export const CapabilityService = {
 export const LLMService = {
   typeName: "agentcompose.v2.LLMService",
   methods: {
+    /**
+     * Manage API-owned upstream model providers, not coding-agent providers.
+     *
+     * @generated from rpc agentcompose.v2.LLMService.CreateProvider
+     */
+    createProvider: {
+      name: "CreateProvider",
+      I: CreateProviderRequest,
+      O: CreateProviderResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc agentcompose.v2.LLMService.GetProvider
+     */
+    getProvider: {
+      name: "GetProvider",
+      I: GetProviderRequest,
+      O: GetProviderResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc agentcompose.v2.LLMService.ListProviders
+     */
+    listProviders: {
+      name: "ListProviders",
+      I: ListProvidersRequest,
+      O: ListProvidersResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc agentcompose.v2.LLMService.UpdateProvider
+     */
+    updateProvider: {
+      name: "UpdateProvider",
+      I: UpdateProviderRequest,
+      O: UpdateProviderResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc agentcompose.v2.LLMService.DeleteProvider
+     */
+    deleteProvider: {
+      name: "DeleteProvider",
+      I: DeleteProviderRequest,
+      O: DeleteProviderResponse,
+      kind: MethodKind.Unary,
+    },
     /**
      * @generated from rpc agentcompose.v2.LLMService.Generate
      */

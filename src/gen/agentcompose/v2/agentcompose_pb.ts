@@ -697,6 +697,32 @@ proto3.util.setEnumType(AttachRunMode, "agentcompose.v2.AttachRunMode", [
 ]);
 
 /**
+ * @generated from enum agentcompose.v2.AttachDisconnectPolicy
+ */
+export enum AttachDisconnectPolicy {
+  /**
+   * @generated from enum value: ATTACH_DISCONNECT_POLICY_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: ATTACH_DISCONNECT_POLICY_CANCEL = 1;
+   */
+  CANCEL = 1,
+
+  /**
+   * @generated from enum value: ATTACH_DISCONNECT_POLICY_DETACH = 2;
+   */
+  DETACH = 2,
+}
+// Retrieve enum metadata with: proto3.getEnumType(AttachDisconnectPolicy)
+proto3.util.setEnumType(AttachDisconnectPolicy, "agentcompose.v2.AttachDisconnectPolicy", [
+  { no: 0, name: "ATTACH_DISCONNECT_POLICY_UNSPECIFIED" },
+  { no: 1, name: "ATTACH_DISCONNECT_POLICY_CANCEL" },
+  { no: 2, name: "ATTACH_DISCONNECT_POLICY_DETACH" },
+]);
+
+/**
  * @generated from enum agentcompose.v2.StdioStream
  */
 export enum StdioStream {
@@ -1076,6 +1102,32 @@ proto3.util.setEnumType(AgentModelSource, "agentcompose.v2.AgentModelSource", [
   { no: 3, name: "AGENT_MODEL_SOURCE_DAEMON_DEFAULT" },
   { no: 4, name: "AGENT_MODEL_SOURCE_PROVIDER_DEFAULT" },
   { no: 5, name: "AGENT_MODEL_SOURCE_UNRESOLVED" },
+]);
+
+/**
+ * @generated from enum agentcompose.v2.WorkspaceMode
+ */
+export enum WorkspaceMode {
+  /**
+   * @generated from enum value: WORKSPACE_MODE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: WORKSPACE_MODE_COPY = 1;
+   */
+  COPY = 1,
+
+  /**
+   * @generated from enum value: WORKSPACE_MODE_MOUNT = 2;
+   */
+  MOUNT = 2,
+}
+// Retrieve enum metadata with: proto3.getEnumType(WorkspaceMode)
+proto3.util.setEnumType(WorkspaceMode, "agentcompose.v2.WorkspaceMode", [
+  { no: 0, name: "WORKSPACE_MODE_UNSPECIFIED" },
+  { no: 1, name: "WORKSPACE_MODE_COPY" },
+  { no: 2, name: "WORKSPACE_MODE_MOUNT" },
 ]);
 
 /**
@@ -5187,6 +5239,20 @@ export class WorkspaceSpec extends Message<WorkspaceSpec> {
    */
   token = "";
 
+  /**
+   * Empty defaults to an isolated copy. Mount shares a file source with Docker.
+   *
+   * @generated from field: agentcompose.v2.WorkspaceMode mode = 11;
+   */
+  mode = WorkspaceMode.UNSPECIFIED;
+
+  /**
+   * Mount-only guest write protection. False preserves writable behavior.
+   *
+   * @generated from field: bool read_only = 12;
+   */
+  readOnly = false;
+
   constructor(data?: PartialMessage<WorkspaceSpec>) {
     super();
     proto3.util.initPartial(data, this);
@@ -5205,6 +5271,8 @@ export class WorkspaceSpec extends Message<WorkspaceSpec> {
     { no: 8, name: "username", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 9, name: "password", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 10, name: "token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 11, name: "mode", kind: "enum", T: proto3.getEnumType(WorkspaceMode) },
+    { no: 12, name: "read_only", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): WorkspaceSpec {
@@ -5268,6 +5336,13 @@ export class SchedulerSpec extends Message<SchedulerSpec> {
    */
   model = "";
 
+  /**
+   * Optional per-scheduler run timeout. Empty inherits the daemon default.
+   *
+   * @generated from field: string run_timeout = 9;
+   */
+  runTimeout = "";
+
   constructor(data?: PartialMessage<SchedulerSpec>) {
     super();
     proto3.util.initPartial(data, this);
@@ -5284,6 +5359,7 @@ export class SchedulerSpec extends Message<SchedulerSpec> {
     { no: 6, name: "description", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 7, name: "concurrency_policy", kind: "enum", T: proto3.getEnumType(SchedulerConcurrencyPolicy) },
     { no: 8, name: "model", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 9, name: "run_timeout", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SchedulerSpec {
@@ -5463,6 +5539,12 @@ export class DriverSpec extends Message<DriverSpec> {
      */
     value: MicrosandboxDriverSpec;
     case: "microsandbox";
+  } | {
+    /**
+     * @generated from field: agentcompose.v2.K8sDriverSpec k8s = 5;
+     */
+    value: K8sDriverSpec;
+    case: "k8s";
   } | { case: undefined; value?: undefined } = { case: undefined };
 
   constructor(data?: PartialMessage<DriverSpec>) {
@@ -5477,6 +5559,7 @@ export class DriverSpec extends Message<DriverSpec> {
     { no: 2, name: "boxlite", kind: "message", T: BoxliteDriverSpec, oneof: "config" },
     { no: 3, name: "docker", kind: "message", T: DockerDriverSpec, oneof: "config" },
     { no: 4, name: "microsandbox", kind: "message", T: MicrosandboxDriverSpec, oneof: "config" },
+    { no: 5, name: "k8s", kind: "message", T: K8sDriverSpec, oneof: "config" },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): DriverSpec {
@@ -5614,6 +5697,49 @@ export class MicrosandboxDriverSpec extends Message<MicrosandboxDriverSpec> {
 }
 
 /**
+ * @generated from message agentcompose.v2.K8sDriverSpec
+ */
+export class K8sDriverSpec extends Message<K8sDriverSpec> {
+  /**
+   * @generated from field: string context = 1;
+   */
+  context = "";
+
+  /**
+   * @generated from field: string namespace = 2;
+   */
+  namespace = "";
+
+  constructor(data?: PartialMessage<K8sDriverSpec>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.K8sDriverSpec";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "context", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "namespace", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): K8sDriverSpec {
+    return new K8sDriverSpec().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): K8sDriverSpec {
+    return new K8sDriverSpec().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): K8sDriverSpec {
+    return new K8sDriverSpec().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: K8sDriverSpec | PlainMessage<K8sDriverSpec> | undefined, b: K8sDriverSpec | PlainMessage<K8sDriverSpec> | undefined): boolean {
+    return proto3.util.equals(K8sDriverSpec, a, b);
+  }
+}
+
+/**
  * @generated from message agentcompose.v2.RunAgentRequest
  */
 export class RunAgentRequest extends Message<RunAgentRequest> {
@@ -5700,6 +5826,13 @@ export class RunAgentRequest extends Message<RunAgentRequest> {
    */
   payloadJson = "";
 
+  /**
+   * Optional user-defined key/value labels attached to the run at start time.
+   *
+   * @generated from field: map<string, string> labels = 17;
+   */
+  labels: { [key: string]: string } = {};
+
   constructor(data?: PartialMessage<RunAgentRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -5724,6 +5857,7 @@ export class RunAgentRequest extends Message<RunAgentRequest> {
     { no: 14, name: "sandbox_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 15, name: "volumes", kind: "message", T: VolumeMountSpec, repeated: true },
     { no: 16, name: "payload_json", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 17, name: "labels", kind: "map", K: 9 /* ScalarType.STRING */, V: {kind: "scalar", T: 9 /* ScalarType.STRING */} },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): RunAgentRequest {
@@ -6081,6 +6215,18 @@ export class AttachAgentRunStart extends Message<AttachAgentRunStart> {
    */
   terminalSize?: AttachTerminalSize;
 
+  /**
+   * When set, attach to an existing interactive session instead of creating a run.
+   *
+   * @generated from field: string run_id = 6;
+   */
+  runId = "";
+
+  /**
+   * @generated from field: agentcompose.v2.AttachDisconnectPolicy disconnect_policy = 7;
+   */
+  disconnectPolicy = AttachDisconnectPolicy.UNSPECIFIED;
+
   constructor(data?: PartialMessage<AttachAgentRunStart>) {
     super();
     proto3.util.initPartial(data, this);
@@ -6094,6 +6240,8 @@ export class AttachAgentRunStart extends Message<AttachAgentRunStart> {
     { no: 3, name: "attach_stdin", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 4, name: "tty", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 5, name: "terminal_size", kind: "message", T: AttachTerminalSize },
+    { no: 6, name: "run_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 7, name: "disconnect_policy", kind: "enum", T: proto3.getEnumType(AttachDisconnectPolicy) },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): AttachAgentRunStart {
@@ -6329,6 +6477,13 @@ export class ListRunsRequest extends Message<ListRunsRequest> {
    */
   schedulerRunId = "";
 
+  /**
+   * Optional exact-match label filters, ANDed together. An empty map applies no filter.
+   *
+   * @generated from field: map<string, string> labels = 12;
+   */
+  labels: { [key: string]: string } = {};
+
   constructor(data?: PartialMessage<ListRunsRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -6348,6 +6503,7 @@ export class ListRunsRequest extends Message<ListRunsRequest> {
     { no: 9, name: "limit", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
     { no: 10, name: "sandbox_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 11, name: "scheduler_run_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 12, name: "labels", kind: "map", K: 9 /* ScalarType.STRING */, V: {kind: "scalar", T: 9 /* ScalarType.STRING */} },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListRunsRequest {
@@ -7512,6 +7668,13 @@ export class Sandbox extends Message<Sandbox> {
    */
   stoppedRuntimeReleasedAt?: Timestamp;
 
+  /**
+   * Safe delivery metadata from this sandbox snapshot, when available.
+   *
+   * @generated from field: agentcompose.v2.SandboxWorkspaceDelivery workspace_delivery = 25;
+   */
+  workspaceDelivery?: SandboxWorkspaceDelivery;
+
   constructor(data?: PartialMessage<Sandbox>) {
     super();
     proto3.util.initPartial(data, this);
@@ -7544,6 +7707,7 @@ export class Sandbox extends Message<Sandbox> {
     { no: 22, name: "stopped_runtime_state", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 23, name: "stopped_runtime_last_error", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 24, name: "stopped_runtime_released_at", kind: "message", T: Timestamp },
+    { no: 25, name: "workspace_delivery", kind: "message", T: SandboxWorkspaceDelivery },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): Sandbox {
@@ -7560,6 +7724,67 @@ export class Sandbox extends Message<Sandbox> {
 
   static equals(a: Sandbox | PlainMessage<Sandbox> | undefined, b: Sandbox | PlainMessage<Sandbox> | undefined): boolean {
     return proto3.util.equals(Sandbox, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.SandboxWorkspaceDelivery
+ */
+export class SandboxWorkspaceDelivery extends Message<SandboxWorkspaceDelivery> {
+  /**
+   * Unknown or malformed snapshots use UNSPECIFIED, never an inferred copy.
+   *
+   * @generated from field: agentcompose.v2.WorkspaceMode mode = 1;
+   */
+  mode = WorkspaceMode.UNSPECIFIED;
+
+  /**
+   * Resolved daemon source for mount only. Managed copy roots are not exposed.
+   *
+   * @generated from field: string source_path = 2;
+   */
+  sourcePath = "";
+
+  /**
+   * Relative to the guest workspace; mount only.
+   *
+   * @generated from field: string target = 3;
+   */
+  target = "";
+
+  /**
+   * @generated from field: bool read_only = 4;
+   */
+  readOnly = false;
+
+  constructor(data?: PartialMessage<SandboxWorkspaceDelivery>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.SandboxWorkspaceDelivery";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "mode", kind: "enum", T: proto3.getEnumType(WorkspaceMode) },
+    { no: 2, name: "source_path", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "target", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "read_only", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SandboxWorkspaceDelivery {
+    return new SandboxWorkspaceDelivery().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): SandboxWorkspaceDelivery {
+    return new SandboxWorkspaceDelivery().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): SandboxWorkspaceDelivery {
+    return new SandboxWorkspaceDelivery().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: SandboxWorkspaceDelivery | PlainMessage<SandboxWorkspaceDelivery> | undefined, b: SandboxWorkspaceDelivery | PlainMessage<SandboxWorkspaceDelivery> | undefined): boolean {
+    return proto3.util.equals(SandboxWorkspaceDelivery, a, b);
   }
 }
 
@@ -8297,6 +8522,13 @@ export class RunDetail extends Message<RunDetail> {
    */
   errorStack = "";
 
+  /**
+   * User-defined key/value labels attached to the run at start time.
+   *
+   * @generated from field: map<string, string> labels = 12;
+   */
+  labels: { [key: string]: string } = {};
+
   constructor(data?: PartialMessage<RunDetail>) {
     super();
     proto3.util.initPartial(data, this);
@@ -8316,6 +8548,7 @@ export class RunDetail extends Message<RunDetail> {
     { no: 9, name: "image_ref", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 10, name: "warnings", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
     { no: 11, name: "error_stack", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 12, name: "labels", kind: "map", K: 9 /* ScalarType.STRING */, V: {kind: "scalar", T: 9 /* ScalarType.STRING */} },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): RunDetail {
@@ -11958,6 +12191,13 @@ export class StartAgentRunRequest extends Message<StartAgentRunRequest> {
    */
   run?: RunAgentRequest;
 
+  /**
+   * Starts a detached interactive prompt session that can be attached by run_id.
+   *
+   * @generated from field: bool interactive = 2;
+   */
+  interactive = false;
+
   constructor(data?: PartialMessage<StartAgentRunRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -11967,6 +12207,7 @@ export class StartAgentRunRequest extends Message<StartAgentRunRequest> {
   static readonly typeName = "agentcompose.v2.StartAgentRunRequest";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "run", kind: "message", T: RunAgentRequest },
+    { no: 2, name: "interactive", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): StartAgentRunRequest {
@@ -12695,9 +12936,18 @@ export class CapabilityGatewayConfig extends Message<CapabilityGatewayConfig> {
   addr = "";
 
   /**
+   * Whether the capset token used for business capability invocation is set.
+   *
    * @generated from field: bool token_set = 2;
    */
   tokenSet = false;
+
+  /**
+   * Whether the OctoBus admin token used for status/catalog access is set.
+   *
+   * @generated from field: bool admin_token_set = 3;
+   */
+  adminTokenSet = false;
 
   constructor(data?: PartialMessage<CapabilityGatewayConfig>) {
     super();
@@ -12709,6 +12959,7 @@ export class CapabilityGatewayConfig extends Message<CapabilityGatewayConfig> {
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "addr", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "token_set", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 3, name: "admin_token_set", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): CapabilityGatewayConfig {
@@ -12777,11 +13028,18 @@ export class UpdateCapabilityGatewayConfigRequest extends Message<UpdateCapabili
   addr?: string;
 
   /**
-   * Field patch: absent is no-op; present empty explicitly clears the token.
+   * Field patch: absent is no-op; present empty explicitly clears the capset token.
    *
    * @generated from field: optional string token = 2;
    */
   token?: string;
+
+  /**
+   * Field patch: absent is no-op; present empty explicitly clears the admin token.
+   *
+   * @generated from field: optional string admin_token = 3;
+   */
+  adminToken?: string;
 
   constructor(data?: PartialMessage<UpdateCapabilityGatewayConfigRequest>) {
     super();
@@ -12793,6 +13051,7 @@ export class UpdateCapabilityGatewayConfigRequest extends Message<UpdateCapabili
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "addr", kind: "scalar", T: 9 /* ScalarType.STRING */, opt: true },
     { no: 2, name: "token", kind: "scalar", T: 9 /* ScalarType.STRING */, opt: true },
+    { no: 3, name: "admin_token", kind: "scalar", T: 9 /* ScalarType.STRING */, opt: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): UpdateCapabilityGatewayConfigRequest {
@@ -13754,6 +14013,108 @@ export class GetCapabilityCatalogResponse extends Message<GetCapabilityCatalogRe
 }
 
 /**
+ * @generated from message agentcompose.v2.InvokeCapabilityRequest
+ */
+export class InvokeCapabilityRequest extends Message<InvokeCapabilityRequest> {
+  /**
+   * @generated from field: string capset_id = 1;
+   */
+  capsetId = "";
+
+  /**
+   * @generated from field: string instance_id = 2;
+   */
+  instanceId = "";
+
+  /**
+   * @generated from field: string service_id = 3;
+   */
+  serviceId = "";
+
+  /**
+   * @generated from field: string method = 4;
+   */
+  method = "";
+
+  /**
+   * JSON-encoded request object forwarded to the OctoBus Connect RPC method.
+   *
+   * @generated from field: string payload_json = 5;
+   */
+  payloadJson = "";
+
+  constructor(data?: PartialMessage<InvokeCapabilityRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.InvokeCapabilityRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "capset_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "instance_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "service_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "method", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "payload_json", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): InvokeCapabilityRequest {
+    return new InvokeCapabilityRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): InvokeCapabilityRequest {
+    return new InvokeCapabilityRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): InvokeCapabilityRequest {
+    return new InvokeCapabilityRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: InvokeCapabilityRequest | PlainMessage<InvokeCapabilityRequest> | undefined, b: InvokeCapabilityRequest | PlainMessage<InvokeCapabilityRequest> | undefined): boolean {
+    return proto3.util.equals(InvokeCapabilityRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.InvokeCapabilityResponse
+ */
+export class InvokeCapabilityResponse extends Message<InvokeCapabilityResponse> {
+  /**
+   * JSON-encoded response object returned by the OctoBus Connect RPC method.
+   *
+   * @generated from field: string result_json = 1;
+   */
+  resultJson = "";
+
+  constructor(data?: PartialMessage<InvokeCapabilityResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.InvokeCapabilityResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "result_json", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): InvokeCapabilityResponse {
+    return new InvokeCapabilityResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): InvokeCapabilityResponse {
+    return new InvokeCapabilityResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): InvokeCapabilityResponse {
+    return new InvokeCapabilityResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: InvokeCapabilityResponse | PlainMessage<InvokeCapabilityResponse> | undefined, b: InvokeCapabilityResponse | PlainMessage<InvokeCapabilityResponse> | undefined): boolean {
+    return proto3.util.equals(InvokeCapabilityResponse, a, b);
+  }
+}
+
+/**
  * @generated from message agentcompose.v2.ListSandboxHistoryRequest
  */
 export class ListSandboxHistoryRequest extends Message<ListSandboxHistoryRequest> {
@@ -14639,5 +15000,542 @@ export class BatchGetLatestSchedulerRunsResponse extends Message<BatchGetLatestS
 
   static equals(a: BatchGetLatestSchedulerRunsResponse | PlainMessage<BatchGetLatestSchedulerRunsResponse> | undefined, b: BatchGetLatestSchedulerRunsResponse | PlainMessage<BatchGetLatestSchedulerRunsResponse> | undefined): boolean {
     return proto3.util.equals(BatchGetLatestSchedulerRunsResponse, a, b);
+  }
+}
+
+/**
+ * LLMProvider contains public configuration only; credentials are never returned.
+ *
+ * @generated from message agentcompose.v2.LLMProvider
+ */
+export class LLMProvider extends Message<LLMProvider> {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id = "";
+
+  /**
+   * @generated from field: string name = 2;
+   */
+  name = "";
+
+  /**
+   * @generated from field: string base_url = 3;
+   */
+  baseUrl = "";
+
+  /**
+   * @generated from field: string protocol = 4;
+   */
+  protocol = "";
+
+  /**
+   * @generated from field: bool enabled = 5;
+   */
+  enabled = false;
+
+  /**
+   * @generated from field: bool api_key_set = 6;
+   */
+  apiKeySet = false;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp created_at = 7;
+   */
+  createdAt?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp updated_at = 8;
+   */
+  updatedAt?: Timestamp;
+
+  constructor(data?: PartialMessage<LLMProvider>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.LLMProvider";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "base_url", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "protocol", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "enabled", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 6, name: "api_key_set", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 7, name: "created_at", kind: "message", T: Timestamp },
+    { no: 8, name: "updated_at", kind: "message", T: Timestamp },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): LLMProvider {
+    return new LLMProvider().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): LLMProvider {
+    return new LLMProvider().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): LLMProvider {
+    return new LLMProvider().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: LLMProvider | PlainMessage<LLMProvider> | undefined, b: LLMProvider | PlainMessage<LLMProvider> | undefined): boolean {
+    return proto3.util.equals(LLMProvider, a, b);
+  }
+}
+
+/**
+ * LLMProviderSpec replaces public configuration on update. ID is immutable.
+ *
+ * @generated from message agentcompose.v2.LLMProviderSpec
+ */
+export class LLMProviderSpec extends Message<LLMProviderSpec> {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id = "";
+
+  /**
+   * @generated from field: string name = 2;
+   */
+  name = "";
+
+  /**
+   * @generated from field: string base_url = 3;
+   */
+  baseUrl = "";
+
+  /**
+   * responses, chat_completions, or anthropic_messages; required.
+   *
+   * @generated from field: string protocol = 4;
+   */
+  protocol = "";
+
+  /**
+   * Required and nonempty on create. Absent on update preserves the key.
+   * Present empty is invalid. Values are literal, not environment references.
+   *
+   * @generated from field: optional string api_key = 5;
+   */
+  apiKey?: string;
+
+  /**
+   * Absent means enabled, including on replacement updates.
+   *
+   * @generated from field: optional bool enabled = 6;
+   */
+  enabled?: boolean;
+
+  constructor(data?: PartialMessage<LLMProviderSpec>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.LLMProviderSpec";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "base_url", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "protocol", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "api_key", kind: "scalar", T: 9 /* ScalarType.STRING */, opt: true },
+    { no: 6, name: "enabled", kind: "scalar", T: 8 /* ScalarType.BOOL */, opt: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): LLMProviderSpec {
+    return new LLMProviderSpec().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): LLMProviderSpec {
+    return new LLMProviderSpec().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): LLMProviderSpec {
+    return new LLMProviderSpec().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: LLMProviderSpec | PlainMessage<LLMProviderSpec> | undefined, b: LLMProviderSpec | PlainMessage<LLMProviderSpec> | undefined): boolean {
+    return proto3.util.equals(LLMProviderSpec, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.CreateProviderRequest
+ */
+export class CreateProviderRequest extends Message<CreateProviderRequest> {
+  /**
+   * @generated from field: agentcompose.v2.LLMProviderSpec provider = 1;
+   */
+  provider?: LLMProviderSpec;
+
+  constructor(data?: PartialMessage<CreateProviderRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.CreateProviderRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "provider", kind: "message", T: LLMProviderSpec },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): CreateProviderRequest {
+    return new CreateProviderRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): CreateProviderRequest {
+    return new CreateProviderRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): CreateProviderRequest {
+    return new CreateProviderRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: CreateProviderRequest | PlainMessage<CreateProviderRequest> | undefined, b: CreateProviderRequest | PlainMessage<CreateProviderRequest> | undefined): boolean {
+    return proto3.util.equals(CreateProviderRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.CreateProviderResponse
+ */
+export class CreateProviderResponse extends Message<CreateProviderResponse> {
+  /**
+   * @generated from field: agentcompose.v2.LLMProvider provider = 1;
+   */
+  provider?: LLMProvider;
+
+  constructor(data?: PartialMessage<CreateProviderResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.CreateProviderResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "provider", kind: "message", T: LLMProvider },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): CreateProviderResponse {
+    return new CreateProviderResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): CreateProviderResponse {
+    return new CreateProviderResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): CreateProviderResponse {
+    return new CreateProviderResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: CreateProviderResponse | PlainMessage<CreateProviderResponse> | undefined, b: CreateProviderResponse | PlainMessage<CreateProviderResponse> | undefined): boolean {
+    return proto3.util.equals(CreateProviderResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.GetProviderRequest
+ */
+export class GetProviderRequest extends Message<GetProviderRequest> {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id = "";
+
+  constructor(data?: PartialMessage<GetProviderRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.GetProviderRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GetProviderRequest {
+    return new GetProviderRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GetProviderRequest {
+    return new GetProviderRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GetProviderRequest {
+    return new GetProviderRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GetProviderRequest | PlainMessage<GetProviderRequest> | undefined, b: GetProviderRequest | PlainMessage<GetProviderRequest> | undefined): boolean {
+    return proto3.util.equals(GetProviderRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.GetProviderResponse
+ */
+export class GetProviderResponse extends Message<GetProviderResponse> {
+  /**
+   * @generated from field: agentcompose.v2.LLMProvider provider = 1;
+   */
+  provider?: LLMProvider;
+
+  constructor(data?: PartialMessage<GetProviderResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.GetProviderResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "provider", kind: "message", T: LLMProvider },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GetProviderResponse {
+    return new GetProviderResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GetProviderResponse {
+    return new GetProviderResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GetProviderResponse {
+    return new GetProviderResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GetProviderResponse | PlainMessage<GetProviderResponse> | undefined, b: GetProviderResponse | PlainMessage<GetProviderResponse> | undefined): boolean {
+    return proto3.util.equals(GetProviderResponse, a, b);
+  }
+}
+
+/**
+ * Lists API-owned providers, including disabled providers, ordered by ID.
+ *
+ * @generated from message agentcompose.v2.ListProvidersRequest
+ */
+export class ListProvidersRequest extends Message<ListProvidersRequest> {
+  /**
+   * @generated from field: uint32 offset = 1;
+   */
+  offset = 0;
+
+  /**
+   * @generated from field: uint32 limit = 2;
+   */
+  limit = 0;
+
+  constructor(data?: PartialMessage<ListProvidersRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.ListProvidersRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "offset", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
+    { no: 2, name: "limit", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListProvidersRequest {
+    return new ListProvidersRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ListProvidersRequest {
+    return new ListProvidersRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ListProvidersRequest {
+    return new ListProvidersRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ListProvidersRequest | PlainMessage<ListProvidersRequest> | undefined, b: ListProvidersRequest | PlainMessage<ListProvidersRequest> | undefined): boolean {
+    return proto3.util.equals(ListProvidersRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.ListProvidersResponse
+ */
+export class ListProvidersResponse extends Message<ListProvidersResponse> {
+  /**
+   * @generated from field: repeated agentcompose.v2.LLMProvider providers = 1;
+   */
+  providers: LLMProvider[] = [];
+
+  /**
+   * @generated from field: uint32 total = 2;
+   */
+  total = 0;
+
+  constructor(data?: PartialMessage<ListProvidersResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.ListProvidersResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "providers", kind: "message", T: LLMProvider, repeated: true },
+    { no: 2, name: "total", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListProvidersResponse {
+    return new ListProvidersResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ListProvidersResponse {
+    return new ListProvidersResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ListProvidersResponse {
+    return new ListProvidersResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ListProvidersResponse | PlainMessage<ListProvidersResponse> | undefined, b: ListProvidersResponse | PlainMessage<ListProvidersResponse> | undefined): boolean {
+    return proto3.util.equals(ListProvidersResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.UpdateProviderRequest
+ */
+export class UpdateProviderRequest extends Message<UpdateProviderRequest> {
+  /**
+   * @generated from field: agentcompose.v2.LLMProviderSpec provider = 1;
+   */
+  provider?: LLMProviderSpec;
+
+  constructor(data?: PartialMessage<UpdateProviderRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.UpdateProviderRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "provider", kind: "message", T: LLMProviderSpec },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): UpdateProviderRequest {
+    return new UpdateProviderRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): UpdateProviderRequest {
+    return new UpdateProviderRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): UpdateProviderRequest {
+    return new UpdateProviderRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: UpdateProviderRequest | PlainMessage<UpdateProviderRequest> | undefined, b: UpdateProviderRequest | PlainMessage<UpdateProviderRequest> | undefined): boolean {
+    return proto3.util.equals(UpdateProviderRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.UpdateProviderResponse
+ */
+export class UpdateProviderResponse extends Message<UpdateProviderResponse> {
+  /**
+   * @generated from field: agentcompose.v2.LLMProvider provider = 1;
+   */
+  provider?: LLMProvider;
+
+  constructor(data?: PartialMessage<UpdateProviderResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.UpdateProviderResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "provider", kind: "message", T: LLMProvider },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): UpdateProviderResponse {
+    return new UpdateProviderResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): UpdateProviderResponse {
+    return new UpdateProviderResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): UpdateProviderResponse {
+    return new UpdateProviderResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: UpdateProviderResponse | PlainMessage<UpdateProviderResponse> | undefined, b: UpdateProviderResponse | PlainMessage<UpdateProviderResponse> | undefined): boolean {
+    return proto3.util.equals(UpdateProviderResponse, a, b);
+  }
+}
+
+/**
+ * Deletes API-owned configuration and invalidates provider-bound facade tokens.
+ *
+ * @generated from message agentcompose.v2.DeleteProviderRequest
+ */
+export class DeleteProviderRequest extends Message<DeleteProviderRequest> {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id = "";
+
+  constructor(data?: PartialMessage<DeleteProviderRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.DeleteProviderRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): DeleteProviderRequest {
+    return new DeleteProviderRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): DeleteProviderRequest {
+    return new DeleteProviderRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): DeleteProviderRequest {
+    return new DeleteProviderRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: DeleteProviderRequest | PlainMessage<DeleteProviderRequest> | undefined, b: DeleteProviderRequest | PlainMessage<DeleteProviderRequest> | undefined): boolean {
+    return proto3.util.equals(DeleteProviderRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message agentcompose.v2.DeleteProviderResponse
+ */
+export class DeleteProviderResponse extends Message<DeleteProviderResponse> {
+  constructor(data?: PartialMessage<DeleteProviderResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agentcompose.v2.DeleteProviderResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): DeleteProviderResponse {
+    return new DeleteProviderResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): DeleteProviderResponse {
+    return new DeleteProviderResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): DeleteProviderResponse {
+    return new DeleteProviderResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: DeleteProviderResponse | PlainMessage<DeleteProviderResponse> | undefined, b: DeleteProviderResponse | PlainMessage<DeleteProviderResponse> | undefined): boolean {
+    return proto3.util.equals(DeleteProviderResponse, a, b);
   }
 }
