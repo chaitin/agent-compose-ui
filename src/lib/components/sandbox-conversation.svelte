@@ -10,7 +10,7 @@
   import type { AgentStreamState } from '$lib/run-stream.svelte';
   import { runStatusName } from '../../api/runs';
   import { RunEventKind, type RunEvent, type RunSummary } from '../../gen/agentcompose/v2/agentcompose_pb.js';
-  import type { ConversationTurn } from '../../model/conversation';
+  import { hasPersistedConversationOutput, type ConversationTurn } from '../../model/conversation';
   import { compactIdentifier } from '../../model/identifiers';
   import { timestampToISOString } from '../../model/timestamps';
   import { textMatchOffsets } from '../../model/text-search';
@@ -36,8 +36,7 @@
       else for (const event of prompts(run.runId)) entries.push({ key: event.id, text: event.text });
       if (runTurn?.output) entries.push({ key: `${run.runId}:output`, text: runTurn.output });
       else for (const event of replies(run.runId)) entries.push({ key: event.id, text: event.text });
-      if (activeStream?.runId === run.runId && activeStream.output)
-        entries.push({ key: `${run.runId}:active`, text: activeStream.output });
+      if (showActiveStream(run.runId)) entries.push({ key: `${run.runId}:active`, text: activeStream?.output ?? '' });
       if (run.error) entries.push({ key: `${run.runId}:error`, text: run.error });
     }
     if (activeStream && !runs.some((run) => run.runId === activeStream.runId)) {
@@ -68,6 +67,14 @@
 
   function replies(runId: string): RunEvent[] {
     return runEvents(runId).filter((event) => event.kind === RunEventKind.AGENT_MESSAGE);
+  }
+
+  function showActiveStream(runId: string): boolean {
+    if (activeStream?.runId !== runId || !activeStream.running || !activeStream.output) return false;
+    return !hasPersistedConversationOutput(
+      turn(runId)?.output,
+      replies(runId).map((event) => event.text),
+    );
   }
 
   function trackScroll(): void {
@@ -180,14 +187,14 @@
                 /></pre>
             </div>
           {/each}{/if}
-        {#if activeStream?.runId === run.runId && activeStream.running && activeStream.output}<div
+        {#if showActiveStream(run.runId)}<div
             data-message-role="assistant"
             data-message-content
             class="mr-auto mt-3 max-w-full border-l-2 border-emerald-300/50 pl-4"
           >
             <div class="mb-1 text-[11px] text-emerald-200/70">{t('智能体输出')}</div>
             <pre class="whitespace-pre-wrap break-words text-sm leading-6 text-white"><SearchableText
-                text={activeStream.output}
+                text={activeStream?.output ?? ''}
                 query={searchQuery}
                 matchOffset={matchOffsets.offsets.get(`${run.runId}:active`) ?? 0}
                 {activeMatch}

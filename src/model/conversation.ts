@@ -22,6 +22,10 @@ export type FailedConversationTurn = {
 
 export type ConversationResponseState = 'streaming' | 'output' | 'error' | 'empty' | 'none';
 
+export function hasPersistedConversationOutput(turnOutput: string | undefined, replyTexts: string[]): boolean {
+  return Boolean(turnOutput?.trim() || replyTexts.some((text) => text.trim()));
+}
+
 export function conversationTurns(cells: SandboxHistoryCell[]): ConversationTurn[] {
   const turns: ConversationTurn[] = [];
   const byRunId = new Map<string, ConversationTurn>();

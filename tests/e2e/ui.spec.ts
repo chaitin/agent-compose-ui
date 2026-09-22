@@ -1000,7 +1000,8 @@ test('builds one execution timeline without repeating conversation output', asyn
 test('matches an active run to its persisted conversation turn', async ({ page }) => {
   await page.goto('/login');
   const result = await page.evaluate(async () => {
-    const { conversationResponseState, isActiveConversationTurn } = await import('/src/model/conversation.ts');
+    const { conversationResponseState, hasPersistedConversationOutput, isActiveConversationTurn } =
+      await import('/src/model/conversation.ts');
     const turn = {
       id: 'event-user',
       runId: 'run-current',
@@ -1014,6 +1015,12 @@ test('matches an active run to its persisted conversation turn', async ({ page }
         isActiveConversationTurn(turn, '', 'run-current', 'current prompt'),
         isActiveConversationTurn(turn, 'run-next', 'run-current', 'current prompt'),
       ],
+      persistedOutput: [
+        hasPersistedConversationOutput('', []),
+        hasPersistedConversationOutput('', ['']),
+        hasPersistedConversationOutput('', ['persisted answer']),
+        hasPersistedConversationOutput('persisted answer', ['']),
+      ],
       responses: [
         conversationResponseState('running', '', ''),
         conversationResponseState('running', 'partial', ''),
@@ -1025,6 +1032,7 @@ test('matches an active run to its persisted conversation turn', async ({ page }
   });
   expect(result).toEqual({
     matches: [true, true, false],
+    persistedOutput: [false, false, true, true],
     responses: ['streaming', 'output', 'none', 'error', 'empty'],
   });
 });
