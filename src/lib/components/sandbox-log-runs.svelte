@@ -50,6 +50,7 @@
   let query = $state('');
   let loadingEarlier = $state(false);
   let downloading = $state(false);
+  let preserveLine = $state(0);
   let loadVersion = 0;
   const controllers = new SvelteMap<string, AbortController>();
   const requested = new SvelteSet<string>();
@@ -87,6 +88,7 @@
     flushTimers.clear();
     windows = {};
     loadingEarlier = false;
+    preserveLine = 0;
   });
 
   $effect(() => {
@@ -214,11 +216,19 @@
 
   function prependLines(runId: string, earlier: string[]): void {
     const current = windows[runId] ?? emptyWindow();
+    // The viewer keeps its pixel scroll offset. Count the prepended rows so that offset can move with them.
+    const addedRows = earlier.length + runHeadingRows(runId);
     patchWindow(runId, {
       lines: [...earlier, ...current.lines],
       windowStart: 0n,
       hasEarlier: false,
     });
+    preserveLine += addedRows;
+  }
+
+  function runHeadingRows(runId: string): number {
+    const current = windows[runId];
+    return current && current.lines.length === 0 && !current.incomplete ? 1 : 0;
   }
 
   function patchWindow(runId: string, patch: Partial<LogWindow>): void {
@@ -400,6 +410,7 @@
     {hasEarlier}
     {loadingEarlier}
     {downloading}
+    {preserveLine}
     onQuery={(value) => (query = value)}
     onDownload={() => void download()}
     onLoadEarlier={() => void loadEarlier()}

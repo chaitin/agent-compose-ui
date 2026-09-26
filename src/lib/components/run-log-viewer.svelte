@@ -14,6 +14,7 @@
     hasEarlier = false,
     loadingEarlier = false,
     downloading = false,
+    preserveLine = 0,
     onQuery,
     onDownload,
     onLoadEarlier,
@@ -24,6 +25,8 @@
     hasEarlier?: boolean;
     loadingEarlier?: boolean;
     downloading?: boolean;
+    /** Keep this rendered line under the viewport when earlier lines are prepended. */
+    preserveLine?: number;
     onQuery: (value: string) => void;
     onDownload: () => void;
     onLoadEarlier?: () => void;
@@ -34,6 +37,8 @@
   let scrollTop = $state(0);
   let viewportHeight = $state(480);
   let activeMatch = $state(0);
+  let anchoredLine = $state(0);
+  let anchoredOffset = $state(0);
 
   const normalizedQuery = $derived(query.trim().toLowerCase());
   const matchIndexes = $derived(
@@ -61,12 +66,32 @@
   });
 
   $effect(() => {
-    if (normalizedQuery || query === '') activeMatch = 0;
+    if (!normalizedQuery) {
+      activeMatch = 0;
+      return;
+    }
+    activeMatch = 0;
+    void revealMatch(0);
+  });
+
+  $effect(() => {
+    const line = preserveLine;
+    const node = viewport;
+    if (!node || line <= anchoredLine) {
+      anchoredLine = line;
+      return;
+    }
+    const added = line - anchoredLine;
+    anchoredLine = line;
+    followsLatest = false;
+    node.scrollTop = anchoredOffset + added * LINE_HEIGHT;
+    scrollTop = node.scrollTop;
   });
 
   function trackScroll(): void {
     if (!viewport) return;
     scrollTop = viewport.scrollTop;
+    anchoredOffset = viewport.scrollTop;
     followsLatest = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 72;
   }
 
@@ -152,8 +177,12 @@
             {@const index = startIndex + offset}
             <div
               data-log-line
-              data-log-match={normalizedQuery && matchIndexes[activeMatch] === index ? 'active' : undefined}
-              class="h-5 w-max min-w-full px-4 whitespace-pre"
+              data-log-match={normalizedQuery && line.toLowerCase().includes(normalizedQuery)
+                ? matchIndexes[activeMatch] === index
+                  ? 'active'
+                  : 'true'
+                : undefined}
+              class="h-5 w-max min-w-full px-4 whitespace-pre data-[log-match=true]:bg-amber-300/25 data-[log-match=active]:bg-orange-500/40"
               style:height="{LINE_HEIGHT}px"
               style:line-height="{LINE_HEIGHT}px"
             >
