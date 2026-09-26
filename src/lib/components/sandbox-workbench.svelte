@@ -72,8 +72,6 @@
   let message = $state('');
   let submitting = $state(false);
   let loadedSandboxId = '';
-  let tabChosen = false;
-  let tabReady = $state(false);
   let finalizedOperationId = '';
   let terminal = $state<InteractiveTerminal | null>(null);
   let terminalState = $state('未连接');
@@ -182,28 +180,43 @@
   async function load(targetSandboxId: string): Promise<void> {
     loading = true;
     error = '';
-    tabChosen = Boolean(initialTab);
-    tabReady = Boolean(initialTab);
     resetTerminal();
     try {
-      // Log tab must not wait on history or execution events. Those fill conversation and activity lines after paint.
-      const [nextSandbox, nextRuns] = await Promise.all([
+      const [nextSandbox, nextRuns, nextEvents, nextHistoryEvents, cells] = await Promise.all([
         getSandboxContext(targetSandboxId),
         listRuns({ sandboxId: targetSandboxId, limit: 200 }),
+        listSandboxExecutionEvents(targetSandboxId),
+        listSandboxHistoryEvents(targetSandboxId),
+        listSandboxHistoryCells(targetSandboxId),
       ]);
       if (loadedSandboxId !== targetSandboxId) return;
       const nextTarget = firstTarget(nextRuns) ?? sandboxTarget(nextSandbox);
+      const nextTurns = conversationTurns(cells);
+      const nextConversationRuns = conversationRunsFor(nextRuns, nextEvents, nextTurns);
       sandbox = nextSandbox;
       runs = nextRuns;
-      events = [];
-      historyEvents = [];
-      historyCells = [];
-      turns = [];
-      conversationRuns = [];
+      conversationRuns = nextConversationRuns;
+      events = nextEvents;
+      historyEvents = nextHistoryEvents;
+      historyCells = cells;
+      turns = nextTurns;
       target = nextTarget;
       selectedTargetKey = targetKey(nextTarget ?? firstTarget(nextRuns));
-      if (initialTab) tab = initialTab;
-      void loadHistory(targetSandboxId, nextRuns);
+      const conversationAvailable = nextConversationRuns.length > 0;
+      const logsAvailable =
+        nextRuns.length > 0 || nextHistoryEvents.length > 0 || cells.length > 0 || contextLogEntries.length > 0;
+      tab =
+        initialTab === 'records'
+          ? 'records'
+          : initialTab === 'terminal'
+            ? 'terminal'
+            : initialTab === 'conversation' && conversationAvailable
+              ? 'conversation'
+              : initialTab === 'logs' && logsAvailable
+                ? 'logs'
+                : conversationAvailable
+                  ? 'conversation'
+                  : 'logs';
     } catch (cause) {
       if (loadedSandboxId !== targetSandboxId) return;
       error = errorMessage(cause);
@@ -216,31 +229,6 @@
       turns = [];
     } finally {
       if (loadedSandboxId === targetSandboxId) loading = false;
-    }
-  }
-
-  async function loadHistory(targetSandboxId: string, knownRuns: RunSummary[]): Promise<void> {
-    try {
-      const [nextEvents, nextHistoryEvents, cells] = await Promise.all([
-        listSandboxExecutionEvents(targetSandboxId),
-        listSandboxHistoryEvents(targetSandboxId),
-        listSandboxHistoryCells(targetSandboxId),
-      ]);
-      if (loadedSandboxId !== targetSandboxId) return;
-      const nextTurns = conversationTurns(cells);
-      events = nextEvents;
-      historyEvents = nextHistoryEvents;
-      historyCells = cells;
-      turns = nextTurns;
-      conversationRuns = conversationRunsFor(knownRuns, nextEvents, nextTurns);
-      // Keep the previous default: conversation when it exists, otherwise logs. History no longer blocks the log request.
-      if (!initialTab && !tabChosen) tab = conversationRuns.length > 0 ? 'conversation' : 'logs';
-      tabReady = true;
-    } catch (cause) {
-      if (loadedSandboxId !== targetSandboxId) return;
-      if (!initialTab && !tabChosen) tab = 'logs';
-      tabReady = true;
-      error = errorMessage(cause);
     }
   }
 
@@ -534,85 +522,74 @@
         </dl>
       </details>{/if}
 
-    {#if !tabReady}<p class="text-sm text-muted-foreground">{t('正在加载执行环境…')}</p>{/if}
-    <!-- Keep the log subscriber mounted while the default tab is unresolved, without showing a logs-then-conversation flash. -->
-    <div class={tabReady ? 'contents' : 'hidden'}>
-      <Tabs.Root
-        value={tab}
-        onValueChange={(value) => {
-          tabChosen = true;
-          tab = value as typeof tab;
-        }}
-        class="flex min-h-0 flex-1 flex-col overflow-hidden"
-      >
-        <Tabs.List data-tab-scroll class="shrink-0 justify-start">
-          {#if hasConversation || runnable}<Tabs.Trigger value="conversation">{t('对话')}</Tabs.Trigger>{/if}
-          {#if runs.length || contextLogEntries.length || liveEntries.length || historyEvents.length || historyCells.length || tab === 'logs'}<Tabs.Trigger
-              value="logs">{t('运行日志')}</Tabs.Trigger
-            >{/if}
-          <Tabs.Trigger value="records">{t('智能体记录')}</Tabs.Trigger>
-          {#if terminalAvailable}<Tabs.Trigger value="terminal">{t('终端')}</Tabs.Trigger>{/if}
-        </Tabs.List>
+    <Tabs.Root bind:value={tab} class="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <Tabs.List data-tab-scroll class="shrink-0 justify-start">
+        {#if hasConversation || runnable}<Tabs.Trigger value="conversation">{t('对话')}</Tabs.Trigger>{/if}
+        {#if runs.length || contextLogEntries.length || liveEntries.length || historyEvents.length || historyCells.length}<Tabs.Trigger
+            value="logs">{t('运行日志')}</Tabs.Trigger
+          >{/if}
+        <Tabs.Trigger value="records">{t('智能体记录')}</Tabs.Trigger>
+        {#if terminalAvailable}<Tabs.Trigger value="terminal">{t('终端')}</Tabs.Trigger>{/if}
+      </Tabs.List>
 
-        <Tabs.Content value="conversation" class="mt-3 min-h-0 flex-1 overflow-hidden">
-          <SandboxConversation runs={conversationRuns} {events} {turns} {activeStream} />
-        </Tabs.Content>
-        <Tabs.Content value="logs" class="mt-3 min-h-0 flex-1 overflow-hidden">
-          {#if runs.length}<SandboxLogRuns
-              {sandboxId}
-              {runs}
-              {events}
-              {activeStream}
-              legacyCells={historyCells.filter((cell) => !cell.runId && !cell.id.endsWith('-legacy-log'))}
-              onError={(message) => (error = message)}
-            />
-          {:else}<RunLogViewer
-              query={contextLogQuery}
-              lines={fallbackLogLines}
-              loadedLineCount={fallbackLogLines.length}
-              onQuery={(value) => (contextLogQuery = value)}
-              onDownload={downloadContextLog}
-            />{/if}
-        </Tabs.Content>
-        <Tabs.Content value="records" class="mt-3 min-h-0 flex-1 overflow-hidden">
-          <AgentRecordsPanel {sandboxId} active={tab === 'records'} />
-        </Tabs.Content>
+      <Tabs.Content value="conversation" class="mt-3 min-h-0 flex-1 overflow-hidden">
+        <SandboxConversation runs={conversationRuns} {events} {turns} {activeStream} />
+      </Tabs.Content>
+      <Tabs.Content value="logs" class="mt-3 min-h-0 flex-1 overflow-hidden">
+        {#if runs.length}<SandboxLogRuns
+            {sandboxId}
+            {runs}
+            {events}
+            {activeStream}
+            legacyCells={historyCells.filter((cell) => !cell.runId && !cell.id.endsWith('-legacy-log'))}
+            onError={(message) => (error = message)}
+          />
+        {:else}<RunLogViewer
+            query={contextLogQuery}
+            lines={fallbackLogLines}
+            loadedLineCount={fallbackLogLines.length}
+            onQuery={(value) => (contextLogQuery = value)}
+            onDownload={downloadContextLog}
+          />{/if}
+      </Tabs.Content>
+      <Tabs.Content value="records" class="mt-3 min-h-0 flex-1 overflow-hidden">
+        <AgentRecordsPanel {sandboxId} active={tab === 'records'} />
+      </Tabs.Content>
 
-        <Tabs.Content value="terminal" class="mt-3 min-h-0 flex-1 overflow-hidden">
+      <Tabs.Content value="terminal" class="mt-3 min-h-0 flex-1 overflow-hidden">
+        <div
+          data-terminal-panel
+          class="flex h-full min-h-[22rem] flex-col overflow-hidden rounded-lg border border-border bg-[#121722]"
+        >
           <div
-            data-terminal-panel
-            class="flex h-full min-h-[22rem] flex-col overflow-hidden rounded-lg border border-border bg-[#121722]"
+            class="flex shrink-0 items-center justify-between border-b border-white/10 px-3 py-2 text-xs text-white/70"
           >
-            <div
-              class="flex shrink-0 items-center justify-between border-b border-white/10 px-3 py-2 text-xs text-white/70"
-            >
-              <span>{terminalState}</span>{#if runnable && !terminal}<Button
-                  variant="outline"
-                  size="sm"
-                  onclick={() => connectTerminal(false)}
-                  >{t(terminalState === t('连接失败') ? '重新连接' : '连接')}</Button
-                >{:else if !runnable}<span>{t('恢复后可连接')}</span>{/if}
-            </div>
-            {#if terminalError}<div
-                class="shrink-0 border-b border-red-300/15 bg-red-500/10 px-3 py-2 text-xs text-red-100"
-              >
-                {terminalError}
-              </div>{/if}
-            <div class="min-h-0 flex-1 p-2">
-              <XtermView
-                lines={terminalLines}
-                fontSize={15}
-                interactive
-                onData={(data) => terminal?.send(data)}
-                onResize={(cols, rows) => terminal?.resize(cols, rows)}
-              />
-            </div>
+            <span>{terminalState}</span>{#if runnable && !terminal}<Button
+                variant="outline"
+                size="sm"
+                onclick={() => connectTerminal(false)}
+                >{t(terminalState === t('连接失败') ? '重新连接' : '连接')}</Button
+              >{:else if !runnable}<span>{t('恢复后可连接')}</span>{/if}
           </div>
-        </Tabs.Content>
-      </Tabs.Root>
-    </div>
+          {#if terminalError}<div
+              class="shrink-0 border-b border-red-300/15 bg-red-500/10 px-3 py-2 text-xs text-red-100"
+            >
+              {terminalError}
+            </div>{/if}
+          <div class="min-h-0 flex-1 p-2">
+            <XtermView
+              lines={terminalLines}
+              fontSize={15}
+              interactive
+              onData={(data) => terminal?.send(data)}
+              onResize={(cols, rows) => terminal?.resize(cols, rows)}
+            />
+          </div>
+        </div>
+      </Tabs.Content>
+    </Tabs.Root>
 
-    {#if tab === 'conversation' && runnable && selectedTarget && tabReady}<div
+    {#if tab === 'conversation' && runnable && selectedTarget}<div
         data-composer
         class="mt-3 flex shrink-0 flex-col gap-2 sm:flex-row"
       >
