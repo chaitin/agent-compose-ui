@@ -146,8 +146,8 @@
     class="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-700 bg-[#0b1018] font-mono text-xs leading-5 text-[#cdd6e3]"
   >
     {#if lines.length}
-      <div class="relative w-full" style:height="{totalHeight}px">
-        <div class="absolute inset-x-0" style:transform="translateY({startIndex * LINE_HEIGHT}px)">
+      <div class="w-max min-w-full" style:height="{totalHeight}px">
+        <div style:transform="translateY({startIndex * LINE_HEIGHT}px)">
           {#each visibleLines as line, offset (startIndex + offset)}
             {@const index = startIndex + offset}
             <div

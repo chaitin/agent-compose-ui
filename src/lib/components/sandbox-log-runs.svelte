@@ -126,7 +126,7 @@
     let earlier: string[] = [];
     let incomplete = '';
     const version = loadVersion;
-    const completed = await readLogs(run, { follow: false, startOffset: 0n }, (chunk) => {
+    const result = await readLogs(run, { follow: false, startOffset: 0n }, (chunk) => {
       if (version !== loadVersion) return false;
       const text = textBefore(chunk, windowStart);
       if (text) {
@@ -134,25 +134,23 @@
         earlier = parsed.lines;
         incomplete = parsed.incomplete;
       }
-      return Boolean(chunk.data) && chunk.offset >= windowStart;
+      return chunk.offset >= windowStart;
     });
-    if (version !== loadVersion || !completed) return;
+    // A disconnect aborts the stream too. Only a read that reached the tail window may replace the button.
+    if (version !== loadVersion || !result.reached) return;
     if (incomplete) earlier.push(incomplete);
-    const current = windows[run.runId];
-    const boundary = current?.lines[0] ?? '';
-    const overlapped = earlier.length > 0 && boundary.length > 0 && earlier[earlier.length - 1] === boundary;
-    prependLines(run.runId, overlapped ? earlier.slice(0, -1) : earlier);
+    prependLines(run.runId, earlier);
   }
 
   async function readLogs(
     run: RunSummary,
     options: { follow: boolean; tailLines?: number; startOffset?: bigint },
     onChunk: (chunk: RunLogChunk) => boolean | void,
-  ): Promise<boolean> {
+  ): Promise<{ reached: boolean }> {
     const controller = new AbortController();
     controllers.set(`${options.follow ? 'tail' : 'earlier'}:${run.runId}`, controller);
+    let reached = false;
     try {
-      let reached = false;
       await followRunLogs(
         run.runId,
         (chunk) => {
@@ -167,13 +165,13 @@
           startOffset: options.startOffset,
         },
       );
-      return true;
+      return { reached };
     } catch (cause) {
-      if (controller.signal.aborted) return true;
+      if (controller.signal.aborted) return { reached };
       const message = cause instanceof Error ? cause.message : t('日志加载失败');
-      patchWindow(run.runId, { error: message, loaded: true });
+      if (options.tailLines != null) patchWindow(run.runId, { error: message, loaded: true });
       onError?.(message);
-      return false;
+      return { reached: false };
     } finally {
       controllers.delete(`${options.follow ? 'tail' : 'earlier'}:${run.runId}`);
     }
@@ -181,8 +179,9 @@
 
   function noteWindowStart(runId: string, chunk: RunLogChunk): void {
     const current = windows[runId] ?? emptyWindow();
-    if (current.startKnown) return;
-    const start = chunk.data ? chunk.offset - BigInt(byteLength(chunk.data)) : chunk.offset;
+    // The first chunk is metadata and has no log bytes. Using it would hide "load earlier".
+    if (current.startKnown || !chunk.data) return;
+    const start = chunk.offset - BigInt(byteLength(chunk.data));
     const windowStart = start < 0n ? 0n : start;
     patchWindow(runId, { windowStart, startKnown: true, hasEarlier: windowStart > 0n });
   }

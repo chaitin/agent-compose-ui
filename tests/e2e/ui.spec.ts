@@ -2318,6 +2318,8 @@ test('groups semantic runs into one execution-environment conversation', async (
   await expect(logStream).toBeVisible();
   await expect.poll(async () => logStream.locator('[data-log-section]').count(), { timeout: 10_000 }).toBe(runCount);
   await expect(logStream).toHaveAttribute('data-log-pending', 'false', { timeout: 10_000 });
+  await expect(logStream.locator('[data-log-line]').first()).toBeVisible();
+  await expect(logStream.locator('[data-log-viewport]')).not.toContainText('正在加载日志…');
   await expect(logPanel.getByPlaceholder('筛选日志')).toBeVisible();
   await expect(logPanel.getByRole('button', { name: '下载原始日志' })).toBeVisible();
   await page.getByRole('tab', { name: '对话', exact: true }).click();
