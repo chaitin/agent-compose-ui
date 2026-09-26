@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+  import { onMount, untrack } from 'svelte';
   import RunLogViewer from '$lib/components/run-log-viewer.svelte';
   import { t } from '$lib/i18n.svelte';
   import type { AgentStreamState, AgentTranscriptItem } from '$lib/run-stream.svelte';
@@ -53,10 +52,14 @@
   let preserveLine = $state(0);
   let anchorBeforeLine = 0;
   let loadVersion = 0;
-  const controllers = new SvelteMap<string, AbortController>();
-  const requested = new SvelteSet<string>();
-  const pendingText = new SvelteMap<string, string>();
-  const flushTimers = new SvelteMap<string, number>();
+  // Plain collections. A SvelteMap read inside the reset effect retriggers that effect on every stream start.
+  /* eslint-disable svelte/prefer-svelte-reactivity -- reactive reads here restart every log stream */
+  const controllers = new Map<string, AbortController>();
+  const requested = new Set<string>();
+  const pendingText = new Map<string, string>();
+  const flushTimers = new Map<string, number>();
+  /* eslint-enable svelte/prefer-svelte-reactivity */
+  let downloadController: AbortController | null = null;
 
   const chronologicalRuns = $derived([...runs].reverse());
   const sections = $derived(
@@ -71,26 +74,14 @@
     sections.flatMap((section) => ('run' in section ? runLines(section.run) : legacyCellLines(section.cell))),
   );
   const hasEarlier = $derived(chronologicalRuns.some((run) => windows[run.runId]?.hasEarlier));
-  const pending = $derived(chronologicalRuns.some((run) => !windows[run.runId]?.loaded && !windows[run.runId]?.error));
 
   onMount(() => () => {
-    controllers.forEach((controller) => controller.abort());
-    flushTimers.forEach((timer) => window.clearTimeout(timer));
+    resetStreams();
   });
 
   $effect(() => {
     if (!sandboxId) return;
-    loadVersion += 1;
-    controllers.forEach((controller) => controller.abort());
-    controllers.clear();
-    requested.clear();
-    pendingText.clear();
-    flushTimers.forEach((timer) => window.clearTimeout(timer));
-    flushTimers.clear();
-    windows = {};
-    loadingEarlier = false;
-    preserveLine = 0;
-    anchorBeforeLine = 0;
+    untrack(resetForSandbox);
   });
 
   $effect(() => {
@@ -98,20 +89,52 @@
     const waiting = chronologicalRuns.filter((run) => !requested.has(run.runId));
     if (!waiting.length) return;
     for (const run of waiting) requested.add(run.runId);
-    for (const run of waiting) void loadTail(run);
+    void loadWaiting(waiting);
   });
+
+  function resetForSandbox(): void {
+    loadVersion += 1;
+    resetStreams();
+    windows = {};
+    loadingEarlier = false;
+    preserveLine = 0;
+    anchorBeforeLine = 0;
+  }
+
+  function resetStreams(): void {
+    for (const controller of controllers.values()) controller.abort();
+    controllers.clear();
+    requested.clear();
+    pendingText.clear();
+    for (const timer of flushTimers.values()) window.clearTimeout(timer);
+    flushTimers.clear();
+    downloadController?.abort();
+    downloadController = null;
+  }
+
+  async function loadWaiting(waiting: RunSummary[]): Promise<void> {
+    const version = loadVersion;
+    const running = waiting.filter((run) => run.status === RunStatus.RUNNING);
+    const finished = waiting.filter((run) => run.status !== RunStatus.RUNNING);
+    for (const run of running) void loadTail(run);
+    for (const run of finished) {
+      if (version !== loadVersion) return;
+      await loadTail(run);
+    }
+  }
 
   async function loadTail(run: RunSummary): Promise<void> {
     const version = loadVersion;
     const follow = run.status === RunStatus.RUNNING;
-    await readLogs(run, { follow, tailLines: TAIL_LINES }, (chunk) => {
+    const result = await readLogs(run, 'tail', { follow, tailLines: TAIL_LINES }, (chunk) => {
       if (version !== loadVersion) return;
       noteWindowStart(run.runId, chunk);
       bufferChunk(run.runId, chunk, follow);
     });
     if (version !== loadVersion) return;
     flush(run.runId);
-    patchWindow(run.runId, { loaded: true });
+    // A followed stream stays open, so reaching the first tail is enough to leave the loading placeholder.
+    patchWindow(run.runId, { loaded: result.opened || !follow });
   }
 
   async function loadEarlier(): Promise<void> {
@@ -130,7 +153,7 @@
     let earlier: string[] = [];
     let incomplete = '';
     const version = loadVersion;
-    const result = await readLogs(run, { follow: false, startOffset: 0n }, (chunk) => {
+    const result = await readLogs(run, 'earlier', { follow: false, startOffset: 0n }, (chunk) => {
       if (version !== loadVersion) return false;
       const text = textBefore(chunk, windowStart);
       if (text) {
@@ -148,16 +171,20 @@
 
   async function readLogs(
     run: RunSummary,
+    purpose: 'tail' | 'earlier',
     options: { follow: boolean; tailLines?: number; startOffset?: bigint },
     onChunk: (chunk: RunLogChunk) => boolean | void,
-  ): Promise<{ reached: boolean }> {
+  ): Promise<{ reached: boolean; opened: boolean }> {
     const controller = new AbortController();
-    controllers.set(`${options.follow ? 'tail' : 'earlier'}:${run.runId}`, controller);
+    const key = `${purpose}:${run.runId}`;
+    controllers.set(key, controller);
     let reached = false;
+    let opened = false;
     try {
       await followRunLogs(
         run.runId,
         (chunk) => {
+          if (chunk.data) opened = true;
           if (onChunk(chunk)) reached = true;
           if (reached) controller.abort();
         },
@@ -169,15 +196,15 @@
           startOffset: options.startOffset,
         },
       );
-      return { reached };
+      return { reached, opened };
     } catch (cause) {
-      if (controller.signal.aborted) return { reached };
+      if (controller.signal.aborted) return { reached, opened };
       const message = cause instanceof Error ? cause.message : t('日志加载失败');
       if (options.tailLines != null) patchWindow(run.runId, { error: message, loaded: true });
       onError?.(message);
-      return { reached: false };
+      return { reached: false, opened };
     } finally {
-      controllers.delete(`${options.follow ? 'tail' : 'earlier'}:${run.runId}`);
+      controllers.delete(key);
     }
   }
 
@@ -378,6 +405,7 @@
     if (downloading) return;
     downloading = true;
     const controller = new AbortController();
+    downloadController = controller;
     try {
       const parts: Array<string | Blob> = [];
       for (const run of chronologicalRuns) {
@@ -405,11 +433,12 @@
       if (!controller.signal.aborted) onError?.(cause instanceof Error ? cause.message : t('日志加载失败'));
     } finally {
       downloading = false;
+      if (downloadController === controller) downloadController = null;
     }
   }
 </script>
 
-<div data-sandbox-log-stream data-log-pending={pending ? 'true' : 'false'} class="flex h-full min-h-0 flex-col">
+<div data-sandbox-log-stream class="flex h-full min-h-0 flex-col">
   <div class="hidden" aria-hidden="true">
     {#each chronologicalRuns as run (run.runId)}
       <span data-log-section={run.runId}>{headingFor(run)}</span>
