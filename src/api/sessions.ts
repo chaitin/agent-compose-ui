@@ -216,12 +216,14 @@ async function loadWorkSessionHistory(id: string): Promise<WorkSessionHistory> {
   }
   for (const run of runs) {
     if (!historyAvailableRunIds.has(run.runId)) {
+      // Conversation fallback only. The run-log view loads its own tail and must not reuse this 1000-line copy.
       let logs = '';
       for await (const chunk of runClient.followRunLogs({
         runId: run.runId,
         projectId: run.projectId,
         follow: false,
         tailLines: 1000,
+        tailSet: true,
       }))
         logs += chunk.data;
       if (logs)

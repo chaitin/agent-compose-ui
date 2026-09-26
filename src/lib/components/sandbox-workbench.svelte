@@ -72,6 +72,7 @@
   let message = $state('');
   let submitting = $state(false);
   let loadedSandboxId = '';
+  let tabChosen = false;
   let finalizedOperationId = '';
   let terminal = $state<InteractiveTerminal | null>(null);
   let terminalState = $state('未连接');
@@ -103,24 +104,13 @@
       (left, right) => sortTime(left) - sortTime(right),
     ),
   );
-  const combinedLog = $derived(
-    sortedLogEntries
-      .map((entry) => {
-        const head = `[${formatBeijingTime(entry.createdAt)}]${entry.type ? ` ${entry.type}` : ''}`;
-        const body = entry.message ? `\n${entry.message}` : '';
-        return `${head}${body}`;
-      })
-      .join('\n'),
+  const fallbackLogLines = $derived(
+    sortedLogEntries.flatMap((entry) => {
+      const head = `[${formatBeijingTime(entry.createdAt)}]${entry.type ? ` ${entry.type}` : ''}`;
+      const body = entry.message ? entry.message.split('\n') : [];
+      return [head, ...body];
+    }),
   );
-  const visibleCombinedLog = $derived(
-    contextLogQuery.trim()
-      ? combinedLog
-          .split('\n')
-          .filter((line) => line.toLowerCase().includes(contextLogQuery.toLowerCase()))
-          .join('\n')
-      : combinedLog,
-  );
-  const combinedLogLineCount = $derived(combinedLog ? combinedLog.split('\n').length : 0);
   const targets = $derived.by(() => {
     const values = runs
       .filter((run) => run.projectId && run.agentName)
@@ -193,41 +183,26 @@
     error = '';
     resetTerminal();
     try {
-      const [nextSandbox, nextRuns, nextEvents, nextHistoryEvents, cells] = await Promise.all([
+      // Log tab must not wait on history or execution events. Those fill conversation and activity lines after paint.
+      const [nextSandbox, nextRuns] = await Promise.all([
         getSandboxContext(targetSandboxId),
         listRuns({ sandboxId: targetSandboxId, limit: 200 }),
-        listSandboxExecutionEvents(targetSandboxId),
-        listSandboxHistoryEvents(targetSandboxId),
-        listSandboxHistoryCells(targetSandboxId),
       ]);
       if (loadedSandboxId !== targetSandboxId) return;
       const nextTarget = firstTarget(nextRuns) ?? sandboxTarget(nextSandbox);
       sandbox = nextSandbox;
-      const nextTurns = conversationTurns(cells);
-      const nextConversationRuns = conversationRunsFor(nextRuns, nextEvents, nextTurns);
       runs = nextRuns;
-      conversationRuns = nextConversationRuns;
-      events = nextEvents;
-      historyEvents = nextHistoryEvents;
-      historyCells = cells;
-      turns = nextTurns;
+      events = [];
+      historyEvents = [];
+      historyCells = [];
+      turns = [];
+      conversationRuns = [];
       target = nextTarget;
       selectedTargetKey = targetKey(nextTarget ?? firstTarget(nextRuns));
-      const conversationAvailable = nextConversationRuns.length > 0;
-      const logsAvailable =
-        nextRuns.length > 0 || nextHistoryEvents.length > 0 || cells.length > 0 || contextLogEntries.length > 0;
-      tab =
-        initialTab === 'records'
-          ? 'records'
-          : initialTab === 'terminal'
-            ? 'terminal'
-            : initialTab === 'conversation' && conversationAvailable
-              ? 'conversation'
-              : initialTab === 'logs' && logsAvailable
-                ? 'logs'
-                : conversationAvailable
-                  ? 'conversation'
-                  : 'logs';
+      tabChosen = Boolean(initialTab);
+      if (initialTab) tab = initialTab;
+      else if (nextRuns.length > 0) tab = 'logs';
+      void loadHistory(targetSandboxId, nextRuns);
     } catch (cause) {
       if (loadedSandboxId !== targetSandboxId) return;
       error = errorMessage(cause);
@@ -240,6 +215,27 @@
       turns = [];
     } finally {
       if (loadedSandboxId === targetSandboxId) loading = false;
+    }
+  }
+
+  async function loadHistory(targetSandboxId: string, knownRuns: RunSummary[]): Promise<void> {
+    try {
+      const [nextEvents, nextHistoryEvents, cells] = await Promise.all([
+        listSandboxExecutionEvents(targetSandboxId),
+        listSandboxHistoryEvents(targetSandboxId),
+        listSandboxHistoryCells(targetSandboxId),
+      ]);
+      if (loadedSandboxId !== targetSandboxId) return;
+      const nextTurns = conversationTurns(cells);
+      events = nextEvents;
+      historyEvents = nextHistoryEvents;
+      historyCells = cells;
+      turns = nextTurns;
+      conversationRuns = conversationRunsFor(knownRuns, nextEvents, nextTurns);
+      // Keep the previous default: conversation when it exists, otherwise logs. History no longer blocks the log request.
+      if (!initialTab && !tabChosen) tab = conversationRuns.length > 0 ? 'conversation' : 'logs';
+    } catch (cause) {
+      if (loadedSandboxId === targetSandboxId) error = errorMessage(cause);
     }
   }
 
@@ -399,7 +395,7 @@
   }
 
   function downloadContextLog(): void {
-    const url = URL.createObjectURL(new Blob([combinedLog], { type: 'text/plain' }));
+    const url = URL.createObjectURL(new Blob([fallbackLogLines.join('\n')], { type: 'text/plain' }));
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = `sandbox-${compactIdentifier(sandboxId)}.log`;
@@ -533,10 +529,17 @@
         </dl>
       </details>{/if}
 
-    <Tabs.Root bind:value={tab} class="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <Tabs.Root
+      value={tab}
+      onValueChange={(value) => {
+        tabChosen = true;
+        tab = value as typeof tab;
+      }}
+      class="flex min-h-0 flex-1 flex-col overflow-hidden"
+    >
       <Tabs.List data-tab-scroll class="shrink-0 justify-start">
         {#if hasConversation || runnable}<Tabs.Trigger value="conversation">{t('对话')}</Tabs.Trigger>{/if}
-        {#if runs.length || contextLogEntries.length || liveEntries.length || historyEvents.length || historyCells.length}<Tabs.Trigger
+        {#if runs.length || contextLogEntries.length || liveEntries.length || historyEvents.length || historyCells.length || tab === 'logs'}<Tabs.Trigger
             value="logs">{t('运行日志')}</Tabs.Trigger
           >{/if}
         <Tabs.Trigger value="records">{t('智能体记录')}</Tabs.Trigger>
@@ -553,11 +556,12 @@
             {events}
             {activeStream}
             legacyCells={historyCells.filter((cell) => !cell.runId && !cell.id.endsWith('-legacy-log'))}
+            onError={(message) => (error = message)}
           />
         {:else}<RunLogViewer
             query={contextLogQuery}
-            content={visibleCombinedLog}
-            lineCount={combinedLogLineCount}
+            lines={fallbackLogLines}
+            loadedLineCount={fallbackLogLines.length}
             onQuery={(value) => (contextLogQuery = value)}
             onDownload={downloadContextLog}
           />{/if}

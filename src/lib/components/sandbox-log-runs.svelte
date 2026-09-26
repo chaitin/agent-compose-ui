@@ -4,7 +4,7 @@
   import RunLogViewer from '$lib/components/run-log-viewer.svelte';
   import { t } from '$lib/i18n.svelte';
   import type { AgentStreamState, AgentTranscriptItem } from '$lib/run-stream.svelte';
-  import { followRunLogs, runStatusName, sourceName } from '../../api/runs';
+  import { followRunLogs, runStatusName, sourceName, type RunLogChunk } from '../../api/runs';
   import {
     RunEventKind,
     RunStatus,
@@ -16,122 +16,287 @@
   import { timestampToISOString } from '../../model/timestamps';
   import { formatBeijingTime } from '../../time';
 
+  // Intentional window, not an unfinished full render. Earlier bytes load on demand; download reads the files separately.
+  const TAIL_LINES = 2000;
+  const FLUSH_MS = 150;
+
   let {
     sandboxId,
     runs,
     events,
     activeStream,
     legacyCells = [],
+    onError,
   }: {
     sandboxId: string;
     runs: RunSummary[];
     events: RunEvent[];
     activeStream?: AgentStreamState;
     legacyCells?: SandboxHistoryCell[];
+    onError?: (message: string) => void;
   } = $props();
 
-  let logs = $state<Record<string, string>>({});
-  let errors = $state<Record<string, string>>({});
-  let loaded = $state<Record<string, boolean>>({});
+  type LogWindow = {
+    lines: string[];
+    incomplete: string;
+    windowStart: bigint;
+    startKnown: boolean;
+    hasEarlier: boolean;
+    loaded: boolean;
+    error: string;
+  };
+
+  let windows = $state<Record<string, LogWindow>>({});
   let query = $state('');
+  let loadingEarlier = $state(false);
+  let downloading = $state(false);
+  let loadVersion = 0;
   const controllers = new SvelteMap<string, AbortController>();
   const requested = new SvelteSet<string>();
+  const pendingText = new SvelteMap<string, string>();
+  const flushTimers = new SvelteMap<string, number>();
 
   const chronologicalRuns = $derived([...runs].reverse());
-  const logSections = $derived(
+  const sections = $derived(
     [
-      ...chronologicalRuns.map((run) => ({
-        createdAt: timestampToISOString(run.startedAt || run.createdAt),
-        content: runSection(run),
-      })),
+      ...chronologicalRuns.map((run) => ({ createdAt: timestampToISOString(run.startedAt || run.createdAt), run })),
       ...legacyCells
         .filter((cell) => cell.source.trim() || cell.output.trim())
-        .map((cell) => ({ createdAt: cell.createdAt, content: legacyCellSection(cell) })),
+        .map((cell) => ({ createdAt: cell.createdAt, cell })),
     ].sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt)),
   );
-  const content = $derived(logSections.map((section) => section.content).join('\n\n'));
-  const visibleContent = $derived(
-    query.trim()
-      ? content
-          .split('\n')
-          .filter((line) => line.toLowerCase().includes(query.toLowerCase()))
-          .join('\n')
-      : content,
+  const lines = $derived(
+    sections.flatMap((section) => ('run' in section ? runLines(section.run) : legacyCellLines(section.cell))),
   );
-  const lineCount = $derived(content ? content.split('\n').length : 0);
+  const hasEarlier = $derived(chronologicalRuns.some((run) => windows[run.runId]?.hasEarlier));
+  const pending = $derived(chronologicalRuns.some((run) => !windows[run.runId]?.loaded && !windows[run.runId]?.error));
 
-  onMount(() => () => controllers.forEach((controller) => controller.abort()));
-
-  $effect(() => {
-    const pending = chronologicalRuns.filter((run) => !requested.has(run.runId));
-    if (!pending.length) return;
-    for (const run of pending) requested.add(run.runId);
-    void loadRuns(pending);
+  onMount(() => () => {
+    controllers.forEach((controller) => controller.abort());
+    flushTimers.forEach((timer) => window.clearTimeout(timer));
   });
 
-  async function loadRuns(items: RunSummary[]): Promise<void> {
-    const completed = items.filter((run) => run.status !== RunStatus.RUNNING);
-    const running = items.filter((run) => run.status === RunStatus.RUNNING);
-    for (const run of completed) await load(run.runId, false, run.projectId);
-    for (const run of running) void load(run.runId, true, run.projectId);
+  $effect(() => {
+    if (!sandboxId) return;
+    loadVersion += 1;
+    controllers.forEach((controller) => controller.abort());
+    controllers.clear();
+    requested.clear();
+    pendingText.clear();
+    flushTimers.forEach((timer) => window.clearTimeout(timer));
+    flushTimers.clear();
+    windows = {};
+    loadingEarlier = false;
+  });
+
+  $effect(() => {
+    // Subscribe while the workbench is open. A hidden log tab must not delay the tail request.
+    const waiting = chronologicalRuns.filter((run) => !requested.has(run.runId));
+    if (!waiting.length) return;
+    for (const run of waiting) requested.add(run.runId);
+    for (const run of waiting) void loadTail(run);
+  });
+
+  async function loadTail(run: RunSummary): Promise<void> {
+    const version = loadVersion;
+    const follow = run.status === RunStatus.RUNNING;
+    await readLogs(run, { follow, tailLines: TAIL_LINES }, (chunk) => {
+      if (version !== loadVersion) return;
+      noteWindowStart(run.runId, chunk);
+      bufferChunk(run.runId, chunk, follow);
+    });
+    if (version !== loadVersion) return;
+    flush(run.runId);
+    patchWindow(run.runId, { loaded: true });
   }
 
-  async function load(runId: string, follow: boolean, projectId: string): Promise<void> {
-    const controller = new AbortController();
-    controllers.set(runId, controller);
-    logs = { ...logs, [runId]: '' };
+  async function loadEarlier(): Promise<void> {
+    if (loadingEarlier) return;
+    loadingEarlier = true;
     try {
-      await followRunLogs(
-        runId,
-        (chunk) => (logs = { ...logs, [runId]: `${logs[runId] ?? ''}${chunk}` }),
-        controller.signal,
-        follow,
-        projectId,
-      );
-    } catch (cause) {
-      if (!controller.signal.aborted)
-        errors = { ...errors, [runId]: cause instanceof Error ? cause.message : t('日志加载失败') };
+      await Promise.all(chronologicalRuns.filter((run) => windows[run.runId]?.hasEarlier).map(loadEarlierRun));
     } finally {
-      loaded = { ...loaded, [runId]: true };
-      controllers.delete(runId);
+      loadingEarlier = false;
     }
   }
 
-  function runSection(run: RunSummary): string {
+  async function loadEarlierRun(run: RunSummary): Promise<void> {
+    const windowStart = windows[run.runId]?.windowStart ?? 0n;
+    if (windowStart <= 0n) return;
+    let earlier: string[] = [];
+    let incomplete = '';
+    const version = loadVersion;
+    const completed = await readLogs(run, { follow: false, startOffset: 0n }, (chunk) => {
+      if (version !== loadVersion) return false;
+      const text = textBefore(chunk, windowStart);
+      if (text) {
+        const parsed = appendText(earlier, incomplete, text);
+        earlier = parsed.lines;
+        incomplete = parsed.incomplete;
+      }
+      return Boolean(chunk.data) && chunk.offset >= windowStart;
+    });
+    if (version !== loadVersion || !completed) return;
+    if (incomplete) earlier.push(incomplete);
+    const current = windows[run.runId];
+    const boundary = current?.lines[0] ?? '';
+    const overlapped = earlier.length > 0 && boundary.length > 0 && earlier[earlier.length - 1] === boundary;
+    prependLines(run.runId, overlapped ? earlier.slice(0, -1) : earlier);
+  }
+
+  async function readLogs(
+    run: RunSummary,
+    options: { follow: boolean; tailLines?: number; startOffset?: bigint },
+    onChunk: (chunk: RunLogChunk) => boolean | void,
+  ): Promise<boolean> {
+    const controller = new AbortController();
+    controllers.set(`${options.follow ? 'tail' : 'earlier'}:${run.runId}`, controller);
+    try {
+      let reached = false;
+      await followRunLogs(
+        run.runId,
+        (chunk) => {
+          if (onChunk(chunk)) reached = true;
+          if (reached) controller.abort();
+        },
+        controller.signal,
+        {
+          follow: options.follow,
+          projectId: run.projectId,
+          tailLines: options.tailLines,
+          startOffset: options.startOffset,
+        },
+      );
+      return true;
+    } catch (cause) {
+      if (controller.signal.aborted) return true;
+      const message = cause instanceof Error ? cause.message : t('日志加载失败');
+      patchWindow(run.runId, { error: message, loaded: true });
+      onError?.(message);
+      return false;
+    } finally {
+      controllers.delete(`${options.follow ? 'tail' : 'earlier'}:${run.runId}`);
+    }
+  }
+
+  function noteWindowStart(runId: string, chunk: RunLogChunk): void {
+    const current = windows[runId] ?? emptyWindow();
+    if (current.startKnown) return;
+    const start = chunk.data ? chunk.offset - BigInt(byteLength(chunk.data)) : chunk.offset;
+    const windowStart = start < 0n ? 0n : start;
+    patchWindow(runId, { windowStart, startKnown: true, hasEarlier: windowStart > 0n });
+  }
+
+  function bufferChunk(runId: string, chunk: RunLogChunk, follow: boolean): void {
+    if (!chunk.data) return;
+    // Keep chunk copies out of reactive state. Replacing the full string on every 64KB chunk is the jank this avoids.
+    pendingText.set(runId, `${pendingText.get(runId) ?? ''}${chunk.data}`);
+    if (!follow || flushTimers.has(runId)) return;
+    flushTimers.set(
+      runId,
+      window.setTimeout(() => {
+        flushTimers.delete(runId);
+        flush(runId);
+      }, FLUSH_MS),
+    );
+  }
+
+  function flush(runId: string): void {
+    const timer = flushTimers.get(runId);
+    if (timer) window.clearTimeout(timer);
+    flushTimers.delete(runId);
+    const text = pendingText.get(runId);
+    if (!text) return;
+    pendingText.delete(runId);
+    const current = windows[runId] ?? emptyWindow();
+    const parsed = appendText(current.lines, current.incomplete, text);
+    patchWindow(runId, { lines: parsed.lines, incomplete: parsed.incomplete });
+  }
+
+  function prependLines(runId: string, earlier: string[]): void {
+    const current = windows[runId] ?? emptyWindow();
+    patchWindow(runId, {
+      lines: [...earlier, ...current.lines],
+      windowStart: 0n,
+      hasEarlier: false,
+    });
+  }
+
+  function patchWindow(runId: string, patch: Partial<LogWindow>): void {
+    windows = { ...windows, [runId]: { ...(windows[runId] ?? emptyWindow()), ...patch } };
+  }
+
+  function emptyWindow(): LogWindow {
+    return {
+      lines: [],
+      incomplete: '',
+      windowStart: 0n,
+      startKnown: false,
+      hasEarlier: false,
+      loaded: false,
+      error: '',
+    };
+  }
+
+  function appendText(lines: string[], incomplete: string, text: string): { lines: string[]; incomplete: string } {
+    const parts = `${incomplete}${text}`.split('\n');
+    return { lines: [...lines, ...parts.slice(0, -1)], incomplete: parts.at(-1) ?? '' };
+  }
+
+  function textBefore(chunk: RunLogChunk, windowStart: bigint): string {
+    if (!chunk.data || chunk.offset <= 0n) return '';
+    const size = BigInt(byteLength(chunk.data));
+    const chunkStart = chunk.offset - size;
+    if (chunkStart >= windowStart) return '';
+    if (chunk.offset <= windowStart) return chunk.data;
+    const keep = Number(windowStart - chunkStart);
+    return new TextDecoder().decode(new TextEncoder().encode(chunk.data).slice(0, keep));
+  }
+
+  function byteLength(value: string): number {
+    return new TextEncoder().encode(value).length;
+  }
+
+  function runLines(run: RunSummary): string[] {
+    const window = windows[run.runId];
+    const body = [...eventLines(run.runId), ...(window?.lines ?? [])];
+    if (window?.incomplete) body.push(window.incomplete);
+    if (run.error && !body.some((line) => line.includes(run.error))) body.push(`${t('错误')}：${run.error}`);
+    if (body.length) return [headingFor(run), ...body];
+    if (window?.error) return [headingFor(run), `${t('日志加载失败')}：${window.error}`];
+    return [headingFor(run), t(window?.loaded ? '没有日志输出' : '正在加载日志…')];
+  }
+
+  function headingFor(run: RunSummary): string {
     const at = formatBeijingTime(timestampToISOString(run.startedAt || run.createdAt));
-    const shortRunId = run.runShortId || compactIdentifier(run.runId);
-    const heading = `──── ${at} · ${sourceName(run.source)} · ${shortRunId} · ${statusLabel(run)} ────`;
-    const raw = logs[run.runId] || liveOutput(run.runId);
-    const body = [
-      eventSection(run.runId),
-      raw.trimEnd(),
-      run.error && !raw.includes(run.error) ? `${t('错误')}：${run.error}` : '',
-    ]
-      .filter(Boolean)
-      .join('\n');
-    if (body) return `${heading}\n${body}`;
-    if (errors[run.runId]) return `${heading}\n${t('日志加载失败')}：${errors[run.runId]}`;
-    return `${heading}\n${t(loaded[run.runId] ? '没有日志输出' : '正在加载日志…')}`;
+    return `──── ${at} · ${sourceName(run.source)} · ${run.runShortId || compactIdentifier(run.runId)} · ${statusLabel(run)} ────`;
   }
 
-  function legacyCellSection(cell: SandboxHistoryCell): string {
+  function legacyCellLines(cell: SandboxHistoryCell): string[] {
     const at = formatBeijingTime(cell.createdAt);
-    const shortCellId = compactIdentifier(cell.id);
-    const heading = `──── ${at} · ${t('执行历史')} · ${shortCellId} · ${cell.success ? t('成功') : t('失败')} ────`;
-    const body = [cell.source.trim(), cell.output.trim(), cell.stopReason.trim()].filter(Boolean).join('\n');
-    return `${heading}\n${body}`;
+    const heading = `──── ${at} · ${t('执行历史')} · ${compactIdentifier(cell.id)} · ${cell.success ? t('成功') : t('失败')} ────`;
+    return [
+      heading,
+      ...[cell.source.trim(), cell.output.trim(), cell.stopReason.trim()].filter(Boolean).flatMap(splitLines),
+    ];
   }
 
-  function eventSection(runId: string): string {
+  function eventLines(runId: string): string[] {
     const persisted = events
       .filter(
         (event) =>
           event.runId === runId && (event.kind === RunEventKind.AGENT_ACTIVITY || event.kind === RunEventKind.STATUS),
       )
-      .map(formatRunEvent);
-    const live = activeStream?.runId === runId ? activeStream.transcript.map(formatTranscriptEvent) : [];
-    const lines = [...persisted, ...live].filter(Boolean);
-    return lines.length ? lines.join('\n') : '';
+      .flatMap((event) => splitLines(formatRunEvent(event)));
+    const live =
+      activeStream?.runId === runId
+        ? activeStream.transcript.flatMap((item) => splitLines(formatTranscriptEvent(item)))
+        : [];
+    return [...persisted, ...live];
+  }
+
+  function splitLines(value: string): string[] {
+    return value ? value.split('\n') : [];
   }
 
   function formatRunEvent(event: RunEvent): string {
@@ -173,10 +338,6 @@
     }
   }
 
-  function liveOutput(runId: string): string {
-    return activeStream?.runId === runId ? `${activeStream.stdout}${activeStream.stderr}` : '';
-  }
-
   function statusLabel(run: RunSummary): string {
     const status = runStatusName(run.status);
     return t(
@@ -192,22 +353,56 @@
     );
   }
 
-  function download(): void {
-    const url = URL.createObjectURL(new Blob([content], { type: 'text/plain' }));
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `sandbox-${compactIdentifier(sandboxId)}.log`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+  async function download(): Promise<void> {
+    if (downloading) return;
+    downloading = true;
+    const controller = new AbortController();
+    try {
+      const parts: Array<string | Blob> = [];
+      for (const run of chronologicalRuns) {
+        parts.push(`${headingFor(run)}\n`);
+        await followRunLogs(
+          run.runId,
+          (chunk) => {
+            if (chunk.data) parts.push(chunk.data);
+          },
+          controller.signal,
+          { follow: false, projectId: run.projectId, startOffset: 0n },
+        );
+        parts.push('\n\n');
+      }
+      for (const cell of legacyCells) {
+        if (cell.source.trim() || cell.output.trim()) parts.push(`${legacyCellLines(cell).join('\n')}\n\n`);
+      }
+      const url = URL.createObjectURL(new Blob(parts, { type: 'text/plain' }));
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `sandbox-${compactIdentifier(sandboxId)}.log`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (cause) {
+      if (!controller.signal.aborted) onError?.(cause instanceof Error ? cause.message : t('日志加载失败'));
+    } finally {
+      downloading = false;
+    }
   }
 </script>
 
-<div data-sandbox-log-stream class="h-full min-h-0">
+<div data-sandbox-log-stream data-log-pending={pending ? 'true' : 'false'} class="flex h-full min-h-0 flex-col">
+  <div class="hidden" aria-hidden="true">
+    {#each chronologicalRuns as run (run.runId)}
+      <span data-log-section={run.runId}>{headingFor(run)}</span>
+    {/each}
+  </div>
   <RunLogViewer
     {query}
-    content={visibleContent}
-    {lineCount}
+    {lines}
+    loadedLineCount={lines.length}
+    {hasEarlier}
+    {loadingEarlier}
+    {downloading}
     onQuery={(value) => (query = value)}
-    onDownload={download}
+    onDownload={() => void download()}
+    onLoadEarlier={() => void loadEarlier()}
   />
 </div>
