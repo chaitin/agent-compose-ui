@@ -51,6 +51,7 @@
   let loadingEarlier = $state(false);
   let downloading = $state(false);
   let preserveLine = $state(0);
+  let anchorBeforeLine = 0;
   let loadVersion = 0;
   const controllers = new SvelteMap<string, AbortController>();
   const requested = new SvelteSet<string>();
@@ -89,6 +90,7 @@
     windows = {};
     loadingEarlier = false;
     preserveLine = 0;
+    anchorBeforeLine = 0;
   });
 
   $effect(() => {
@@ -216,14 +218,24 @@
 
   function prependLines(runId: string, earlier: string[]): void {
     const current = windows[runId] ?? emptyWindow();
-    // The viewer keeps its pixel scroll offset. Count the prepended rows so that offset can move with them.
     const addedRows = earlier.length + runHeadingRows(runId);
+    const startsAboveAnchor = sectionStartLine(runId) < anchorBeforeLine;
     patchWindow(runId, {
       lines: [...earlier, ...current.lines],
       windowStart: 0n,
       hasEarlier: false,
     });
-    preserveLine += addedRows;
+    // Rows appended below the anchored line do not move the text already on screen.
+    if (startsAboveAnchor) preserveLine += addedRows;
+  }
+
+  function sectionStartLine(runId: string): number {
+    let offset = 0;
+    for (const section of sections) {
+      if ('run' in section && section.run.runId === runId) return offset;
+      offset += 'run' in section ? runLines(section.run).length : legacyCellLines(section.cell).length;
+    }
+    return offset;
   }
 
   function runHeadingRows(runId: string): number {
@@ -411,6 +423,7 @@
     {loadingEarlier}
     {downloading}
     {preserveLine}
+    onViewportLine={(line) => (anchorBeforeLine = line)}
     onQuery={(value) => (query = value)}
     onDownload={() => void download()}
     onLoadEarlier={() => void loadEarlier()}

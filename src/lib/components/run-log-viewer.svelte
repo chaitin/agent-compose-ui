@@ -18,6 +18,7 @@
     onQuery,
     onDownload,
     onLoadEarlier,
+    onViewportLine,
   }: {
     query: string;
     lines: string[];
@@ -25,11 +26,15 @@
     hasEarlier?: boolean;
     loadingEarlier?: boolean;
     downloading?: boolean;
-    /** Keep this rendered line under the viewport when earlier lines are prepended. */
+    /**
+     * Cumulative rows inserted above the viewport anchor.
+     * Callers must not count rows inserted below that anchor.
+     */
     preserveLine?: number;
     onQuery: (value: string) => void;
     onDownload: () => void;
     onLoadEarlier?: () => void;
+    onViewportLine?: (line: number) => void;
   } = $props();
 
   let viewport = $state<HTMLElement | null>(null);
@@ -39,6 +44,7 @@
   let activeMatch = $state(0);
   let anchoredLine = $state(0);
   let anchoredOffset = $state(0);
+  let revealedQuery = '';
 
   const normalizedQuery = $derived(query.trim().toLowerCase());
   const matchIndexes = $derived(
@@ -66,12 +72,11 @@
   });
 
   $effect(() => {
-    if (!normalizedQuery) {
-      activeMatch = 0;
-      return;
-    }
+    const nextQuery = normalizedQuery;
+    if (nextQuery === revealedQuery) return;
+    revealedQuery = nextQuery;
     activeMatch = 0;
-    void revealMatch(0);
+    if (nextQuery) void revealMatch(0);
   });
 
   $effect(() => {
@@ -92,6 +97,7 @@
     if (!viewport) return;
     scrollTop = viewport.scrollTop;
     anchoredOffset = viewport.scrollTop;
+    onViewportLine?.(Math.floor(viewport.scrollTop / LINE_HEIGHT));
     followsLatest = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 72;
   }
 
