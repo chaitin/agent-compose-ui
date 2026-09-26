@@ -91,21 +91,49 @@ export async function listRunEvents(runId: string): Promise<RunEvent[]> {
   return (await runClient.listRunEvents({ runId, limit: 500 })).events;
 }
 
+export type RunLogChunk = {
+  data: string;
+  /** Byte offset after this chunk. The first data chunk's previous offset is the window start. */
+  offset: bigint;
+  final: boolean;
+};
+
+export type FollowRunLogsOptions = {
+  follow?: boolean;
+  projectId?: string;
+  /**
+   * Recent newline-delimited lines. Omit for the full history.
+   * Run detail keeps the full history; event and sandbox logs must pass this explicitly.
+   */
+  tailLines?: number;
+  /** Byte offset. Used to read earlier than an observed tail window; not a line number. */
+  startOffset?: bigint;
+};
+
 export async function followRunLogs(
   runId: string,
-  onChunk: (data: string, final: boolean) => void,
+  onChunk: (chunk: RunLogChunk) => void,
   signal?: AbortSignal,
-  follow = true,
-  projectId?: string,
+  options: FollowRunLogsOptions = {},
 ): Promise<void> {
-  // Always request the complete persisted log before following live output.
-  // In particular, do not use a tail/start offset when opening a run detail
-  // page: the server treats an omitted tail as the full log history.
+  // Default remains the complete persisted log. An omitted tail is full history
+  // on the server; do not infer a tail here. Callers that only render a window
+  // must pass tailLines or startOffset themselves.
+  const tailLines = options.tailLines ?? 0;
+  const tailSet = options.tailLines != null;
   for await (const chunk of runClient.followRunLogs(
-    { projectId, runId, follow, includeMetadata: true, startOffset: 0n, tailLines: 0, tailSet: false },
+    {
+      projectId: options.projectId,
+      runId,
+      follow: options.follow ?? true,
+      includeMetadata: true,
+      startOffset: options.startOffset ?? 0n,
+      tailLines,
+      tailSet,
+    },
     { signal },
   ))
-    onChunk(chunk.data, chunk.isFinal);
+    onChunk({ data: chunk.data, offset: chunk.offset, final: chunk.isFinal });
 }
 
 export type ProjectRunDebugTarget = { runId: string; sandboxId: string };

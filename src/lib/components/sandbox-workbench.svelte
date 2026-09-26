@@ -103,24 +103,13 @@
       (left, right) => sortTime(left) - sortTime(right),
     ),
   );
-  const combinedLog = $derived(
-    sortedLogEntries
-      .map((entry) => {
-        const head = `[${formatBeijingTime(entry.createdAt)}]${entry.type ? ` ${entry.type}` : ''}`;
-        const body = entry.message ? `\n${entry.message}` : '';
-        return `${head}${body}`;
-      })
-      .join('\n'),
+  const fallbackLogLines = $derived(
+    sortedLogEntries.flatMap((entry) => {
+      const head = `[${formatBeijingTime(entry.createdAt)}]${entry.type ? ` ${entry.type}` : ''}`;
+      const body = entry.message ? entry.message.split('\n') : [];
+      return [head, ...body];
+    }),
   );
-  const visibleCombinedLog = $derived(
-    contextLogQuery.trim()
-      ? combinedLog
-          .split('\n')
-          .filter((line) => line.toLowerCase().includes(contextLogQuery.toLowerCase()))
-          .join('\n')
-      : combinedLog,
-  );
-  const combinedLogLineCount = $derived(combinedLog ? combinedLog.split('\n').length : 0);
   const targets = $derived.by(() => {
     const values = runs
       .filter((run) => run.projectId && run.agentName)
@@ -202,9 +191,9 @@
       ]);
       if (loadedSandboxId !== targetSandboxId) return;
       const nextTarget = firstTarget(nextRuns) ?? sandboxTarget(nextSandbox);
-      sandbox = nextSandbox;
       const nextTurns = conversationTurns(cells);
       const nextConversationRuns = conversationRunsFor(nextRuns, nextEvents, nextTurns);
+      sandbox = nextSandbox;
       runs = nextRuns;
       conversationRuns = nextConversationRuns;
       events = nextEvents;
@@ -399,7 +388,7 @@
   }
 
   function downloadContextLog(): void {
-    const url = URL.createObjectURL(new Blob([combinedLog], { type: 'text/plain' }));
+    const url = URL.createObjectURL(new Blob([fallbackLogLines.join('\n')], { type: 'text/plain' }));
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = `sandbox-${compactIdentifier(sandboxId)}.log`;
@@ -553,11 +542,12 @@
             {events}
             {activeStream}
             legacyCells={historyCells.filter((cell) => !cell.runId && !cell.id.endsWith('-legacy-log'))}
+            onError={(message) => (error = message)}
           />
         {:else}<RunLogViewer
             query={contextLogQuery}
-            content={visibleCombinedLog}
-            lineCount={combinedLogLineCount}
+            lines={fallbackLogLines}
+            loadedLineCount={fallbackLogLines.length}
             onQuery={(value) => (contextLogQuery = value)}
             onDownload={downloadContextLog}
           />{/if}

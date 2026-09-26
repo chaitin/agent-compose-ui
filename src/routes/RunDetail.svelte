@@ -136,15 +136,10 @@
       if (tab === 'terminal' && sandbox) connectShell();
       if (sandboxId) void loadConversationHistory(sandboxId, targetRunId, version);
       scheduleStatusPoll(targetRunId, version);
-      void followRunLogs(
-        targetRunId,
-        (chunk) => {
-          logs += chunk;
-        },
-        controller.signal,
-        true,
-        nextDetail.summary?.projectId,
-      ).catch((cause) => {
+      void followRunLogs(targetRunId, (chunk) => (logs += chunk.data), controller.signal, {
+        follow: true,
+        projectId: nextDetail.summary?.projectId,
+      }).catch((cause) => {
         if (version === loadVersion && !controller?.signal.aborted)
           error = t('日志订阅断开：{error}', { error: errorMessage(cause) });
       });
