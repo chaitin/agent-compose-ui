@@ -63,7 +63,7 @@
     </div>{/if}{#if warnings.length}<div class="rounded-md bg-warning/10 p-3 text-sm text-warning">
       {warnings.join(' · ')}
     </div>{/if}{#if loading}<p class="text-sm text-muted-foreground">{t('正在加载…')}</p>{:else}<div
-      class="overflow-hidden rounded-lg border border-border"
+      class="overflow-hidden border-t border-border"
     >
       <table class="w-full text-sm">
         <thead class="bg-muted/40"

@@ -212,11 +212,9 @@
             ? 'terminal'
             : initialTab === 'conversation' && conversationAvailable
               ? 'conversation'
-              : initialTab === 'logs' && logsAvailable
+              : logsAvailable || !conversationAvailable
                 ? 'logs'
-                : conversationAvailable
-                  ? 'conversation'
-                  : 'logs';
+                : 'conversation';
     } catch (cause) {
       if (loadedSandboxId !== targetSandboxId) return;
       error = errorMessage(cause);
@@ -439,7 +437,7 @@
     </div>{/if}
   {#if loading}
     <div class="flex min-h-48 flex-1 items-center justify-center text-sm text-muted-foreground">
-      {t('正在加载执行环境…')}
+      {t('正在加载 Sandbox…')}
     </div>
   {:else if sandbox}
     <div
@@ -450,14 +448,14 @@
         : 'mb-3 rounded-lg border border-border bg-card px-3 py-2'}"
     >
       <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-        <h2 class="truncate text-sm font-semibold">{sandbox.agentName || sandbox.title || t('执行环境')}</h2>
+        <h2 class="truncate text-sm font-semibold">{sandbox.agentName || sandbox.title || t('Sandbox')}</h2>
         <StatusBadge status={sandbox.status} />
         <span class="truncate text-xs text-muted-foreground"
           >{runs[0]?.projectName || (sandbox.projectId ? compactIdentifier(sandbox.projectId) : t('未关联项目'))}</span
         ><CopyableText
           value={sandbox.id}
           display={compactIdentifier(sandbox.id)}
-          label="执行环境 ID"
+          label="Sandbox ID"
           class="font-mono text-xs text-muted-foreground"
         /><Timestamp value={sandbox.updatedAt} class="hidden text-xs text-muted-foreground sm:inline" />
       </div>
@@ -524,11 +522,11 @@
 
     <Tabs.Root bind:value={tab} class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <Tabs.List data-tab-scroll class="shrink-0 justify-start">
-        {#if hasConversation || runnable}<Tabs.Trigger value="conversation">{t('对话')}</Tabs.Trigger>{/if}
         {#if runs.length || contextLogEntries.length || liveEntries.length || historyEvents.length || historyCells.length}<Tabs.Trigger
             value="logs">{t('运行日志')}</Tabs.Trigger
           >{/if}
         <Tabs.Trigger value="records">{t('智能体记录')}</Tabs.Trigger>
+        {#if hasConversation || runnable}<Tabs.Trigger value="conversation">{t('对话')}</Tabs.Trigger>{/if}
         {#if terminalAvailable}<Tabs.Trigger value="terminal">{t('终端')}</Tabs.Trigger>{/if}
       </Tabs.List>
 

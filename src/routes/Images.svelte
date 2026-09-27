@@ -99,7 +99,7 @@
       {t('镜像')}
       {page.error}
     </div>
-    <div class="overflow-hidden rounded-lg border border-border">
+    <div class="overflow-hidden border-t border-border">
       <table class="w-full text-sm">
         <thead class="bg-muted/40"
           ><tr

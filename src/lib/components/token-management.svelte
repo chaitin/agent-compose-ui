@@ -131,7 +131,7 @@
   {:else if loading}
     <p class="text-sm text-muted-foreground">{t('正在加载 API 令牌…')}</p>
   {:else}
-    <div data-scroll-surface class="min-h-0 overflow-auto rounded-lg border border-border bg-card">
+    <div data-scroll-surface class="min-h-0 overflow-auto border-t border-border">
       <table class="w-full min-w-[52rem] text-left text-sm">
         <thead class="sticky top-0 z-10 bg-muted/90 text-xs text-muted-foreground backdrop-blur">
           <tr>

@@ -96,7 +96,7 @@ export function auditActionLabel(value: string): string {
   if (normalized === 'terminal.attach') return '连接终端';
   if (normalized === 'applyproject') return '部署项目';
   if (normalized === 'runagentstream') return '运行智能体';
-  if (normalized === 'resumesandbox') return '恢复执行环境';
+  if (normalized === 'resumesandbox') return '恢复 Sandbox';
   if (normalized.includes('/api/ui/v1/project-deployment-previews')) return '预览项目变更';
   if (normalized.startsWith('post /api/ui/v1/tokens')) return '创建 API 令牌';
   if (normalized.startsWith('delete /api/ui/v1/tokens/')) return '撤销 API 令牌';

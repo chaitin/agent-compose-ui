@@ -22,7 +22,7 @@
   } = $props();
 </script>
 
-<div class="flex shrink-0 items-center gap-2 border-b border-white/10 bg-white/[0.02] px-3 py-2">
+<div class="flex shrink-0 items-center gap-2 border-b border-border bg-transparent px-3 py-2">
   <Input
     value={query}
     oninput={(event) => onQuery(event.currentTarget.value)}
@@ -32,14 +32,14 @@
       if (event.shiftKey) onPrevious();
       else onNext();
     }}
-    class="min-w-0 flex-1 border-white/15 bg-white/5 text-white placeholder:text-white/35 sm:max-w-sm"
+    class="min-w-0 flex-1 border-input bg-muted text-foreground placeholder:text-faint sm:max-w-sm"
     placeholder={t('搜索当前对话')}
   />
-  <span class="min-w-14 text-center text-xs text-white/45">{count ? `${active + 1} / ${count}` : '0 / 0'}</span>
+  <span class="min-w-14 text-center text-xs text-faint">{count ? `${active + 1} / ${count}` : '0 / 0'}</span>
   <Button
     size="sm"
     variant="ghost"
-    class="size-8 border border-white/15 px-0 text-white/70 hover:bg-white/10 hover:text-white sm:w-auto sm:px-3"
+    class="size-8 border border-input px-0 text-muted-foreground hover:bg-muted hover:text-foreground sm:w-auto sm:px-3"
     disabled={!count}
     aria-label={t('上一个')}
     title={t('上一个')}
@@ -48,7 +48,7 @@
   <Button
     size="sm"
     variant="ghost"
-    class="size-8 border border-white/15 px-0 text-white/70 hover:bg-white/10 hover:text-white sm:w-auto sm:px-3"
+    class="size-8 border border-input px-0 text-muted-foreground hover:bg-muted hover:text-foreground sm:w-auto sm:px-3"
     disabled={!count}
     aria-label={t('下一个')}
     title={t('下一个')}

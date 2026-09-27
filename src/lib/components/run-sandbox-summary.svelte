@@ -80,7 +80,7 @@
     <TechnicalDetails
       title="详细信息"
       items={[
-        { label: '执行环境 ID', value: sandbox.id },
+        { label: 'Sandbox ID', value: sandbox.id },
         { label: '工作目录', value: sandbox.workspacePath },
         ...presentedTags.other.map((tag) => ({ label: tag.name, value: tag.value, copyable: false })),
       ]}
@@ -88,7 +88,7 @@
   </div>
 {:else}
   <div class="rounded-lg border border-warning/30 bg-warning/10 p-4 text-sm text-warning">
-    {t('该运行的执行环境不可用或已回收；日志和事件仍可查看。')}
+    {t('该运行的 Sandbox 不可用或已回收；日志和事件仍可查看。')}
   </div>
 {/if}
 

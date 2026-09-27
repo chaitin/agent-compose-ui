@@ -70,7 +70,7 @@
     {/each}
   </div>
 
-  <div class="hidden min-h-full rounded-lg border border-border md:block">
+  <div class="hidden min-h-full border-t border-border md:block">
     <table class="w-full min-w-[68rem] table-fixed text-sm">
       <colgroup>
         <col class="w-[11.5rem]" />

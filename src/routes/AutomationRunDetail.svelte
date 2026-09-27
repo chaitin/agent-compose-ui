@@ -165,7 +165,7 @@
           {#if result.sandboxId}<Button
               variant="outline"
               size="sm"
-              href={appPath(`/sandboxes/${encodeURIComponent(result.sandboxId)}`)}>查看执行环境</Button
+              href={appPath(`/sandboxes/${encodeURIComponent(result.sandboxId)}`)}>查看 Sandbox</Button
             >{/if}
         </div>
         {#if result.output}
@@ -173,7 +173,7 @@
             value={copyableValue(result.output)}
             display={previewValue(result.output)}
             label="执行结果"
-            class="mt-3 block max-w-full rounded-lg border border-slate-700 bg-[#0b1018] p-3 font-mono text-xs leading-5 text-[#cdd6e3]"
+            class="mt-3 block max-w-full rounded-lg border border-border bg-muted p-3 font-mono text-xs leading-5 text-foreground"
           />
         {:else if run.error}
           <CopyableText
@@ -194,10 +194,10 @@
     <section class="rounded-lg border border-border bg-card p-4">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 class="font-medium">{t('关联执行环境')}</h2>
+          <h2 class="font-medium">{t('关联 Sandbox')}</h2>
           <p class="mt-1 text-xs text-muted-foreground">{t('自动化脚本创建或复用的 Sandbox，以及其中的 Agent Run')}</p>
         </div>
-        <span class="text-xs text-muted-foreground">{environments.length} {t('个执行环境')}</span>
+        <span class="text-xs text-muted-foreground">{environments.length} {t('个 Sandbox')}</span>
       </div>
       <div class="mt-3 space-y-3">
         {#each environments as environment (environment.sandboxId)}
@@ -206,13 +206,13 @@
               <CopyableText
                 value={environment.sandboxId}
                 display={compactIdentifier(environment.sandboxId)}
-                label={t('执行环境 ID')}
+                label={t('Sandbox ID')}
                 class="font-mono text-xs"
               />
               <Button
                 variant="outline"
                 size="sm"
-                href={appPath(`/sandboxes/${encodeURIComponent(environment.sandboxId)}`)}>{t('查看执行环境')}</Button
+                href={appPath(`/sandboxes/${encodeURIComponent(environment.sandboxId)}`)}>{t('查看 Sandbox')}</Button
               >
             </div>
             {#if environment.runs.length}
@@ -257,7 +257,7 @@
         { label: t('运行 ID'), value: run.id },
         { label: t('自动化 ID'), value: run.loaderId },
         { label: t('触发条件 ID'), value: run.triggerId },
-        { label: t('执行环境 ID'), value: environments.map((item) => item.sandboxId).join(', ') },
+        { label: t('Sandbox ID'), value: environments.map((item) => item.sandboxId).join(', ') },
         { label: t('执行单元 ID'), value: result.cellId },
         { label: t('产物目录'), value: run.artifactsDir },
         { label: t('原始结果'), value: result.raw },

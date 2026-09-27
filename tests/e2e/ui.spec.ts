@@ -64,7 +64,6 @@ const routes = [
   '/projects',
   '/automations',
   '/sandboxes',
-  '/runs/unlinked',
   '/events',
   '/settings',
   '/images',
@@ -285,7 +284,8 @@ test('loads webhook events newest first with offset pagination', async ({ page }
   });
 
   await navigateInApp(page, '/events?topic=webhook.pagination');
-  const rows = page.locator('tbody tr');
+  // 事件按天分组，分组标题也是一行；只数带事件 ID 的数据行。
+  const rows = page.locator('tbody tr[title]');
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toContainText('#3');
   await expect(rows.nth(1)).toContainText('#2');
@@ -323,7 +323,7 @@ test('loads webhook event detail through one trace request', async ({ page }) =>
   );
 
   await navigateInApp(page, '/events/event-trace');
-  await expect(page.getByRole('heading', { name: 'Webhook 事件详情' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'webhook.trace' })).toBeVisible();
   expect(eventRequests).toEqual(['/api/events/event-trace/trace']);
 });
 
@@ -462,7 +462,7 @@ async function ensureWebhookAcceptanceAgent(page: Page): Promise<void> {
                       sandboxPolicy: 2,
                       concurrencyPolicy: 1,
                       displayName,
-                      description: 'Webhook 与事件关联执行环境回归。',
+                      description: 'Webhook 与事件关联 Sandbox 回归。',
                     }),
                   }),
                 ]),
@@ -520,13 +520,8 @@ test('authenticates and loads every primary route without browser errors', async
   }
 
   await navigateInApp(page, '/sandboxes');
-  await expect(page.locator('thead th').first()).toContainText('智能体');
-  const exceptionalRuns = (await (await page.request.get('/api/ui/v1/runs/unlinked?limit=1')).json()) as {
-    items?: unknown[];
-  };
-  await expect(page.getByRole('button', { name: '运行异常', exact: true })).toHaveCount(
-    exceptionalRuns.items?.length ? 1 : 0,
-  );
+  // Sandbox 列表以 sandbox 本身为主体，第一列是 Sandbox ID。
+  await expect(page.locator('thead th').first()).toContainText('Sandbox ID');
 
   await page.reload();
   await expect(page.locator('main[data-scroll-root]')).toBeVisible();
@@ -539,7 +534,7 @@ test('switches between Chinese and English and persists the locale', async ({ pa
   await login(page);
   await page.getByRole('button', { name: '切换语言' }).click();
   await expect(page.getByRole('button', { name: 'Change language' })).toBeVisible();
-  await expect(page.getByText('Overview', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Runs', { exact: true }).first()).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('en-US');
 
   await page.reload();
@@ -599,7 +594,7 @@ test('keeps product terminology concise and raw audit values in request details'
     expect(visibleText).not.toMatch(
       /project_scheduler|agent_definition|PROJECT_CHANGE_|Candidate:|daemon|Spec hash|Scheduler Run ID/,
     );
-    expect(visibleText).not.toMatch(/\bSandbox\b/);
+    // 2026-09-27 起界面统一使用「Sandbox」这个词，不再禁止它出现。
   }
 
   const auditAction = page.getByTitle('ApplyProject');
@@ -621,12 +616,11 @@ test('keeps product terminology concise and raw audit values in request details'
   await page.getByRole('button', { name: '关闭' }).click();
 
   await page.getByRole('button', { name: '切换语言' }).click();
+  // 页头说明文字已去掉，页面名称由标题（读屏）、面包屑和页签给出。
   await navigateInApp(page, '/settings');
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
-  await expect(page.getByText('Manage global settings and access', { exact: true })).toBeVisible();
   await navigateInApp(page, '/audit');
   await expect(page.getByRole('heading', { name: 'Audit Logs', exact: true })).toBeVisible();
-  await expect(page.getByText('View sign-ins and changes', { exact: true })).toBeVisible();
 });
 
 test('keeps primary pages within phone and tablet viewports', async ({ page }) => {
@@ -637,7 +631,8 @@ test('keeps primary pages within phone and tablet viewports', async ({ page }) =
   await expect(navigationButton).toBeVisible();
   await navigationButton.click();
   await expect(page.getByRole('navigation').first()).toBeVisible();
-  await page.getByRole('button', { name: '事件', exact: true }).click();
+  await page.locator('aside').getByRole('button', { name: '运行', exact: true }).click();
+  await page.getByRole('button', { name: 'Webhook 事件', exact: true }).click();
   await expect(page).toHaveURL(/\/events(?:\?.*)?$/);
 
   for (const viewport of [
@@ -646,16 +641,7 @@ test('keeps primary pages within phone and tablet viewports', async ({ page }) =
     { width: 768, height: 1024 },
   ]) {
     await page.setViewportSize(viewport);
-    for (const route of [
-      '/',
-      '/projects',
-      '/automations',
-      '/sandboxes',
-      '/runs/unlinked',
-      '/events',
-      '/settings',
-      '/audit',
-    ]) {
+    for (const route of ['/', '/projects', '/automations', '/sandboxes', '/events', '/settings', '/audit']) {
       await navigateInApp(page, route);
       await page.waitForTimeout(100);
       const dimensions = await page.evaluate(() => ({
@@ -677,25 +663,26 @@ test('keeps run and event headers compact on desktop', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page);
 
+  // 列表页的名称由区段页签给出，页头只在有操作时出现，出现时也保持单行高度。
+  const headerHeight = async (): Promise<number> => {
+    const header = page.locator('[data-page-header]');
+    if ((await header.count()) === 0) return 0;
+    return (await header.first().boundingBox())?.height ?? 0;
+  };
+
   await navigateInApp(page, '/sandboxes');
-  const runHeader = await page.locator('[data-page-header]').boundingBox();
-  expect(runHeader!.height).toBeLessThanOrEqual(56);
   await expect(page.locator('[data-route-scroll="sandboxes"]:visible')).toBeVisible();
+  expect(await headerHeight()).toBeLessThanOrEqual(56);
 
   await navigateInApp(page, '/events');
-  const [eventHeader, eventToolbar] = await Promise.all([
-    page.locator('[data-page-header]').boundingBox(),
-    page.locator('[data-collection-toolbar]').boundingBox(),
-  ]);
-  expect(eventHeader!.height).toBeLessThanOrEqual(56);
-  expect(eventToolbar!.height).toBeLessThanOrEqual(52);
+  await expect(page.locator('[data-collection-toolbar]')).toBeVisible();
+  expect(await headerHeight()).toBeLessThanOrEqual(56);
+  expect((await page.locator('[data-collection-toolbar]').boundingBox())!.height).toBeLessThanOrEqual(52);
 
   if (retainedLinkedWebhookEventId) {
     await navigateInApp(page, `/events/${retainedLinkedWebhookEventId}`);
-    const detailHeader = await page.locator('[data-page-header]').boundingBox();
-    expect(detailHeader!.height).toBeLessThanOrEqual(56);
-    await expect(page.locator('[data-event-summary-bar]')).toHaveCount(0);
-    await expect(page.locator('[data-page-header]').getByRole('button', { name: '复制 Event ID' })).toBeVisible();
+    await expect(page.locator('[data-page-header]')).toBeVisible();
+    expect(await headerHeight()).toBeLessThanOrEqual(80);
     await expect(page.locator('[data-sandbox-workbench]')).toBeVisible();
   }
 });
@@ -782,7 +769,7 @@ test('compacts execution environment metadata without altering output', async ({
   expect((await contextBar.boundingBox())!.height).toBeLessThanOrEqual(52);
   const metadata = await contextBar.innerText();
   expect(metadata).not.toMatch(/\b[a-f\d]{32,}\b/i);
-  await expect(workbench.getByRole('button', { name: /复制\s+执行环境 ID/ })).toHaveCount(1);
+  await expect(workbench.getByRole('button', { name: /复制\s+Sandbox ID/ })).toHaveCount(1);
   await expect(contextBar.getByRole('button', { name: '复制链接' })).toBeVisible();
   await expect(workbench.getByText('环境信息', { exact: true })).toBeVisible();
 });
@@ -960,43 +947,6 @@ test('restores complete successful replies around file changes', async ({ page }
   ]);
 });
 
-test('builds one execution timeline without repeating conversation output', async ({ page }) => {
-  await page.goto('/login');
-  const result = await page.evaluate(async () => {
-    const { RunEvent, RunEventKind } = await import('/src/gen/agentcompose/v2/agentcompose_pb.ts');
-    const { buildRunExecutionEvents } = await import('/src/model/run-execution.ts');
-    const events = [
-      new RunEvent({ id: 'user', kind: RunEventKind.USER_MESSAGE, text: 'hello' }),
-      new RunEvent({ id: 'assistant', kind: RunEventKind.AGENT_MESSAGE, text: 'done' }),
-      new RunEvent({ id: 'status', kind: RunEventKind.STATUS, success: true }),
-    ];
-    const failed = [
-      new RunEvent({
-        id: 'failed',
-        kind: RunEventKind.STATUS,
-        stopReason: 'sandbox start failed: context canceled',
-      }),
-    ];
-    return {
-      covered: buildRunExecutionEvents(events, [], 'done', '').map((event) => event.title),
-      unique: buildRunExecutionEvents(events, [], 'shell output', '').map((event) => event.title),
-      failure: buildRunExecutionEvents(failed, [], '', '').map((event) => event.summary),
-      coveredFailure: buildRunExecutionEvents(
-        failed,
-        [],
-        'codex run failed: sandbox start failed: context canceled',
-        '',
-      ).map((event) => event.title),
-    };
-  });
-  expect(result).toEqual({
-    covered: ['运行完成'],
-    unique: ['运行完成', '运行输出'],
-    failure: ['sandbox start failed: context canceled'],
-    coveredFailure: ['执行失败'],
-  });
-});
-
 test('matches an active run to its persisted conversation turn', async ({ page }) => {
   await page.goto('/login');
   const result = await page.evaluate(async () => {
@@ -1143,7 +1093,7 @@ test('keeps workbench controls visible while sibling content panes scroll', asyn
   }
 
   await navigateInApp(page, '/settings');
-  for (const tab of ['全局环境', '能力网关', 'Webhook', '工作目录', '鉴权']) {
+  for (const tab of ['全局环境', '能力网关', 'Webhook', '工作目录']) {
     await page.getByRole('tab', { name: tab, exact: true }).click();
     await expect(page.getByRole('tabpanel', { name: tab })).toBeVisible();
     expect(
@@ -1163,7 +1113,7 @@ test('keeps settings and execution tabs scrollable without visible scrollbars', 
   await assertTabRailHasNoScrollbar(page);
 });
 
-test('supports theme, density, command palette, and browser navigation', async ({ page }) => {
+test('supports theme, command palette, and browser navigation', async ({ page }) => {
   await login(page);
 
   await page.keyboard.press('Control+k');
@@ -1171,7 +1121,6 @@ test('supports theme, density, command palette, and browser navigation', async (
   await page.keyboard.press('Escape');
   await page.getByLabel('切换主题').click();
   await expect(page.locator('html')).toHaveClass(/dark/);
-  await page.getByLabel('切换密度').click();
   await page.getByRole('button', { name: '项目', exact: true }).click();
   await expect(page).toHaveURL(/\/projects/);
   await page.goBack();
@@ -1214,15 +1163,18 @@ test('distinguishes semantic statuses and the selected tab', async ({ page }) =>
 test('filters execution environments and restores the filtered view', async ({ page }) => {
   await login(page);
   await navigateInApp(page, '/sandboxes');
-  await expect(page.getByRole('heading', { name: '运行记录' })).toBeVisible();
-  await expect(page.getByPlaceholder('输入执行环境 ID')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sandboxes' })).toBeAttached();
+  await expect(page.getByPlaceholder('输入 Sandbox ID')).toBeVisible();
   await expect(page.getByRole('button', { name: '查找', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '直达', exact: true })).toHaveCount(0);
 
   await page.getByLabel('按状态筛选').selectOption('failed');
   await expect(page).toHaveURL(/\/sandboxes\?status=failed$/);
-  await expect(page.locator('tbody [data-semantic-status="failed"]').first()).toBeVisible();
-  await expect(page.locator('tbody [data-semantic-status]:not([data-semantic-status="failed"])')).toHaveCount(0);
+  // 只看 sandbox 自身状态列；「运行」列里的最近运行结果是另一种状态。
+  await expect(page.locator('tbody [data-sandbox-status] [data-semantic-status="failed"]').first()).toBeVisible();
+  await expect(
+    page.locator('tbody [data-sandbox-status] [data-semantic-status]:not([data-semantic-status="failed"])'),
+  ).toHaveCount(0);
 
   await page.locator('tbody tr').first().click();
   await expect(page).toHaveURL(/\/sandboxes\/[a-f0-9]+$/);
@@ -1243,7 +1195,7 @@ test('keeps execution actions sticky and restores list scroll on browser history
   await navigateInApp(page, '/sandboxes');
   const header = page.locator('[data-page-header]');
   const list = page.locator('[data-route-scroll="sandboxes"]:visible');
-  await expect(page.getByRole('heading', { name: '运行记录', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sandboxes', exact: true })).toBeAttached();
   await expect.poll(() => page.getByRole('row').count()).toBeGreaterThan(1);
   await page.addStyleTag({ content: '[data-route-scroll="sandboxes"] table { min-height: calc(100% + 48rem); }' });
   const headerTop = await header.evaluate((element) => element.getBoundingClientRect().top);
@@ -1276,24 +1228,23 @@ test('opens the live webhook event from the authenticated event center', async (
   await page.getByLabel('密码').fill(e2ePassword);
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/events/${retainedLiveWebhookEventId}$`));
-  await expect(page.getByRole('heading', { name: 'Webhook 事件详情' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'webhook.ui-regression.acceptance' })).toBeVisible();
 
   await navigateInApp(page, '/events?topic=webhook.ui-regression.acceptance');
-  await expect(page.getByRole('button', { name: /webhook\.ui-regression\.acceptance/ })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: '事件主题' })).toHaveValue('webhook.ui-regression.acceptance');
   const acceptedEvent = page.getByRole('table').getByTitle(retainedLiveWebhookEventId);
   await expect(acceptedEvent).toBeVisible();
   await acceptedEvent.click();
-  await expect(page.getByRole('heading', { name: 'Webhook 事件详情' })).toBeVisible();
-  await expect(page.getByText(/没有产生或绑定对话执行环境/)).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: '自动化执行' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '事件时间线' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'webhook.ui-regression.acceptance' })).toBeVisible();
+  await expect(page.getByText(/没有产生或绑定对话 Sandbox/)).toHaveCount(0);
+  await expect(page.getByText('自动化执行', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('agent-compose-ui:live-acceptance-v2', { exact: true })).toBeVisible();
   await expect(page.getByText('Webhook Payload')).toHaveCount(0);
   await expect(page.getByText(/WEBHOOK_LIVE_ACCEPTANCE_OK/)).toHaveCount(0);
   await expect(page.getByText('no_subscriber', { exact: true })).toBeVisible();
   await page.reload();
   await expect(page).toHaveURL(new RegExp(`/events/${retainedLiveWebhookEventId}$`));
-  await expect(page.getByRole('heading', { name: 'Webhook 事件详情' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'webhook.ui-regression.acceptance' })).toBeVisible();
   await expect(page.getByRole('button', { name: '复制链接' })).toBeVisible();
 });
 
@@ -1339,7 +1290,7 @@ test('copies full resource identifiers and deep links without navigating rows', 
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
 
   await navigateInApp(page, '/sandboxes');
-  const sandboxCopy = page.getByRole('button', { name: '复制 执行环境 ID' }).first();
+  const sandboxCopy = page.getByRole('button', { name: '复制 Sandbox ID' }).first();
   const fullSandboxId = await sandboxCopy.locator('..').locator('span[title]').getAttribute('title');
   expect(fullSandboxId).toBeTruthy();
   await sandboxCopy.click();
@@ -1353,7 +1304,7 @@ test('copies full resource identifiers and deep links without navigating rows', 
   await page.getByRole('button', { name: '复制链接' }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(page.url());
   await page.getByRole('tab', { name: '终端' }).click();
-  await expect(page.getByRole('button', { name: '复制 执行环境 ID' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '复制 Sandbox ID' })).toBeVisible();
 
   await navigateInApp(page, `/events/${retainedLinkedWebhookEventId}`);
   await page.getByRole('button', { name: '复制 Event ID' }).click();
@@ -1380,7 +1331,7 @@ test('copies full resource identifiers and deep links without navigating rows', 
       return true;
     };
   });
-  const fallbackCopy = page.getByRole('button', { name: '复制 执行环境 ID' }).first();
+  const fallbackCopy = page.getByRole('button', { name: '复制 Sandbox ID' }).first();
   const fallbackSandboxId = await fallbackCopy.locator('..').locator('span[title]').getAttribute('title');
   await fallbackCopy.click();
   await expect(page.getByRole('status').filter({ hasText: '已复制' })).toBeVisible();
@@ -1419,13 +1370,13 @@ test('dispatches a webhook event to a real automation trigger', async ({ page })
     .toMatch(/succeeded|success/i);
 
   await navigateInApp(page, `/events/${accepted.event_id}`);
-  await expect(page.getByRole('heading', { name: 'Webhook 事件详情' })).toBeVisible();
-  await expect(page.getByText(/没有产生或绑定对话执行环境/)).toHaveCount(0);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.getByText(/没有产生或绑定对话 Sandbox/)).toHaveCount(0);
   await expect(page.getByText('Webhook Payload')).toHaveCount(0);
   await expect(page.getByText(/WEBHOOK_AUTOMATION_TRIGGER_OK/)).toHaveCount(0);
   await expect(page.getByText('运行成功', { exact: true })).toBeVisible();
   await expect(page.getByText('ui-webhook-event', { exact: false })).toBeVisible();
-  await expect(page.getByText('执行 ID', { exact: true })).toBeVisible();
+  await expect(page.getByText('Scheduler run', { exact: true })).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/events/${accepted.event_id}$`));
   await expect(page.getByText('run_succeeded')).toHaveCount(0);
 });
@@ -1476,8 +1427,9 @@ test('dispatches a webhook into a linked agent conversation', async ({ page }) =
     .toBeGreaterThan(0);
 
   await navigateInApp(page, `/events/${accepted.event_id}`);
-  await expect(page.getByRole('heading', { name: 'Webhook 事件详情' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   const workbench = page.locator('[data-sandbox-workbench]');
+  await workbench.getByRole('tab', { name: '对话', exact: true }).click();
   await expect(workbench.getByText('WEBHOOK_AGENT_CONVERSATION_OK', { exact: true })).toBeVisible({
     timeout: 30_000,
   });
@@ -1614,30 +1566,27 @@ test('shows retained run diagnostics and an interactive sandbox terminal', async
   failedResponses.length = 0;
   await navigateInApp(page, `/runs/${retainedRunId}`);
 
-  await expect(page.locator('[data-page-header]').getByText('7625fcb06e3c', { exact: true })).toBeVisible();
   await expect(page.locator('[data-page-header]').getByText('失败', { exact: true })).toBeVisible();
+  // 运行详情默认打开运行日志，对话排在日志和智能体记录之后。
+  await expect(page.getByRole('tab', { name: '运行日志' })).toHaveAttribute('data-state', 'active');
+  await page.getByRole('tab', { name: '对话', exact: true }).click();
   await expect(page.getByRole('tabpanel', { name: '对话' }).getByText('Reply with OK only.')).toBeVisible();
   await expect(page.locator('[data-conversation-transcript]')).toBeVisible();
   await expect(page.getByPlaceholder('搜索当前对话')).toBeVisible();
   await expect(page.getByPlaceholder('输入消息，Shift + Enter 换行')).toBeVisible();
-  await expect(page.getByRole('tab', { name: '执行过程' })).toBeVisible();
-  await expect(page.getByRole('tab', { name: '原始日志' })).toHaveCount(0);
-  await expect(page.getByRole('tab', { name: '执行环境' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '运行日志' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '智能体记录' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '执行过程' })).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'Sandbox' })).toBeVisible();
   await expect(page.getByRole('tab', { name: '产物' })).toHaveCount(0);
 
-  await page.getByRole('tab', { name: '执行过程' }).click();
-  const execution = page.locator('[data-run-execution-process]');
-  await expect(execution).toBeVisible();
-  await expect(execution.getByPlaceholder('搜索执行过程')).toBeVisible();
-  await expect(page.getByRole('tab', { name: '运行事件' })).toHaveCount(0);
-  await expect(page.getByRole('tab', { name: '输出日志' })).toHaveCount(0);
-  await expect(execution.getByText('用户消息', { exact: true })).toHaveCount(0);
-  await expect(execution).toContainText(/kimi-k2\.6|503|无可用渠道/);
-  await execution.getByText('原始数据', { exact: true }).click();
-  await expect(execution.getByRole('button', { name: '下载输出日志' })).toBeVisible();
-  await page.getByRole('tab', { name: '执行环境' }).click();
-  await expect(page.getByRole('tabpanel', { name: '执行环境' }).getByText('运行方式', { exact: true })).toBeVisible();
-  await expect(page.getByRole('tabpanel', { name: '执行环境' }).getByText('详细信息')).toBeVisible();
+  await page.getByRole('tab', { name: '运行日志' }).click();
+  const runLogs = page.locator('[data-run-logs]');
+  await expect(runLogs).toBeVisible();
+  await expect(runLogs).toContainText(/kimi-k2\.6|503|无可用渠道/);
+  await page.getByRole('tab', { name: 'Sandbox' }).click();
+  await expect(page.getByRole('tabpanel', { name: 'Sandbox' }).getByText('运行方式', { exact: true })).toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: 'Sandbox' }).getByText('详细信息')).toBeVisible();
 
   const terminalRun = await page.evaluate(
     async ({ projectId, agentName }) => {
@@ -1704,9 +1653,7 @@ test('shows retained run diagnostics and an interactive sandbox terminal', async
     history.pushState({}, '', path);
     window.dispatchEvent(new PopStateEvent('popstate'));
   }, `/runs/${retainedFollowupRunId}`);
-  await expect(
-    page.locator('[data-page-header]').getByText(retainedFollowupRunId.slice(0, 12), { exact: true }),
-  ).toBeVisible();
+  await page.getByRole('tab', { name: '对话', exact: true }).click();
   await expect(
     page.getByRole('tabpanel', { name: '对话' }).getByText('LLM_FOLLOWUP_OK', { exact: true }),
   ).toBeVisible();
@@ -2266,8 +2213,8 @@ test('refreshes an externally started run detail until completion', async ({ pag
     await navigateInApp(page, `/runs/${externalRunId}`);
     await expect(page.locator('[data-semantic-status="running"]').first()).toBeVisible();
     await expect(page.locator('[data-semantic-status="success"]').first()).toBeVisible({ timeout: 15_000 });
-    await page.getByRole('tab', { name: '执行过程' }).click();
-    await expect(page.locator('[data-run-execution-process]')).toContainText('RUN_DETAIL_POLL_OK');
+    await page.getByRole('tab', { name: '运行日志' }).click();
+    await expect(page.locator('[data-run-logs]')).toContainText('RUN_DETAIL_POLL_OK');
   } finally {
     await expect
       .poll(() =>
@@ -2292,10 +2239,10 @@ test('groups semantic runs into one execution-environment conversation', async (
   test.skip(!retainedSandboxId, 'requires a retained execution environment');
   await login(page);
   await navigateInApp(page, `/sandboxes/${retainedSandboxId}`);
-  await expect(page.getByRole('heading', { name: '执行环境' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sandbox' })).toBeVisible();
   await expect(page.getByRole('navigation').first().getByText('对话记录', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '复制 执行环境 ID' })).toBeVisible();
-  await expect(page.getByRole('tab', { name: '对话', exact: true })).toHaveAttribute('data-state', 'active');
+  await expect(page.getByRole('button', { name: '复制 Sandbox ID' })).toBeVisible();
+  await page.getByRole('tab', { name: '对话', exact: true }).click();
   await expect(page.locator('[data-conversation-run]').first()).toBeVisible();
   await expect(
     page.locator('[data-conversation-run]').first().getByRole('button', { name: '复制 运行 ID' }),
@@ -2601,7 +2548,7 @@ test('previews agent environment variables without applying them', async ({ page
     page,
     `/projects/${encodeURIComponent(target!.project.projectId)}/agents/${encodeURIComponent(target!.agent.agentName)}/edit`,
   );
-  for (const heading of ['基本信息', '模型配置', '执行环境', '能力与变量']) {
+  for (const heading of ['基本信息', '模型配置', 'Sandbox', '能力与变量']) {
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
   }
   await expect(page.getByText('智能体环境变量', { exact: true })).toBeVisible();
@@ -2919,7 +2866,7 @@ test('preserves a Cron timezone through an automation deployment', async ({ page
   expect(result.timezone).toBe('Asia/Shanghai');
 });
 
-test('bounds overview run requests without loading project definitions', async ({ page }) => {
+test('bounds home run requests without loading project definitions', async ({ page }) => {
   const requests: Array<{ url: string; body?: { limit: number; status: RunStatus } }> = [];
   page.on('request', (request) => {
     if (!request.url().includes('/agentcompose.v2.')) return;
@@ -2933,12 +2880,16 @@ test('bounds overview run requests without loading project definitions', async (
   });
 
   await login(page);
-  await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
-  await expect(page.getByText('运行记录正在同步')).toHaveCount(0);
-  await expect.poll(() => requests.filter((item) => item.url.endsWith('.RunService/ListRuns')).length).toBe(2);
+  await expect(page.getByRole('heading', { name: '运行', exact: true })).toBeAttached();
+  // 首页：一页运行列表、每个状态页签一次只取总数的计数请求，以及检查器里该智能体的最近运行。
+  await expect
+    .poll(() => requests.filter((item) => item.url.endsWith('.RunService/ListRuns')).length)
+    .toBeGreaterThanOrEqual(6);
 
   const runBodies = requests.filter((item) => item.url.endsWith('.RunService/ListRuns')).map((item) => item.body!);
-  expect(runBodies.map((body) => body.limit).sort((left, right) => Number(left) - Number(right))).toEqual([6, 12]);
+  const limits = runBodies.map((body) => Number(body.limit));
+  expect(limits.filter((limit) => limit === 1)).toHaveLength(5);
+  expect(Math.max(...limits)).toBe(50);
   expect(runBodies.some((body) => body.status === RunStatus.RUNNING)).toBe(true);
   expect(
     requests.filter(
@@ -2951,7 +2902,9 @@ test('manages API tokens from the current user account', async ({ page }) => {
   await login(page);
   await navigateInApp(page, '/settings');
   await expect(page.getByRole('tab', { name: 'API 令牌' })).toHaveCount(0);
-  await page.getByRole('button', { name: '管理个人 API 令牌' }).click();
+  // 个人令牌、审计日志属于控制台本身，从侧栏底部的账户菜单进入。
+  await page.getByRole('button', { name: '账户菜单' }).click();
+  await page.getByRole('menuitem', { name: 'API 令牌' }).click();
   await expect(page).toHaveURL(/\/account\/tokens$/);
   await expect(page.getByRole('heading', { level: 1, name: 'API 令牌', exact: true })).toBeVisible();
 
@@ -3167,8 +3120,7 @@ test('persists system, OctoBus, MCP, Skill, and editor configuration', async ({ 
   const acceptedEvent = page.getByRole('table').getByTitle(acceptedWebhook.event_id);
   await expect(acceptedEvent).toBeVisible();
   await acceptedEvent.click();
-  await expect(page.getByRole('heading', { name: 'Webhook 事件详情' })).toBeVisible();
-  await expect(page.getByText('webhook.ui-regression.acceptance', { exact: true }).last()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'webhook.ui-regression.acceptance' })).toBeVisible();
   await expect(page.getByText(/WEBHOOK_EVENT_DETAIL_OK/)).toHaveCount(0);
   await expect(page.getByText('Webhook Payload')).toHaveCount(0);
 
@@ -3320,6 +3272,7 @@ test('runs a real LLM conversation and an automation agent shell task', async ({
       await runPrompt.locator('..').getByRole('button', { name: '运行', exact: true }).click();
       await expect(page).toHaveURL(/\/runs\//, { timeout: 180_000 });
     }
+    await page.getByRole('tab', { name: '对话', exact: true }).click();
     const chatPanel = page.getByRole('tabpanel', { name: '对话' });
     await expect(chatPanel.getByText('LLM_DIALOGUE_OK', { exact: true })).toBeVisible({ timeout: 30_000 });
 

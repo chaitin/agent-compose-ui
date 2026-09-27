@@ -20,7 +20,6 @@ import (
 	"agent-compose-ui/internal/config"
 	"agent-compose-ui/internal/projectdeploy"
 	"agent-compose-ui/internal/proxy"
-	"agent-compose-ui/internal/runindex"
 	"agent-compose-ui/internal/terminal"
 	"agent-compose-ui/internal/tokenproxy"
 
@@ -78,7 +77,6 @@ func Register(di do.Injector) {
 	do.Provide(di, NewAuthManager)
 	do.Provide(di, NewBackendProxy)
 	do.Provide(di, NewProjectDeployHandler)
-	do.Provide(di, NewRunIndexHandler)
 	do.Provide(di, NewAgentRecordsHandler)
 	do.Provide(di, NewAuditRuntime)
 	do.Provide(di, NewTokenRuntime)
@@ -119,7 +117,6 @@ func NewEcho(di do.Injector) (*echo.Echo, error) {
 		do.MustInvoke[*terminal.Bridge](di),
 		do.MustInvoke[http.Handler](di),
 		do.MustInvoke[*projectdeploy.Handler](di),
-		do.MustInvoke[*runindex.Handler](di),
 		do.MustInvoke[*agentrecords.Handler](di),
 		do.MustInvoke[*TokenRuntime](di).Management,
 		do.MustInvoke[*AuditRuntime](di),
@@ -137,10 +134,6 @@ func NewBackendProxy(di do.Injector) (http.Handler, error) {
 
 func NewProjectDeployHandler(di do.Injector) (*projectdeploy.Handler, error) {
 	return projectdeploy.New(do.MustInvoke[*url.URL](di)), nil
-}
-
-func NewRunIndexHandler(di do.Injector) (*runindex.Handler, error) {
-	return runindex.New(do.MustInvoke[*url.URL](di)), nil
 }
 
 func NewAgentRecordsHandler(di do.Injector) (*agentrecords.Handler, error) {
@@ -239,7 +232,6 @@ func registerRoutes(
 	terminalBridge *terminal.Bridge,
 	backend http.Handler,
 	projectDeploy http.Handler,
-	runIndex http.Handler,
 	agentRecords http.Handler,
 	tokenManagement http.Handler,
 	audits *AuditRuntime,
@@ -259,7 +251,6 @@ func registerRoutes(
 	app.Any("/api/ui/v1/project-agent-context", authManager.Protect(echo.WrapHandler(projectDeploy)))
 	app.Any("/api/ui/v1/project-deployment-previews", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(projectDeploy))))
 	app.Any("/api/ui/v1/project-deployment-previews/*", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(projectDeploy))))
-	app.GET("/api/ui/v1/runs/unlinked", authManager.Protect(echo.WrapHandler(runIndex)))
 	app.GET("/api/ui/v1/sandboxes/:sandboxID/agent-records", authManager.Protect(echo.WrapHandler(agentRecords)))
 	app.GET("/api/ui/v1/sandboxes/:sandboxID/agent-records/*", authManager.Protect(echo.WrapHandler(agentRecords)))
 	app.Any("/api/ui/v1/tokens", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(tokenManagement))))

@@ -7,7 +7,7 @@
 </script>
 
 <div data-page-layout="detail" class="flex h-full min-h-0 flex-col overflow-hidden">
-  <h1 class="sr-only">执行环境</h1>
+  <h1 class="sr-only">Sandbox</h1>
   <PageContent compact class="flex min-h-0 flex-1 flex-col lg:overflow-hidden">
     <SandboxWorkbench {sandboxId} />
   </PageContent>

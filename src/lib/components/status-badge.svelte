@@ -1,13 +1,8 @@
 <script lang="ts">
   import { cn } from '$lib/utils';
-  import Activity from '@lucide/svelte/icons/activity';
-  import CircleCheck from '@lucide/svelte/icons/circle-check';
-  import CircleX from '@lucide/svelte/icons/circle-x';
-  import Clock3 from '@lucide/svelte/icons/clock-3';
-  import MinusCircle from '@lucide/svelte/icons/minus-circle';
-  import OctagonPause from '@lucide/svelte/icons/octagon-pause';
   import { t } from '$lib/i18n.svelte';
 
+  // 状态只用「圆点 + 文字」表达：颜色落在圆点上，文字保持正文色，避免满屏色块。
   type SemanticStatus = 'running' | 'success' | 'failed' | 'skipped' | 'pending' | 'stopped';
   const statusLabel: Record<SemanticStatus, string> = {
     running: '运行中',
@@ -18,16 +13,21 @@
     stopped: '已停止',
   };
 
-  let { status, label, class: className = '' }: { status: string; label?: string; class?: string } = $props();
+  let {
+    status,
+    label,
+    dotOnly = false,
+    class: className = '',
+  }: { status: string; label?: string; dotOnly?: boolean; class?: string } = $props();
   const semanticStatus = $derived(normalizeStatus(status));
 
-  const tone: Record<SemanticStatus, string> = {
-    running: 'border-info/35 bg-info/10 text-info',
-    success: 'border-success/35 bg-success/10 text-success',
-    failed: 'border-destructive/35 bg-destructive/10 text-destructive',
-    skipped: 'border-border bg-muted text-muted-foreground',
-    pending: 'border-warning/40 bg-warning/10 text-warning-foreground',
-    stopped: 'border-border bg-muted text-muted-foreground',
+  const dotTone: Record<SemanticStatus, string> = {
+    running: 'bg-info animate-pulse',
+    success: 'bg-success',
+    failed: 'bg-destructive',
+    skipped: 'bg-faint',
+    pending: 'bg-warning',
+    stopped: 'bg-faint',
   };
 
   function normalizeStatus(value: string): SemanticStatus {
@@ -44,20 +44,19 @@
     if (['stopped', 'canceled', 'cancelled', 'disabled'].includes(normalized)) return 'stopped';
     return 'pending';
   }
+
+  const text = $derived(label ? t(label) : t(statusLabel[semanticStatus]));
 </script>
 
 <span
   data-semantic-status={semanticStatus}
+  title={dotOnly ? text : undefined}
   class={cn(
-    'inline-flex h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 text-[11px] font-semibold',
-    tone[semanticStatus],
+    'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs',
+    semanticStatus === 'failed' ? 'text-destructive' : 'text-foreground/80',
     className,
   )}
 >
-  {#if semanticStatus === 'running'}<Activity class="size-3" />{:else if semanticStatus === 'success'}<CircleCheck
-      class="size-3"
-    />{:else if semanticStatus === 'failed'}<CircleX class="size-3" />{:else if semanticStatus === 'pending'}<Clock3
-      class="size-3"
-    />{:else if semanticStatus === 'skipped'}<MinusCircle class="size-3" />{:else}<OctagonPause class="size-3" />{/if}
-  {label ? t(label) : t(statusLabel[semanticStatus])}
+  <span class="size-1.5 shrink-0 rounded-full {dotTone[semanticStatus]}"></span>
+  {#if dotOnly}<span class="sr-only">{text}</span>{:else}{text}{/if}
 </span>

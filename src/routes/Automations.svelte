@@ -453,8 +453,8 @@
                 class="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
                 bind:value={draft.sessionPolicy}
               >
-                <option value="new_session">{t('每次新建执行环境')}</option>
-                <option value="sticky">{t('复用固定执行环境')}</option>
+                <option value="new_session">{t('每次新建 Sandbox')}</option>
+                <option value="sticky">{t('复用固定 Sandbox')}</option>
               </select>
             </label>
             <label class="block space-y-1">

@@ -17,10 +17,8 @@
   const Icon = $derived(icon);
 </script>
 
-<div
-  class="flex flex-col items-center justify-center rounded-lg border border-dashed border-border px-6 py-16 text-center"
->
-  <div class="mb-3 flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
+<div class="flex flex-col items-center justify-center px-6 py-16 text-center">
+  <div class="mb-3 flex size-9 items-center justify-center text-faint">
     <Icon class="size-5" />
   </div>
   <p class="text-sm font-medium text-foreground">{title}</p>

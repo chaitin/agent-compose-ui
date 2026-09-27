@@ -124,7 +124,7 @@
 
 <CollectionPage
   title={task?.name || t('自动化执行')}
-  description={t('查看自动化触发、结果与关联执行环境')}
+  description={t('查看自动化触发、结果与关联 Sandbox')}
   compactHeader
 >
   {#snippet actions()}
@@ -177,7 +177,7 @@
         </div>
         <div class="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
           <Timestamp value={run.startedAt} />
-          <span>{duration(run.durationMs)} · {run.sandboxIds.length} {t('个执行环境')}</span>
+          <span>{duration(run.durationMs)} · {run.sandboxIds.length} {t('个 Sandbox')}</span>
         </div>
         <div class="mt-2">
           <CopyableText
@@ -193,7 +193,7 @@
       </p>{/each}
   </div>
 
-  <div data-scroll-pane class="hidden min-h-0 flex-1 overflow-auto rounded-lg border border-border md:block">
+  <div data-scroll-pane class="hidden min-h-0 flex-1 overflow-auto border-t border-border md:block">
     <table class="w-full min-w-[58rem] text-sm">
       <thead class="sticky top-0 z-10 bg-muted/95 text-xs backdrop-blur">
         <tr>
@@ -202,7 +202,7 @@
           <th class="p-3 text-left font-medium">{t('触发来源')}</th>
           <th class="p-3 text-left font-medium">{t('开始时间')}</th>
           <th class="p-3 text-left font-medium">{t('耗时')}</th>
-          <th class="p-3 text-left font-medium">{t('执行环境')}</th>
+          <th class="p-3 text-left font-medium">{t('Sandbox')}</th>
           <th class="p-3 text-left font-medium">{t('执行 ID')}</th>
         </tr>
       </thead>

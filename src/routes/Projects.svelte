@@ -692,7 +692,7 @@
 
           <section class="grid gap-4 rounded-lg border border-border bg-card p-5 md:grid-cols-2">
             <div class="md:col-span-2">
-              <h3 class="font-medium">{t('执行环境')}</h3>
+              <h3 class="font-medium">{t('Sandbox')}</h3>
             </div>
             <label class="space-y-1"
               ><span class="text-sm">{t('运行方式')}</span><Input bind:value={draft.driver} /></label

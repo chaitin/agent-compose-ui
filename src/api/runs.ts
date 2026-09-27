@@ -5,11 +5,10 @@ import {
   type RunEvent,
   RunSummary,
 } from '../gen/agentcompose/v2/agentcompose_pb.js';
-import type { JsonValue } from '@bufbuild/protobuf';
 import { runClient } from './client';
 import { t } from '$lib/i18n.svelte';
-import { apiFetchJson } from './http';
 import { isoStringToTimestamp } from '../model/timestamps';
+import { textBetween } from '../model/log-buffer';
 import { listProjectAgentContext } from './agents';
 
 export type RunFilter = {
@@ -34,34 +33,31 @@ export type RunActor = {
 };
 
 export async function listRuns(filter: RunFilter = {}): Promise<RunSummary[]> {
-  const response = await runClient.listRuns({
-    projectId: filter.projectId,
-    agentName: filter.agentName,
-    schedulerId: filter.schedulerId,
-    schedulerRunId: filter.schedulerRunId,
-    sandboxId: filter.sandboxId,
-    status: filter.status,
-    source: filter.source,
-    startedFrom: isoStringToTimestamp(filter.startedFrom),
-    startedTo: isoStringToTimestamp(filter.startedTo),
-    offset: filter.offset ?? 0,
-    limit: filter.limit ?? 200,
-  });
-  return response.runs;
+  return (await listRunsPage(filter)).runs;
 }
 
-export async function listUnlinkedRuns(
-  cursor = 0,
-  limit = 50,
-): Promise<{ runs: RunSummary[]; nextCursor: number; hasMore: boolean }> {
-  const response = await apiFetchJson<{ items?: JsonValue[]; nextCursor?: number; hasMore?: boolean }>(
-    `/api/ui/v1/runs/unlinked?cursor=${cursor}&limit=${limit}`,
+/** 同 listRuns，但保留服务端的匹配总数，用于分页与筛选计数。 */
+export async function listRunsPage(
+  filter: RunFilter = {},
+  signal?: AbortSignal,
+): Promise<{ runs: RunSummary[]; total: number }> {
+  const response = await runClient.listRuns(
+    {
+      projectId: filter.projectId,
+      agentName: filter.agentName,
+      schedulerId: filter.schedulerId,
+      schedulerRunId: filter.schedulerRunId,
+      sandboxId: filter.sandboxId,
+      status: filter.status,
+      source: filter.source,
+      startedFrom: isoStringToTimestamp(filter.startedFrom),
+      startedTo: isoStringToTimestamp(filter.startedTo),
+      offset: filter.offset ?? 0,
+      limit: filter.limit ?? 200,
+    },
+    { signal },
   );
-  return {
-    runs: (response.items ?? []).map((item) => RunSummary.fromJson(item)),
-    nextCursor: Number(response.nextCursor ?? cursor),
-    hasMore: Boolean(response.hasMore),
-  };
+  return { runs: response.runs, total: response.total };
 }
 
 export async function listRunActors(): Promise<RunActor[]> {
@@ -89,6 +85,18 @@ export async function stopRun(runId: string): Promise<void> {
 }
 export async function listRunEvents(runId: string): Promise<RunEvent[]> {
   return (await runClient.listRunEvents({ runId, limit: 500 })).events;
+}
+
+/**
+ * 只取运行最后的若干条事件。事件按序号升序返回：先取一页拿到总数，
+ * 事件不多时一次就够；否则再按总数定位到最后一页。
+ */
+export async function listRunEventsTail(runId: string, count: number): Promise<RunEvent[]> {
+  const probe = Math.max(count, 20);
+  const first = await runClient.listRunEvents({ runId, limit: probe });
+  if (first.total <= probe) return first.events.slice(-count);
+  const offset = Math.max(0, first.total - count);
+  return (await runClient.listRunEvents({ runId, limit: count, offset })).events;
 }
 
 export type RunLogChunk = {
@@ -134,6 +142,41 @@ export async function followRunLogs(
     { signal },
   ))
     onChunk({ data: chunk.data, offset: chunk.offset, final: chunk.isFinal });
+}
+
+/**
+ * 读取日志里 [from, until) 这一段字节，给「加载更早」用。
+ * FollowRunLogs 只能指定起点，读到 until 就主动断开，避免把之后的内容也读下来。
+ */
+export async function readRunLogRange(
+  runId: string,
+  projectId: string,
+  from: bigint,
+  until: bigint,
+  signal?: AbortSignal,
+): Promise<string> {
+  const controller = new AbortController();
+  signal?.addEventListener('abort', () => controller.abort(), { once: true });
+  let text = '';
+  let reached = false;
+  try {
+    await followRunLogs(
+      runId,
+      (chunk) => {
+        // 按起点和终点都截一遍：不依赖后端一定从 startOffset 开始返回。
+        text += textBetween(chunk, from, until);
+        if (chunk.offset >= until) {
+          reached = true;
+          controller.abort();
+        }
+      },
+      controller.signal,
+      { follow: false, projectId, startOffset: from },
+    );
+  } catch (cause) {
+    if (!reached) throw cause;
+  }
+  return text;
 }
 
 export type ProjectRunDebugTarget = { runId: string; sandboxId: string };

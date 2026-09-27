@@ -76,7 +76,7 @@
             />
           </div>{:else}<p class="p-4 text-sm text-muted-foreground">{t('没有能力集')}</p>{/each}
       </div>
-      <div class="overflow-hidden rounded-lg border border-border">
+      <div class="overflow-hidden border-t border-border">
         <table class="w-full text-sm">
           <thead class="bg-muted/40"
             ><tr><th class="p-3 text-left">{t('方法')}</th><th class="p-3 text-left">{t('说明')}</th></tr></thead

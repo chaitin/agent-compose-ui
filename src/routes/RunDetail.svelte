@@ -3,7 +3,8 @@
   import * as Tabs from '$lib/components/ui/tabs';
   import { Button } from '$lib/components/ui/button';
   import RunConversation from '$lib/components/run-conversation.svelte';
-  import RunExecutionProcess from '$lib/components/run-execution-process.svelte';
+  import RunLogPanel from '$lib/components/run-log-panel.svelte';
+  import AgentRecordsPanel from '$lib/components/agent-records-panel.svelte';
   import CopyableText from '$lib/components/copyable-text.svelte';
   import CopyLinkButton from '$lib/components/copy-link-button.svelte';
   import PageContent from '$lib/components/page-content.svelte';
@@ -14,7 +15,8 @@
   import XtermView from '$lib/components/xterm-view.svelte';
   import { navigate, router, matchDetail } from '$lib/router.svelte';
   import { openInteractiveTerminal, type InteractiveTerminal } from '../api/exec';
-  import { durationName, followRunLogs, getRun, listRunEvents, runStatusName, stopRun } from '../api/runs';
+  import { getRun, listRunEvents, runStatusName, stopRun } from '../api/runs';
+  import RunActivityList from '$lib/components/runs/run-activity-list.svelte';
   import {
     getSandboxContext,
     listSandboxHistoryCells,
@@ -22,16 +24,24 @@
     resumeSandboxContext,
     type SandboxContextDetail,
   } from '../api/sessions';
-  import { RunStatus, type RunDetail, type RunEvent } from '../gen/agentcompose/v2/agentcompose_pb.js';
-  import { timestampToISOString } from '../model/timestamps';
+  import { RunStatus, type RunDetail } from '../gen/agentcompose/v2/agentcompose_pb.js';
   import { presentAgentOutput } from '../model/agent-output';
+  import {
+    RUN_STATE_LABEL,
+    runDuration,
+    runSourceLabel,
+    runStartedAt,
+    runActivities,
+    runState,
+    runTriggerDetail,
+    type RunActivity,
+  } from '../model/run-list';
   import { compactIdentifier } from '../model/identifiers';
   import {
     conversationTurns as buildConversationTurns,
     withFailedConversationTurn,
     type ConversationTurn,
   } from '../model/conversation';
-  import ArrowLeft from '@lucide/svelte/icons/arrow-left';
   import ExternalLink from '@lucide/svelte/icons/external-link';
   import Maximize2 from '@lucide/svelte/icons/maximize-2';
   import Minus from '@lucide/svelte/icons/minus';
@@ -43,29 +53,46 @@
 
   const runId = $derived(matchDetail('/runs', router.path) ?? '');
   let detail = $state<RunDetail | null>(null);
-  let events = $state<RunEvent[]>([]);
   let sandbox = $state<SandboxContextDetail | null>(null);
-  let tab = $state(router.path.endsWith('/terminal') ? 'terminal' : 'chat');
+  let tab = $state(router.path.endsWith('/terminal') ? 'terminal' : 'logs');
   let shellLines = $state<string[]>([]);
   let terminalState = $state(t('未连接'));
   let terminalFontSize = $state(15);
   let terminalExpanded = $state(false);
   let terminal = $state<InteractiveTerminal | null>(null);
   let terminalConnectionVersion = 0;
-  let logs = $state('');
   let message = $state('');
   let sending = $state(false);
   let conversationTurns = $state<ConversationTurn[]>([]);
   let continuationRunId = $state('');
   let loading = $state(true);
   let error = $state('');
-  let controller: AbortController | null = null;
   let statusPollTimer: number | undefined;
   let loadedRunId = '';
   let loadVersion = 0;
   let finalizedOperationId = '';
 
   const summary = $derived(detail?.summary);
+  // 运行事件（活动、状态、消息）只在打开「活动」页签时加载；运行中每次轮询到状态变化会重新取。
+  let activities = $state<RunActivity[]>([]);
+  let activitiesLoading = $state(false);
+  let activitiesFor = '';
+
+  $effect(() => {
+    if (tab !== 'activity' || !summary) return;
+    const key = `${summary.runId}:${summary.status}`;
+    if (key === activitiesFor) return;
+    activitiesFor = key;
+    const runId = summary.runId;
+    activitiesLoading = true;
+    listRunEvents(runId)
+      .then((events) => {
+        if (runId === summary?.runId) activities = runActivities(events);
+      })
+      .catch((cause) => (error = errorMessage(cause)))
+      .finally(() => (activitiesLoading = false));
+  });
+
   const runStream = $derived(runStreams.forRun(runId));
   const sandboxStream = $derived(summary?.sandboxId ? runStreams.forSandbox(summary.sandboxId) : undefined);
   const activeStream = $derived(
@@ -93,7 +120,6 @@
     return () => {
       window.clearTimeout(statusPollTimer);
       terminalConnectionVersion += 1;
-      controller?.abort();
       terminal?.close();
     };
   });
@@ -102,26 +128,21 @@
     const version = ++loadVersion;
     loading = true;
     error = '';
-    tab = router.path.endsWith('/terminal') ? 'terminal' : 'chat';
+    tab = router.path.endsWith('/terminal') ? 'terminal' : 'logs';
     window.clearTimeout(statusPollTimer);
-    controller?.abort();
-    controller = new AbortController();
     terminalConnectionVersion += 1;
     terminal?.close();
     terminal = null;
     terminalState = t('未连接');
     shellLines = [];
-    logs = '';
     sandbox = null;
     detail = null;
-    events = [];
     continuationRunId = '';
     conversationTurns = [];
     try {
-      const [nextDetail, nextEvents] = await Promise.all([getRun(targetRunId), listRunEvents(targetRunId)]);
+      const nextDetail = await getRun(targetRunId);
       if (version !== loadVersion) return;
       detail = nextDetail;
-      events = nextEvents;
       const sandboxId = nextDetail.summary?.sandboxId ?? '';
       if (sandboxId) {
         try {
@@ -136,13 +157,6 @@
       if (tab === 'terminal' && sandbox) connectShell();
       if (sandboxId) void loadConversationHistory(sandboxId, targetRunId, version);
       scheduleStatusPoll(targetRunId, version);
-      void followRunLogs(targetRunId, (chunk) => (logs += chunk.data), controller.signal, {
-        follow: true,
-        projectId: nextDetail.summary?.projectId,
-      }).catch((cause) => {
-        if (version === loadVersion && !controller?.signal.aborted)
-          error = t('日志订阅断开：{error}', { error: errorMessage(cause) });
-      });
     } catch (cause) {
       if (version === loadVersion) error = errorMessage(cause);
     } finally {
@@ -158,10 +172,9 @@
 
   async function pollRunStatus(targetRunId: string, version: number): Promise<void> {
     try {
-      const [nextDetail, nextEvents] = await Promise.all([getRun(targetRunId), listRunEvents(targetRunId)]);
+      const nextDetail = await getRun(targetRunId);
       if (version !== loadVersion || targetRunId !== runId) return;
       detail = nextDetail;
-      events = nextEvents;
       if (isActiveRunStatus(nextDetail.summary?.status)) {
         scheduleStatusPoll(targetRunId, version);
         return;
@@ -272,10 +285,9 @@
   async function finalizeStream(stream: AgentStreamState): Promise<void> {
     if (stream.runId && stream.runId !== runId) continuationRunId = stream.runId;
     try {
-      const [cells, nextDetail, nextEvents] = await Promise.all([
+      const [cells, nextDetail] = await Promise.all([
         stream.sandboxId ? refreshSandboxHistoryCells(stream.sandboxId) : Promise.resolve([]),
         stream.runId === runId ? getRun(runId) : Promise.resolve(null),
-        stream.runId === runId ? listRunEvents(runId) : Promise.resolve(null),
       ]);
       if (stream.sandboxId) {
         const nextTurns = buildConversationTurns(cells);
@@ -283,7 +295,6 @@
           stream.phase === 'failed' ? withFailedConversationTurn(nextTurns, streamFailure(stream)) : nextTurns;
       }
       if (nextDetail) detail = nextDetail;
-      if (nextEvents) events = nextEvents;
       error = '';
       runStreams.dismiss(stream);
     } catch (cause) {
@@ -327,55 +338,55 @@
       error = errorMessage(cause);
     }
   }
-  function downloadLogs(): void {
-    const url = URL.createObjectURL(new Blob([logs], { type: 'text/plain' }));
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `${runId}.log`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  }
   const errorMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : t('请求失败'));
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
 <div data-page-layout="workbench" class="flex h-full min-h-0 flex-col overflow-hidden">
-  <div data-page-header class="shrink-0 border-b border-border bg-background">
+  <div data-page-header class="shrink-0 border-b border-border">
     <div
       data-page-frame
-      class="mx-auto flex w-full max-w-[112rem] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5 xl:px-6"
+      class="mx-auto flex w-full max-w-[112rem] flex-wrap items-start justify-between gap-x-4 gap-y-3 px-4 py-3.5 sm:px-5 xl:px-6"
     >
-      {#if summary}<div class="flex min-w-0 items-center gap-3">
-          <Button variant="ghost" size="icon" onclick={() => navigate('/sandboxes')}
-            ><ArrowLeft class="size-4" /></Button
-          >
-          <div class="min-w-0">
-            <div class="truncate text-sm font-semibold">{summary.agentName}</div>
-            <div class="flex items-center gap-2 text-[11px] text-muted-foreground">
-              <CopyableText
-                value={summary.runId}
-                display={summary.runShortId || compactIdentifier(summary.runId)}
-                label="运行 ID"
-                class="font-mono"
-              />
-              <Timestamp value={timestampToISOString(summary.startedAt || summary.createdAt)} />
-              {#if summary.durationMs > 0}<span>{durationName(summary.durationMs)}</span>{/if}
-            </div>
+      {#if summary}
+        {@const state = runState(summary.status)}
+        {@const trigger = runTriggerDetail(summary)}
+        <div class="min-w-0">
+          <h1 class="flex min-w-0 items-center gap-2 text-base font-semibold tracking-tight">
+            <StatusBadge status={state} dotOnly />
+            <span class="shrink-0">{summary.agentName}</span>
+            <span class="truncate font-normal text-muted-foreground">· {summary.projectName}</span>
+          </h1>
+          <div class="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span class={state === 'failed' ? 'text-destructive' : 'text-foreground/80'}
+              >{t(RUN_STATE_LABEL[state])}{#if state === 'failed'}<span class="px-1">·</span>{t('退出码')}
+                {summary.exitCode}{/if}</span
+            >
+            {#if runDuration(summary)}<span
+                >{t('耗时')} <span class="text-foreground/80">{runDuration(summary)}</span></span
+              >{/if}
+            <span>{t('开始')} <Timestamp class="text-foreground/80" value={runStartedAt(summary)} /></span>
+            <span>{runSourceLabel(summary.source)}{trigger ? ` · ${trigger}` : ''}</span>
+            {#if detail?.imageRef}<span class="hidden truncate font-mono text-[11px] lg:inline"
+                >{detail.imageRef}{detail.driver ? ` · ${detail.driver}` : ''}</span
+              >{/if}
           </div>
-          <StatusBadge status={runStatusName(summary.status)} /><span
-            class="hidden text-sm text-muted-foreground lg:inline">{detail?.imageRef} · {detail?.driver}</span
-          >
         </div>
-        <div class="ml-auto flex shrink-0 items-center gap-2">
-          <CopyLinkButton />
-          {#if runStatusName(summary.status) === 'running'}<Button
-              variant="outline"
-              size="sm"
-              class="text-destructive"
-              onclick={stop}><Square class="size-3.5" />{t('停止运行')}</Button
+        <div class="flex shrink-0 items-center gap-1.5">
+          {#if state === 'running'}<Button variant="outline" size="sm" class="text-destructive" onclick={stop}
+              ><Square class="size-3.5" />{t('停止运行')}</Button
             >{/if}
-        </div>{/if}
+          <CopyLinkButton />
+        </div>
+        {#if state === 'failed'}
+          <div class="w-full rounded-r-md border-l-2 border-destructive bg-destructive/5 px-3 py-2">
+            <pre
+              class="max-h-28 overflow-auto font-mono text-[11.5px] leading-relaxed break-all whitespace-pre-wrap">{summary.error ||
+                t('后端未返回错误信息')}</pre>
+          </div>
+        {/if}
+      {/if}
     </div>
   </div>
   {#if error}<div data-page-error class="mx-auto w-full max-w-[112rem] shrink-0 px-4 pt-3 sm:px-5 xl:px-6">
@@ -386,10 +397,12 @@
     </p>{:else if detail}<PageContent class="flex min-h-0 flex-1 overflow-hidden">
       <Tabs.Root class="flex h-full min-h-0 w-full flex-col overflow-hidden" value={tab} onValueChange={selectTab}
         ><Tabs.List data-tab-scroll class="shrink-0 justify-start"
-          ><Tabs.Trigger value="chat">{t('对话')}</Tabs.Trigger><Tabs.Trigger value="process"
-            >{t('执行过程')}</Tabs.Trigger
+          ><Tabs.Trigger value="logs">{t('运行日志')}</Tabs.Trigger><Tabs.Trigger value="activity"
+            >{t('活动')}</Tabs.Trigger
+          ><Tabs.Trigger value="records">{t('智能体记录')}</Tabs.Trigger><Tabs.Trigger value="chat"
+            >{t('对话')}</Tabs.Trigger
           ><Tabs.Trigger value="terminal">{t('终端')}</Tabs.Trigger><Tabs.Trigger value="sandbox"
-            >{t('执行环境')}</Tabs.Trigger
+            >{t('Sandbox')}</Tabs.Trigger
           ></Tabs.List
         >
         <Tabs.Content value="chat" class="mt-4 min-h-0 flex-1 overflow-hidden">
@@ -411,16 +424,26 @@
             onCancel={() => activeStream && runStreams.cancel(activeStream)}
           />
         </Tabs.Content>
-        <Tabs.Content value="process" class="mt-4 min-h-0 flex-1 overflow-hidden">
-          <RunExecutionProcess
-            {events}
-            sandboxId={summary?.sandboxId || ''}
-            {logs}
-            runStatus={summary ? runStatusName(summary.status) : 'pending'}
-            startedAt={timestampToISOString(summary?.startedAt || summary?.createdAt)}
-            completedAt={timestampToISOString(summary?.completedAt)}
-            onDownloadLogs={downloadLogs}
-          />
+        <Tabs.Content value="logs" data-run-logs class="mt-4 min-h-0 flex-1 overflow-hidden">
+          {#if summary}<RunLogPanel
+              runId={summary.runId}
+              projectId={summary.projectId}
+              running={summary.status === RunStatus.RUNNING || summary.status === RunStatus.PENDING}
+              onError={(message) => (error = t('日志订阅断开：{error}', { error: message }))}
+            />{/if}
+        </Tabs.Content>
+        <Tabs.Content data-scroll-pane value="activity" class="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
+          {#if activitiesLoading && !activities.length}<p class="text-sm text-muted-foreground">
+              {t('加载中…')}
+            </p>{:else if summary}<RunActivityList {activities} startedAt={runStartedAt(summary)} />{/if}
+        </Tabs.Content>
+        <Tabs.Content value="records" class="mt-4 min-h-0 flex-1 overflow-hidden">
+          {#if summary?.sandboxId}<AgentRecordsPanel
+              sandboxId={summary.sandboxId}
+              active={tab === 'records'}
+            />{:else}<p class="p-6 text-sm text-muted-foreground">
+              {t('这次运行没有关联的 Sandbox')}
+            </p>{/if}
         </Tabs.Content>
         <Tabs.Content value="terminal" class="mt-4 min-h-0 flex-1 overflow-hidden"
           >{#if terminalExpanded}<div class="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm"></div>{/if}
@@ -432,11 +455,11 @@
           >
             <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-border p-2">
               <span class="flex items-center gap-1 text-sm"
-                >{t('执行环境')}
+                >{t('Sandbox')}
                 {#if summary?.sandboxId}<CopyableText
                     value={summary.sandboxId}
                     display={summary.sandboxShortId || compactIdentifier(summary.sandboxId)}
-                    label="执行环境 ID"
+                    label="Sandbox ID"
                     class="font-mono text-xs"
                   />{:else}<span class="font-mono text-xs">{t('已回收')}</span>{/if}</span
               >{#if sandbox}<StatusBadge status={sandbox.status} />{:else}<span class="text-xs text-muted-foreground"
@@ -479,7 +502,7 @@
                 >
                 {#if sandbox && !terminal}<Button variant="outline" size="sm" onclick={connectShell}>{t('连接')}</Button
                   >{/if}{#if sandbox?.status === 'stopped'}<Button variant="outline" size="sm" onclick={resume}
-                    >{t('恢复执行环境')}</Button
+                    >{t('恢复 Sandbox')}</Button
                   >{/if}{#if jupyterHref}<Button
                     variant="ghost"
                     size="sm"
