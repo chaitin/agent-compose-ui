@@ -4,48 +4,46 @@
 
   let {
     title,
-    description = '',
-    compact = false,
+    description: _description = '',
+    compact: _compact = false,
     meta,
     actions,
     children,
   }: {
     title: string;
+    /** 保留给读屏：页面说明不再占用可见空间，页面本身应该自解释。 */
     description?: string;
+    /** 旧参数，保留兼容；页头现在只有一种紧凑高度。 */
     compact?: boolean;
     meta?: Snippet;
     actions?: Snippet;
     children?: Snippet;
   } = $props();
+
+  // 顶栏面包屑与区段页签已经写出页面名称，标题只留给读屏，避免同一个词在屏幕上出现两次。
+  const visible = $derived(Boolean(meta) || Boolean(actions));
 </script>
 
-<div data-page-header class="sticky top-0 z-20 shrink-0 border-b border-border bg-background/95 backdrop-blur">
-  <div
-    data-page-frame
-    class="mx-auto flex w-full max-w-[112rem] flex-col px-4 sm:px-5 md:flex-row md:items-center md:justify-between xl:px-6 {compact
-      ? 'gap-2 py-2'
-      : 'gap-3 py-4'}"
-  >
-    <div class="min-w-0">
+{#if visible}
+  <div data-page-header class="sticky top-0 z-20 shrink-0 bg-background">
+    <div
+      data-page-frame
+      class="mx-auto flex w-full max-w-[112rem] flex-col gap-2 px-4 py-2.5 sm:px-5 md:flex-row md:items-center md:justify-between xl:px-6"
+    >
       <div class="flex min-w-0 flex-wrap items-center gap-2">
-        <h1 class="shrink-0 font-semibold tracking-tight text-foreground {compact ? 'text-base' : 'text-lg'}">
-          {t(title)}
-        </h1>
+        <h1 class="sr-only">{t(title)}</h1>
         {#if meta}<div class="flex min-w-0 flex-wrap items-center gap-2">{@render meta()}</div>{/if}
       </div>
-      {#if description}
-        <p class="mt-0.5 break-words text-muted-foreground {compact ? 'hidden text-xs xl:block' : 'text-sm'}">
-          {t(description)}
-        </p>
+      {#if actions}
+        <div class="flex min-w-0 flex-wrap items-center gap-2 md:justify-end">
+          {@render actions()}
+        </div>
       {/if}
     </div>
-    {#if actions}
-      <div class="flex min-w-0 flex-wrap items-center gap-2 md:justify-end">
-        {@render actions()}
-      </div>
-    {/if}
   </div>
-</div>
+{:else}
+  <h1 class="sr-only">{t(title)}</h1>
+{/if}
 {#if children}
   {@render children()}
 {/if}

@@ -227,7 +227,7 @@
     </div>{:else if selected}<pre
       data-agent-record-content
       data-scroll-surface
-      class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-slate-700 bg-[#0b1018] p-4 font-mono text-xs leading-5 text-[#cdd6e3]"><SearchableText
+      class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-border bg-muted p-4 font-mono text-xs leading-5 text-foreground"><SearchableText
         text={content}
         {query}
       /></pre>{:else if !error}<p class="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">

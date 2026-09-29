@@ -38,6 +38,6 @@
       <span>{t('原始事件')}</span><code>{event.type}</code>
     </div>
     <pre
-      class="overflow-x-auto whitespace-pre-wrap break-all rounded-md bg-[#0b1018] p-3 font-mono text-xs leading-5 text-[#cdd6e3]">{event.formatted}</pre>
+      class="overflow-x-auto whitespace-pre-wrap break-all rounded-md bg-muted p-3 font-mono text-xs leading-5 text-foreground">{event.formatted}</pre>
   </div>
 </details>

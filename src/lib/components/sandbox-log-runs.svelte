@@ -3,7 +3,8 @@
   import RunLogViewer from '$lib/components/run-log-viewer.svelte';
   import { t } from '$lib/i18n.svelte';
   import type { AgentStreamState, AgentTranscriptItem } from '$lib/run-stream.svelte';
-  import { followRunLogs, runStatusName, sourceName, type RunLogChunk } from '../../api/runs';
+  import { followRunLogs, runStatusName, sourceName } from '../../api/runs';
+  import { RunLogFeed } from '$lib/run-log-feed.svelte';
   import {
     RunEventKind,
     RunStatus,
@@ -14,10 +15,6 @@
   import { compactIdentifier } from '../../model/identifiers';
   import { timestampToISOString } from '../../model/timestamps';
   import { formatBeijingTime } from '../../time';
-
-  // Intentional window, not an unfinished full render. Earlier bytes load on demand; download reads the files separately.
-  const TAIL_LINES = 2000;
-  const FLUSH_MS = 150;
 
   let {
     sandboxId,
@@ -35,29 +32,18 @@
     onError?: (message: string) => void;
   } = $props();
 
-  type LogWindow = {
-    lines: string[];
-    incomplete: string;
-    windowStart: bigint;
-    startKnown: boolean;
-    hasEarlier: boolean;
-    loaded: boolean;
-    error: string;
-  };
-
-  let windows = $state<Record<string, LogWindow>>({});
   let query = $state('');
   let loadingEarlier = $state(false);
   let downloading = $state(false);
   let preserveLine = $state(0);
+  /** 新建订阅时加一，让依赖订阅列表的派生值重新计算；每个订阅自己的行变化由它内部的状态驱动。 */
+  let feedsVersion = $state(0);
   let anchorBeforeLine = 0;
   let loadVersion = 0;
   // Plain collections. A SvelteMap read inside the reset effect retriggers that effect on every stream start.
   /* eslint-disable svelte/prefer-svelte-reactivity -- reactive reads here restart every log stream */
-  const controllers = new Map<string, AbortController>();
+  const feeds = new Map<string, RunLogFeed>();
   const requested = new Set<string>();
-  const pendingText = new Map<string, string>();
-  const flushTimers = new Map<string, number>();
   /* eslint-enable svelte/prefer-svelte-reactivity */
   let downloadController: AbortController | null = null;
 
@@ -73,7 +59,7 @@
   const lines = $derived(
     sections.flatMap((section) => ('run' in section ? runLines(section.run) : legacyCellLines(section.cell))),
   );
-  const hasEarlier = $derived(chronologicalRuns.some((run) => windows[run.runId]?.hasEarlier));
+  const hasEarlier = $derived(chronologicalRuns.some((run) => feedFor(run.runId)?.hasEarlier));
 
   onMount(() => () => {
     resetStreams();
@@ -89,171 +75,65 @@
     const waiting = chronologicalRuns.filter((run) => !requested.has(run.runId));
     if (!waiting.length) return;
     for (const run of waiting) requested.add(run.runId);
-    void loadWaiting(waiting);
+    untrack(() => void loadWaiting(waiting));
   });
+
+  function feedFor(runId: string): RunLogFeed | undefined {
+    void feedsVersion;
+    return feeds.get(runId);
+  }
 
   function resetForSandbox(): void {
     loadVersion += 1;
     resetStreams();
-    windows = {};
+    feedsVersion += 1;
     loadingEarlier = false;
     preserveLine = 0;
     anchorBeforeLine = 0;
   }
 
   function resetStreams(): void {
-    for (const controller of controllers.values()) controller.abort();
-    controllers.clear();
+    for (const feed of feeds.values()) feed.stop();
+    feeds.clear();
     requested.clear();
-    pendingText.clear();
-    for (const timer of flushTimers.values()) window.clearTimeout(timer);
-    flushTimers.clear();
     downloadController?.abort();
     downloadController = null;
   }
 
   async function loadWaiting(waiting: RunSummary[]): Promise<void> {
     const version = loadVersion;
-    const running = waiting.filter((run) => run.status === RunStatus.RUNNING);
-    const finished = waiting.filter((run) => run.status !== RunStatus.RUNNING);
-    for (const run of running) void loadTail(run);
-    for (const run of finished) {
+    for (const run of waiting) feeds.set(run.runId, new RunLogFeed(run.runId, run.projectId));
+    feedsVersion += 1;
+    // 运行中的日志立即跟随；已结束的逐个读取末尾，避免同时打开大量连接。
+    for (const run of waiting.filter((item) => item.status === RunStatus.RUNNING)) void startFeed(run, true);
+    for (const run of waiting.filter((item) => item.status !== RunStatus.RUNNING)) {
       if (version !== loadVersion) return;
-      await loadTail(run);
+      await startFeed(run, false);
     }
   }
 
-  async function loadTail(run: RunSummary): Promise<void> {
-    const version = loadVersion;
-    const follow = run.status === RunStatus.RUNNING;
-    const result = await readLogs(run, 'tail', { follow, tailLines: TAIL_LINES }, (chunk) => {
-      if (version !== loadVersion) return;
-      noteWindowStart(run.runId, chunk);
-      bufferChunk(run.runId, chunk, follow);
-    });
-    if (version !== loadVersion) return;
-    flush(run.runId);
-    // A followed stream stays open, so reaching the first tail is enough to leave the loading placeholder.
-    patchWindow(run.runId, { loaded: result.opened || !follow });
+  async function startFeed(run: RunSummary, follow: boolean): Promise<void> {
+    const feed = feeds.get(run.runId);
+    if (!feed) return;
+    await feed.start(follow);
+    if (feed.error) onError?.(feed.error);
   }
 
   async function loadEarlier(): Promise<void> {
     if (loadingEarlier) return;
     loadingEarlier = true;
     try {
-      await Promise.all(chronologicalRuns.filter((run) => windows[run.runId]?.hasEarlier).map(loadEarlierRun));
+      for (const run of chronologicalRuns) {
+        const feed = feeds.get(run.runId);
+        if (!feed?.hasEarlier) continue;
+        // 插在当前视口上方的行要补偿滚动位置，插在下方的不影响屏幕上的内容。
+        const startsAboveAnchor = sectionStartLine(run.runId) < anchorBeforeLine;
+        const added = await feed.loadEarlier();
+        if (startsAboveAnchor) preserveLine += added;
+      }
     } finally {
       loadingEarlier = false;
     }
-  }
-
-  async function loadEarlierRun(run: RunSummary): Promise<void> {
-    const windowStart = windows[run.runId]?.windowStart ?? 0n;
-    if (windowStart <= 0n) return;
-    let earlier: string[] = [];
-    let incomplete = '';
-    const version = loadVersion;
-    const result = await readLogs(run, 'earlier', { follow: false, startOffset: 0n }, (chunk) => {
-      if (version !== loadVersion) return false;
-      const text = textBefore(chunk, windowStart);
-      if (text) {
-        const parsed = appendText(earlier, incomplete, text);
-        earlier = parsed.lines;
-        incomplete = parsed.incomplete;
-      }
-      return chunk.offset >= windowStart;
-    });
-    // A disconnect aborts the stream too. Only a read that reached the tail window may replace the button.
-    if (version !== loadVersion || !result.reached) return;
-    if (incomplete) earlier.push(incomplete);
-    prependLines(run.runId, earlier);
-  }
-
-  async function readLogs(
-    run: RunSummary,
-    purpose: 'tail' | 'earlier',
-    options: { follow: boolean; tailLines?: number; startOffset?: bigint },
-    onChunk: (chunk: RunLogChunk) => boolean | void,
-  ): Promise<{ reached: boolean; opened: boolean }> {
-    const controller = new AbortController();
-    const key = `${purpose}:${run.runId}`;
-    controllers.set(key, controller);
-    let reached = false;
-    let opened = false;
-    try {
-      await followRunLogs(
-        run.runId,
-        (chunk) => {
-          if (chunk.data) opened = true;
-          if (onChunk(chunk)) reached = true;
-          if (reached) controller.abort();
-        },
-        controller.signal,
-        {
-          follow: options.follow,
-          projectId: run.projectId,
-          tailLines: options.tailLines,
-          startOffset: options.startOffset,
-        },
-      );
-      return { reached, opened };
-    } catch (cause) {
-      if (controller.signal.aborted) return { reached, opened };
-      const message = cause instanceof Error ? cause.message : t('日志加载失败');
-      if (options.tailLines != null) patchWindow(run.runId, { error: message, loaded: true });
-      onError?.(message);
-      return { reached: false, opened };
-    } finally {
-      controllers.delete(key);
-    }
-  }
-
-  function noteWindowStart(runId: string, chunk: RunLogChunk): void {
-    const current = windows[runId] ?? emptyWindow();
-    // The first chunk is metadata and has no log bytes. Using it would hide "load earlier".
-    if (current.startKnown || !chunk.data) return;
-    const start = chunk.offset - BigInt(byteLength(chunk.data));
-    const windowStart = start < 0n ? 0n : start;
-    patchWindow(runId, { windowStart, startKnown: true, hasEarlier: windowStart > 0n });
-  }
-
-  function bufferChunk(runId: string, chunk: RunLogChunk, follow: boolean): void {
-    if (!chunk.data) return;
-    // Keep chunk copies out of reactive state. Replacing the full string on every 64KB chunk is the jank this avoids.
-    pendingText.set(runId, `${pendingText.get(runId) ?? ''}${chunk.data}`);
-    if (!follow || flushTimers.has(runId)) return;
-    flushTimers.set(
-      runId,
-      window.setTimeout(() => {
-        flushTimers.delete(runId);
-        flush(runId);
-      }, FLUSH_MS),
-    );
-  }
-
-  function flush(runId: string): void {
-    const timer = flushTimers.get(runId);
-    if (timer) window.clearTimeout(timer);
-    flushTimers.delete(runId);
-    const text = pendingText.get(runId);
-    if (!text) return;
-    pendingText.delete(runId);
-    const current = windows[runId] ?? emptyWindow();
-    const parsed = appendText(current.lines, current.incomplete, text);
-    patchWindow(runId, { lines: parsed.lines, incomplete: parsed.incomplete });
-  }
-
-  function prependLines(runId: string, earlier: string[]): void {
-    const current = windows[runId] ?? emptyWindow();
-    const addedRows = earlier.length + runHeadingRows(runId);
-    const startsAboveAnchor = sectionStartLine(runId) < anchorBeforeLine;
-    patchWindow(runId, {
-      lines: [...earlier, ...current.lines],
-      windowStart: 0n,
-      hasEarlier: false,
-    });
-    // Rows appended below the anchored line do not move the text already on screen.
-    if (startsAboveAnchor) preserveLine += addedRows;
   }
 
   function sectionStartLine(runId: string): number {
@@ -265,54 +145,13 @@
     return offset;
   }
 
-  function runHeadingRows(runId: string): number {
-    const current = windows[runId];
-    return current && current.lines.length === 0 && !current.incomplete ? 1 : 0;
-  }
-
-  function patchWindow(runId: string, patch: Partial<LogWindow>): void {
-    windows = { ...windows, [runId]: { ...(windows[runId] ?? emptyWindow()), ...patch } };
-  }
-
-  function emptyWindow(): LogWindow {
-    return {
-      lines: [],
-      incomplete: '',
-      windowStart: 0n,
-      startKnown: false,
-      hasEarlier: false,
-      loaded: false,
-      error: '',
-    };
-  }
-
-  function appendText(lines: string[], incomplete: string, text: string): { lines: string[]; incomplete: string } {
-    const parts = `${incomplete}${text}`.split('\n');
-    return { lines: [...lines, ...parts.slice(0, -1)], incomplete: parts.at(-1) ?? '' };
-  }
-
-  function textBefore(chunk: RunLogChunk, windowStart: bigint): string {
-    if (!chunk.data || chunk.offset <= 0n) return '';
-    const size = BigInt(byteLength(chunk.data));
-    const chunkStart = chunk.offset - size;
-    if (chunkStart >= windowStart) return '';
-    if (chunk.offset <= windowStart) return chunk.data;
-    const keep = Number(windowStart - chunkStart);
-    return new TextDecoder().decode(new TextEncoder().encode(chunk.data).slice(0, keep));
-  }
-
-  function byteLength(value: string): number {
-    return new TextEncoder().encode(value).length;
-  }
-
   function runLines(run: RunSummary): string[] {
-    const window = windows[run.runId];
-    const body = [...eventLines(run.runId), ...(window?.lines ?? [])];
-    if (window?.incomplete) body.push(window.incomplete);
+    const feed = feedFor(run.runId);
+    const body = [...eventLines(run.runId), ...(feed?.lines ?? [])];
     if (run.error && !body.some((line) => line.includes(run.error))) body.push(`${t('错误')}：${run.error}`);
     if (body.length) return [headingFor(run), ...body];
-    if (window?.error) return [headingFor(run), `${t('日志加载失败')}：${window.error}`];
-    return [headingFor(run), t(window?.loaded ? '没有日志输出' : '正在加载日志…')];
+    if (feed?.error) return [headingFor(run), `${t('日志加载失败')}：${feed.error}`];
+    return [headingFor(run), t(feed?.loaded ? '没有日志输出' : '正在加载日志…')];
   }
 
   function headingFor(run: RunSummary): string {

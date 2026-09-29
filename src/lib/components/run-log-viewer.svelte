@@ -174,7 +174,7 @@
     data-scroll-surface
     data-log-viewport
     onscroll={trackScroll}
-    class="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-700 bg-[#0b1018] font-mono text-xs leading-5 text-[#cdd6e3]"
+    class="min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-muted font-mono text-xs leading-5 text-foreground"
   >
     {#if lines.length}
       <div class="w-max min-w-full" style:height="{totalHeight}px">

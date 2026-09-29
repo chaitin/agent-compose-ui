@@ -4,11 +4,12 @@
   import AppSidebar from '$lib/components/app-sidebar.svelte';
   import AppTopbar from '$lib/components/app-topbar.svelte';
   import CommandPalette from '$lib/components/command-palette.svelte';
+  import SectionTabs from '$lib/components/section-tabs.svelte';
+  import { sectionTabs } from '$lib/nav';
   import { router, matchDetail } from '$lib/router.svelte';
-  import { density } from '$lib/density.svelte';
   import { i18n, t } from '$lib/i18n.svelte';
 
-  import Overview from './routes/Overview.svelte';
+  import Runs from './routes/Runs.svelte';
   import Projects from './routes/Projects.svelte';
   import Automations from './routes/Automations.svelte';
   import AutomationRuns from './routes/AutomationRuns.svelte';
@@ -16,7 +17,6 @@
   import Sandboxes from './routes/Sandboxes.svelte';
   import SandboxDetail from './routes/SandboxDetail.svelte';
   import RunDetail from './routes/RunDetail.svelte';
-  import UnlinkedRuns from './routes/UnlinkedRuns.svelte';
   import Settings from './routes/Settings.svelte';
   import Images from './routes/Images.svelte';
   import Capabilities from './routes/Capabilities.svelte';
@@ -27,6 +27,7 @@
   import Login from './routes/Login.svelte';
   import Audit from './routes/Audit.svelte';
   import AccountTokens from './routes/AccountTokens.svelte';
+  import AccountInfo from './routes/AccountInfo.svelte';
   import { getAuthStatus, logout, type AuthStatus } from './api/auth';
   import { getHealthStatus, type HealthStatus } from './api/health';
   import { versionLabel } from './model/presentation';
@@ -42,7 +43,6 @@
 
   onMount(() => {
     redirectLegacyPath();
-    density.init();
     i18n.init();
     const stored = localStorage.getItem(STORAGE_KEY);
     collapsed = stored !== null ? stored === '1' : window.innerWidth < 1440;
@@ -64,6 +64,7 @@
     else if (path === '/automation-tasks') target = '/automations';
     else if (path === '/agents') target = '/projects';
     else if (path === '/runs') target = '/sandboxes';
+    else if (path === '/runs/unlinked') target = '/';
     else if (path.startsWith('/debug/runs/')) target = `/runs/${path.slice('/debug/runs/'.length)}/terminal`;
     if (target) router.replace(target);
   }
@@ -119,6 +120,12 @@
   const p = $derived(router.path);
   const runDetailId = $derived(matchDetail('/runs', p));
   const sandboxDetailId = $derived(matchDetail('/sandboxes', p));
+  const tabs = $derived(sectionTabs(p));
+  const healthText = $derived(
+    health
+      ? `${versionLabel(health.version)} · CPU ${health.processCpuPercent.toFixed(0)}% · ${(health.processRssBytes / 1024 / 1024).toFixed(0)}M`
+      : t('连接中'),
+  );
 
   $effect(() => {
     void p;
@@ -154,9 +161,9 @@
       <AppSidebar
         {collapsed}
         healthy={Boolean(health)}
-        healthText={health ? versionLabel(health.version) : t('连接中')}
-        cpu={health ? `${health.processCpuPercent.toFixed(0)}%` : '—'}
-        rss={health ? `${(health.processRssBytes / 1024 / 1024).toFixed(0)}M` : '—'}
+        {healthText}
+        username={auth.user?.displayName || auth.username}
+        onLogout={auth.enabled ? handleLogout : undefined}
       />
     </div>
 
@@ -170,29 +177,25 @@
       <div class="fixed inset-y-0 left-0 z-50 w-[min(19rem,86vw)] pt-[env(safe-area-inset-top)] lg:hidden">
         <AppSidebar
           collapsed={false}
+          onNavigate={() => (mobileNavigationOpen = false)}
           healthy={Boolean(health)}
-          healthText={health ? versionLabel(health.version) : t('连接中')}
-          cpu={health ? `${health.processCpuPercent.toFixed(0)}%` : '—'}
-          rss={health ? `${(health.processRssBytes / 1024 / 1024).toFixed(0)}M` : '—'}
+          {healthText}
+          username={auth.user?.displayName || auth.username}
+          onLogout={auth.enabled ? handleLogout : undefined}
         />
       </div>
     {/if}
 
     <div class="flex min-w-0 flex-1 flex-col">
-      <AppTopbar
-        onToggleSidebar={toggleSidebar}
-        navigationOpen={mobileNavigationOpen}
-        username={auth.user?.displayName || auth.username}
-        healthy={Boolean(health)}
-        onLogout={auth.enabled ? handleLogout : undefined}
-      />
+      <AppTopbar onToggleSidebar={toggleSidebar} navigationOpen={mobileNavigationOpen} />
+      {#if tabs.length}<SectionTabs {tabs} path={p} />{/if}
 
       <main
         data-scroll-root
         class="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]"
       >
         {#if p === '/'}
-          <Overview />
+          <Runs />
         {:else if p.startsWith('/projects') || p.startsWith('/agents')}
           <Projects />
         {:else if p.startsWith('/automation-runs/')}
@@ -209,8 +212,6 @@
           <SandboxDetail />
         {:else if p.startsWith('/sandboxes')}
           <Sandboxes />
-        {:else if p === '/runs/unlinked'}
-          <UnlinkedRuns />
         {:else if runDetailId}
           <RunDetail />
         {:else if p.startsWith('/settings/caches')}
@@ -219,6 +220,8 @@
           <Audit />
         {:else if p.startsWith('/account/tokens')}
           <AccountTokens />
+        {:else if p === '/account'}
+          <AccountInfo />
         {:else if p.startsWith('/settings')}
           <Settings />
         {:else if p.startsWith('/images')}
@@ -230,7 +233,7 @@
         {:else if p.startsWith('/skills')}
           <SpecResources kind="skills" />
         {:else}
-          <Overview />
+          <Runs />
         {/if}
       </main>
     </div>

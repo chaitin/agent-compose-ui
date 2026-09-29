@@ -39,8 +39,9 @@ export class AgentStreamState {
   runId = $state('');
   sandboxId = $state('');
   output = $state('');
-  stdout = $state('');
-  stderr = $state('');
+  // stdout / stderr 只用于最终结果，不驱动界面，不做成响应式，避免每个数据块都触发更新。
+  stdout = '';
+  stderr = '';
   transcript = $state<AgentTranscriptItem[]>([]);
   phase = $state<AgentStreamPhase>('starting');
   error = $state('');
@@ -69,6 +70,12 @@ export class AgentStreamState {
   }
 }
 
+/**
+ * 流式输出合并进界面的间隔。数据块往往又小又密，逐块写入响应式状态会让对话整段重算、重绘；
+ * 先攒在普通变量里，按这个间隔合并一次。第一块和结束时立即合并，不影响首字和收尾的响应。
+ */
+const STREAM_FLUSH_MS = 100;
+
 class RunStreamCoordinator {
   private version = $state(0);
   private readonly byOperation = new Map<string, AgentStreamState>();
@@ -93,6 +100,25 @@ class RunStreamCoordinator {
     this.controllers.set(state.operationId, controller);
     if (state.sandboxId) this.bySandbox.set(state.sandboxId, state);
     this.touch();
+
+    let pendingOutput = '';
+    let pendingTranscript: AgentTranscriptItem[] = [];
+    let flushTimer = 0;
+    const flush = (): void => {
+      window.clearTimeout(flushTimer);
+      flushTimer = 0;
+      if (pendingOutput) {
+        state.output += pendingOutput;
+        pendingOutput = '';
+      }
+      if (pendingTranscript.length) {
+        state.transcript = [...state.transcript, ...pendingTranscript];
+        pendingTranscript = [];
+      }
+    };
+    const scheduleFlush = (): void => {
+      if (!flushTimer) flushTimer = window.setTimeout(flush, STREAM_FLUSH_MS);
+    };
 
     try {
       for await (const event of streamAgentRun(
@@ -122,22 +148,31 @@ class RunStreamCoordinator {
           this.touch();
           onStarted?.(state);
         } else if (event.eventType === StreamAgentRunEventType.OUTPUT && event.chunk) {
-          if (!state.firstChunkAt) state.firstChunkAt = new Date().toISOString();
-          state.output += event.chunk;
+          pendingOutput += event.chunk;
           if (event.stream === StdioStream.STDERR) state.stderr += event.chunk;
           else state.stdout += event.chunk;
+          if (!state.firstChunkAt) {
+            state.firstChunkAt = new Date().toISOString();
+            flush();
+          } else scheduleFlush();
         } else if (event.eventType === StreamAgentRunEventType.COMPLETED) {
+          flush();
           state.phase = event.run?.status === RunStatus.SUCCEEDED ? 'completed' : 'failed';
           state.error = event.run?.error ?? '';
           state.completedAt = new Date().toISOString();
         }
-        if (event.transcript) state.transcript = [...state.transcript, transcriptItem(event.transcript, event.runId)];
+        if (event.transcript) {
+          pendingTranscript.push(transcriptItem(event.transcript, event.runId));
+          scheduleFlush();
+        }
       }
+      flush();
       if (state.running) {
         state.phase = 'failed';
         state.error = t('流式响应在完成事件前结束');
       }
     } catch (cause) {
+      flush();
       state.phase = controller.signal.aborted ? 'canceled' : 'failed';
       state.error = cause instanceof Error ? cause.message : t('流式执行失败');
     } finally {

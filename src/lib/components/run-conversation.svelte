@@ -6,6 +6,7 @@
   import ConversationSearch from '$lib/components/conversation-search.svelte';
   import CopyableText from '$lib/components/copyable-text.svelte';
   import SearchableText from '$lib/components/searchable-text.svelte';
+  import ConversationText from '$lib/components/conversation-text.svelte';
   import StatusBadge from '$lib/components/status-badge.svelte';
   import Timestamp from '$lib/components/timestamp.svelte';
   import { navigate } from '$lib/router.svelte';
@@ -149,7 +150,7 @@
 
 <div class="flex h-full min-h-0 flex-col overflow-hidden">
   <div
-    class="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-[#293244] bg-[#111722] text-[#d8dee9]"
+    class="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card text-foreground"
   >
     <ConversationSearch
       query={searchQuery}
@@ -185,7 +186,7 @@
         {@const output = active ? pendingOutput || turn.output : presentedOutput(turn)}
         {@const responseState = conversationResponseState(status, output, error)}
         <article data-conversation-turn data-status={status} class="min-w-0">
-          <div class="mb-3 flex flex-wrap items-center gap-2 border-b border-white/10 pb-2 text-[11px] text-white/45">
+          <div class="mb-3 flex flex-wrap items-center gap-2 border-b border-border pb-2 text-[11px] text-faint">
             <StatusBadge {status} />
             {#if turn.runId}<CopyableText
                 value={turn.runId}
@@ -194,10 +195,10 @@
                 class="font-mono"
               />{/if}
             {#if turn.createdAt}<Timestamp value={turn.createdAt} />{/if}
-            {#if turn.runId === currentRunId}<span class="font-medium text-cyan-200/80">{t('本次运行')}</span>{/if}
+            {#if turn.runId === currentRunId}<span class="font-medium text-info">{t('本次运行')}</span>{/if}
             {#if turn.runId && turn.runId !== currentRunId}<button
                 type="button"
-                class="ml-auto inline-flex items-center gap-1 text-white/50 hover:text-white"
+                class="ml-auto inline-flex items-center gap-1 text-faint hover:text-foreground"
                 onclick={() => navigate(`/runs/${encodeURIComponent(turn.runId)}`)}
                 >{t('查看运行')} <ArrowUpRight class="size-3" /></button
               >{/if}
@@ -206,7 +207,7 @@
           {#if prompt}<div
               data-message-role="user"
               data-message-content
-              class="ml-auto w-fit max-w-[88%] rounded-lg bg-blue-500/20 px-4 py-3 font-mono text-sm text-blue-50"
+              class="ml-auto w-fit max-w-[88%] rounded-lg bg-muted px-4 py-3 font-mono text-sm text-foreground"
             >
               <pre class="whitespace-pre-wrap break-words">› <SearchableText
                   text={prompt}
@@ -216,29 +217,32 @@
                 /></pre>
             </div>{/if}
 
-          {#if active}<div class="mt-3 border-l border-cyan-300/30 pl-3 font-mono text-xs text-white/65">
+          {#if active}<div class="mt-3 border-l border-info/40 pl-3 font-mono text-xs text-muted-foreground">
               {pendingStreamState || t('回复中…')}
             </div>{/if}
           {#if responseState !== 'streaming' && responseState !== 'none'}<div
               data-message-role="assistant"
               data-message-content
               class="mr-auto mt-3 max-w-full border-l-2 pl-4 {responseState === 'error'
-                ? 'border-red-300/50 text-red-100'
-                : 'border-emerald-300/50'}"
+                ? 'border-destructive/40 text-destructive'
+                : 'border-success/50'}"
             >
-              <div class="mb-1 text-[11px] {responseState === 'error' ? 'text-red-200/70' : 'text-emerald-200/70'}">
+              <div class="mb-1 text-[11px] {responseState === 'error' ? 'text-destructive/80' : 'text-success'}">
                 {t(responseState === 'error' ? '回复失败' : '智能体输出')}
               </div>
-              {#if output}<pre class="whitespace-pre-wrap break-words text-sm leading-6"><SearchableText
+              {#if output}<pre class="whitespace-pre-wrap break-words text-sm leading-6"><ConversationText
                     text={output}
                     query={searchQuery}
                     matchOffset={matchOffsets.offsets.get(`${turn.id}:output`) ?? 0}
                     {activeMatch}
-                  /></pre>{:else}<p class="text-sm text-white/45">{t('未产生输出')}</p>{/if}
-              {#if responseState === 'error' && errorDetail !== output}<details class="mt-2 text-xs text-red-100/80">
+                    live={active}
+                  /></pre>{:else}<p class="text-sm text-faint">{t('未产生输出')}</p>{/if}
+              {#if responseState === 'error' && errorDetail !== output}<details
+                  class="mt-2 text-xs text-destructive/80"
+                >
                   <summary class="cursor-pointer select-none">{t('错误详情')}</summary>
                   <pre
-                    class="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-red-500/10 p-2">{errorDetail}</pre>
+                    class="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-destructive/5 p-2">{errorDetail}</pre>
                 </details>{/if}
             </div>{/if}
         </article>
@@ -256,7 +260,7 @@
           aria-live="polite"
           class="min-w-0"
         >
-          <div class="mb-3 flex flex-wrap items-center gap-2 border-b border-white/10 pb-2 text-[11px] text-white/45">
+          <div class="mb-3 flex flex-wrap items-center gap-2 border-b border-border pb-2 text-[11px] text-faint">
             <StatusBadge status="running" />
             {#if pendingRunId}<CopyableText
                 value={pendingRunId}
@@ -264,12 +268,12 @@
                 label="Run ID"
                 class="font-mono"
               />{/if}
-            <span class="font-medium text-cyan-200/80">{t('本次运行')}</span>
+            <span class="font-medium text-info">{t('本次运行')}</span>
           </div>
           <div
             data-message-role="user"
             data-message-content
-            class="ml-auto w-fit max-w-[88%] rounded-lg bg-blue-500/20 px-4 py-3 font-mono text-sm text-blue-50"
+            class="ml-auto w-fit max-w-[88%] rounded-lg bg-muted px-4 py-3 font-mono text-sm text-foreground"
           >
             <pre class="whitespace-pre-wrap break-words">› <SearchableText
                 text={pendingPrompt}
@@ -278,20 +282,21 @@
                 {activeMatch}
               /></pre>
           </div>
-          <div class="mt-3 border-l border-cyan-300/30 pl-3 font-mono text-xs text-white/65">
+          <div class="mt-3 border-l border-info/40 pl-3 font-mono text-xs text-muted-foreground">
             {pendingStreamState || t('回复中…')}
           </div>
           {#if pendingOutput}<div
               data-message-role="assistant"
               data-message-content
-              class="mt-3 border-l-2 border-emerald-300/50 pl-4"
+              class="mt-3 border-l-2 border-success/50 pl-4"
             >
-              <div class="mb-1 text-[11px] text-emerald-200/70">{t('智能体输出')}</div>
-              <pre class="whitespace-pre-wrap break-words text-sm leading-6"><SearchableText
+              <div class="mb-1 text-[11px] text-success">{t('智能体输出')}</div>
+              <pre class="whitespace-pre-wrap break-words text-sm leading-6"><ConversationText
                   text={pendingOutput}
                   query={searchQuery}
                   matchOffset={matchOffsets.offsets.get('pending:output') ?? 0}
                   {activeMatch}
+                  live
                 /></pre>
             </div>{/if}
         </article>{/if}

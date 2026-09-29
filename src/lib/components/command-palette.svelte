@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import * as Command from '$lib/components/ui/command';
-  import { navGroups } from '$lib/nav';
+  import { accountItems, navItems } from '$lib/nav';
   import { t } from '$lib/i18n.svelte';
-  import { compactIdentifier } from '../../model/identifiers';
+  import { formatRelativeTime } from '../../time';
+  import { timestampToISOString } from '../../model/timestamps';
   import { navigate } from '$lib/router.svelte';
   import { command } from '$lib/command.svelte';
   import { listProjectAgentContext, type ProjectAgentContextAgent } from '../../api/agents';
@@ -64,16 +65,26 @@
   <Command.Input bind:value={query} placeholder={t('跳转页面，或输入 ID 直达资源…')} />
   <Command.List>
     <Command.Empty>{t('没有匹配项。')}</Command.Empty>
-    {#each navGroups() as group (group.title)}
-      <Command.Group heading={group.title}>
-        {#each group.items as item (item.href)}
-          <Command.Item onSelect={() => go(item.href)}>
-            <item.icon class="size-4 text-muted-foreground" />
-            <span>{item.label}</span>
+    <Command.Group heading={t('页面')}>
+      {#each navItems() as item (item.href)}
+        <Command.Item value={`page ${item.label}`} onSelect={() => go(item.href)}>
+          <item.icon class="size-4 text-muted-foreground" />
+          <span>{item.label}</span>
+        </Command.Item>
+        {#each (item.tabs ?? []).filter((tab) => tab.href !== item.href) as tab (tab.href)}
+          <Command.Item value={`page ${item.label} ${tab.label}`} onSelect={() => go(tab.href)}>
+            <span class="size-4"></span>
+            <span class="text-muted-foreground">{item.label} /</span><span>{tab.label}</span>
           </Command.Item>
         {/each}
-      </Command.Group>
-    {/each}
+      {/each}
+      {#each accountItems() as item (item.href)}
+        <Command.Item value={`page ${t('账户')} ${item.label}`} onSelect={() => go(item.href)}>
+          <span class="size-4"></span>
+          <span class="text-muted-foreground">{t('账户')} /</span><span>{item.label}</span>
+        </Command.Item>
+      {/each}
+    </Command.Group>
     <Command.Separator />
     {#if query.trim()}
       <Command.Group heading={t('资源解析')}>
@@ -98,9 +109,11 @@
     </Command.Group>
     <Command.Group heading={t('运行')}>
       {#each runs as r (r.runId)}
-        <Command.Item value={`run ${r.runId}`} onSelect={() => go(`/runs/${r.runId}`)}>
-          <span class="font-mono text-xs text-muted-foreground">run</span>
-          <span>{r.runShortId || compactIdentifier(r.runId)}</span>
+        <Command.Item value={`run ${r.agentName} ${r.projectName} ${r.runId}`} onSelect={() => go(`/runs/${r.runId}`)}>
+          <span class="truncate">{r.agentName} <span class="text-muted-foreground">· {r.projectName}</span></span>
+          <span class="ml-auto shrink-0 text-xs text-muted-foreground"
+            >{formatRelativeTime(timestampToISOString(r.startedAt || r.createdAt))}</span
+          >
         </Command.Item>
       {/each}
     </Command.Group>

@@ -9,7 +9,7 @@
   let {
     items = $bindable([]),
     title = '智能体环境变量',
-    description = '随智能体部署到执行环境',
+    description = '随智能体部署到 Sandbox',
     layout = 'wide',
     class: className = '',
   }: {

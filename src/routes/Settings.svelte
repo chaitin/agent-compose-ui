@@ -10,7 +10,6 @@
   import CopyableText from '$lib/components/copyable-text.svelte';
   import { navigate } from '$lib/router.svelte';
   import { t } from '$lib/i18n.svelte';
-  import { getAuthStatus, type AuthStatus } from '../api/auth';
   import {
     createWorkspacePreset,
     deleteWebhookSource,
@@ -33,7 +32,6 @@
   let envItems = $state<EnvItem[]>([]);
   let workspaces = $state<WorkspacePreset[]>([]);
   let webhooks = $state<WebhookSource[]>([]);
-  let auth = $state<AuthStatus | null>(null);
   let gatewayAddr = $state('');
   let gatewayToken = $state('');
   let gatewayTokenSet = $state(false);
@@ -65,13 +63,12 @@
     busy = true;
     error = '';
     try {
-      const [env, presets, sources, gateway, capabilityStatus, authStatus] = await Promise.all([
+      const [env, presets, sources, gateway, capabilityStatus] = await Promise.all([
         listEnvItems(),
         listWorkspacePresets(),
         listWebhookSources(),
         getCapabilityGatewayConfig(),
         getCapabilityStatus(),
-        getAuthStatus(),
       ]);
       envItems = env;
       workspaces = presets;
@@ -79,7 +76,6 @@
       gatewayAddr = gateway.addr;
       gatewayTokenSet = gateway.tokenSet;
       gatewayStatus = capabilityStatus;
-      auth = authStatus;
     } catch (cause) {
       error = errorMessage(cause);
     } finally {
@@ -255,7 +251,7 @@
           value="workspace"
           onpointerenter={preloadMonaco}
           onfocus={preloadMonaco}>{t('工作目录')}</Tabs.Trigger
-        ><Tabs.Trigger value="auth">{t('鉴权')}</Tabs.Trigger></Tabs.List
+        ></Tabs.List
       >
       <Tabs.Content data-scroll-pane value="env" class="mt-4 min-h-0 max-w-3xl flex-1 space-y-3 overflow-y-auto pr-1"
         >{#each envItems as item, index (index)}<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto_auto]">
@@ -437,25 +433,6 @@
           </aside>
         </div></Tabs.Content
       >
-      <Tabs.Content
-        data-scroll-pane
-        value="auth"
-        class="mt-4 min-h-0 max-w-2xl flex-1 overflow-y-auto rounded-lg border border-border p-4 text-sm"
-        ><dl class="grid grid-cols-[8rem_1fr] gap-2">
-          <dt class="text-muted-foreground">{t('认证')}</dt>
-          <dd>{t(auth?.enabled ? '已启用' : '未启用')}</dd>
-          <dt class="text-muted-foreground">{t('当前用户')}</dt>
-          <dd>{auth?.user?.displayName || auth?.username || t('匿名')}</dd>
-          <dt class="text-muted-foreground">{t('用户 ID')}</dt>
-          <dd class="break-all font-mono text-xs">{auth?.user?.id || '—'}</dd>
-          <dt class="text-muted-foreground">{t('认证来源')}</dt>
-          <dd>{auth?.user?.source || '—'}{auth?.user?.authMethod ? ` · ${auth.user.authMethod}` : ''}</dd>
-          <dt class="text-muted-foreground">OAuth</dt>
-          <dd>{t(auth?.oauthEnabled ? '已启用' : '未启用')}</dd>
-          <dt class="text-muted-foreground">{t('会话到期')}</dt>
-          <dd>{auth?.expiresAt || '—'}</dd>
-        </dl></Tabs.Content
-      ></Tabs.Root
-    >
+    </Tabs.Root>
   </PageContent>
 </div>

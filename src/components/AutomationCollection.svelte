@@ -111,7 +111,7 @@
     </div>
   </div>
 
-  <div class="hidden overflow-hidden rounded-lg border border-border bg-card min-[1400px]:block">
+  <div class="hidden overflow-hidden border-t border-border min-[1400px]:block">
     <table class="w-full table-fixed text-sm">
       <thead class="border-b border-border bg-muted/40 text-left text-xs text-muted-foreground">
         <tr>
@@ -147,7 +147,9 @@
                   class="font-mono text-[11px] text-muted-foreground"
                 />
               </div>
-              {#if task.lastError}<p class="mt-1 line-clamp-2 text-xs text-destructive">{task.lastError}</p>{/if}
+              {#if task.lastError}<p class="mt-1 line-clamp-2 font-mono text-[11px] break-all text-destructive">
+                  {task.lastError}
+                </p>{/if}
             </td>
             <td class="px-4 py-3">
               <StatusBadge status={task.enabled ? 'enabled' : 'disabled'} label={task.enabled ? '已启用' : '已停用'} />
@@ -208,7 +210,10 @@
         <div class="mt-3 flex items-center justify-between text-xs text-muted-foreground">
           <span>{task.triggerCount} {t('个触发条件')}</span><Timestamp value={task.latestRunAt} empty={t('未运行')} />
         </div>
-        {#if task.lastError}<p class="mt-2 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+        <!-- 卡片里只放错误的开头两行，完整原文在「执行历史」里的执行详情看。 -->
+        {#if task.lastError}<p
+            class="mt-2 line-clamp-2 rounded-r-md border-l-2 border-destructive bg-destructive/5 px-2 py-1 font-mono text-[11px] leading-4 break-all text-destructive"
+          >
             {task.lastError}
           </p>{/if}
         <div class="mt-4 flex flex-wrap gap-2">

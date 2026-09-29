@@ -1,14 +1,17 @@
+import { Code, ConnectError } from '@connectrpc/connect';
 import { apiFetchJson } from './http';
 import { projectClient } from './client';
 import {
   EventTriggerSpec,
   ProjectValidationSeverity,
   SchedulerRunStatus,
+  SchedulerSummary,
   TriggerSpec,
+  type GetSchedulerResponse,
   type Project,
+  type ProjectScheduler,
   type ResolvedTrigger,
   type SchedulerRun,
-  type SchedulerSummary,
 } from '../gen/agentcompose/v2/agentcompose_pb.js';
 import { toLegacySessionPolicy, toProjectSandboxPolicy, type LegacySessionPolicy } from '../model/sandbox-policy';
 import { timestampToISOString as timestampString } from '../model/timestamps';
@@ -225,14 +228,12 @@ export async function listAutomationTasks(): Promise<AutomationTask[]> {
 }
 
 export async function getAutomationTask(id: string): Promise<AutomationTaskDetail> {
-  const found = await findScheduler(id);
-  if (!found) throw new Error('自动化任务不存在');
-  const [response, project] = await Promise.all([
-    projectClient.getScheduler({ project: projectById(found.projectId), agentName: found.agentName }),
-    loadProject(found.projectId),
-  ]);
+  const response = await getSchedulerById(id);
+  const found = response?.scheduler;
+  if (!response || !found) throw new Error('自动化任务不存在');
+  const project = await loadProject(found.projectId);
   const agent = project.spec?.agents.find((item) => item.name === found.agentName);
-  const summary = taskFromV2(found);
+  const summary = taskFromV2(summaryFromScheduler(found));
   return {
     ...summary,
     name: response.spec?.displayName.trim() || response.scheduler?.displayName.trim() || summary.name,
@@ -502,8 +503,42 @@ async function listAllSchedulers(): Promise<SchedulerSummary[]> {
     offset = next;
   }
 }
+/**
+ * 按 scheduler ID 取详情。后端从 #692 起支持 GetScheduler(scheduler_id)，一个请求即可；
+ * 更早的后端不认识这个字段，会按缺少 project 报错，这时退回到列出全部 scheduler 再按项目和智能体查询。
+ * 返回 undefined 表示确实不存在。
+ */
+async function getSchedulerById(id: string): Promise<GetSchedulerResponse | undefined> {
+  try {
+    const response = await projectClient.getScheduler({ schedulerId: id });
+    if (response.scheduler) return response;
+  } catch (cause) {
+    if (ConnectError.from(cause).code === Code.NotFound) return undefined;
+  }
+  const found = (await listAllSchedulers()).find((value) => value.schedulerId === id);
+  if (!found) return undefined;
+  return projectClient.getScheduler({ project: projectById(found.projectId), agentName: found.agentName });
+}
+
+/**
+ * 只需要定位（项目、智能体、名称、启用状态）时使用。
+ * 运行次数、最近运行、最近错误只在列表接口里有，这里保持默认值，调用方不要依赖它们。
+ */
 async function findScheduler(id: string): Promise<SchedulerSummary | undefined> {
-  return (await listAllSchedulers()).find((value) => value.schedulerId === id);
+  const scheduler = (await getSchedulerById(id))?.scheduler;
+  return scheduler ? summaryFromScheduler(scheduler) : undefined;
+}
+
+function summaryFromScheduler(scheduler: ProjectScheduler): SchedulerSummary {
+  return new SchedulerSummary({
+    projectId: scheduler.projectId,
+    agentName: scheduler.agentName,
+    schedulerId: scheduler.schedulerId,
+    enabled: scheduler.enabled,
+    triggerCount: scheduler.triggerCount,
+    displayName: scheduler.displayName,
+    description: scheduler.description,
+  });
 }
 async function requireScheduler(id: string): Promise<SchedulerSummary> {
   const scheduler = await findScheduler(id);
@@ -586,6 +621,29 @@ function triggerFromResolved(item: ResolvedTrigger): AutomationTrigger {
     prompt: spec?.prompt ?? '',
   };
 }
+/**
+ * 每个 sandbox 最近一次自动化执行。后端按项目批量查询（BatchGetLatestSchedulerRuns），
+ * 这里按项目分组，每个项目一个请求；某个项目查询失败时只缺它的结果，不影响其它项目。
+ */
+export async function latestAutomationRunsForSandboxes(
+  items: Array<{ sandboxId: string; projectId: string }>,
+): Promise<Map<string, AutomationRun>> {
+  const byProject = new Map<string, string[]>();
+  for (const item of items) {
+    if (!item.projectId || !item.sandboxId) continue;
+    byProject.set(item.projectId, [...(byProject.get(item.projectId) ?? []), item.sandboxId]);
+  }
+  const responses = await Promise.all(
+    [...byProject].map(([projectId, sandboxIds]) =>
+      projectClient.batchGetLatestSchedulerRuns({ project: projectById(projectId), sandboxIds }).catch(() => null),
+    ),
+  );
+  const result = new Map<string, AutomationRun>();
+  for (const response of responses)
+    for (const item of response?.results ?? []) if (item.run) result.set(item.sandboxId, runFromScheduler(item.run));
+  return result;
+}
+
 function runFromScheduler(item: SchedulerRun): AutomationRun {
   return {
     id: item.runId,

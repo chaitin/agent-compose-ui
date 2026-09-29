@@ -4,108 +4,113 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * agent-compose-ui 设计令牌（分层）
- * - 语义令牌用 OKLCH，:root 为浅色，.dark 为暗色
- * - 紧凑开发者工具风：中性灰、克制描边、较小圆角、舒适/紧凑双密度
- * - 主色沿用原 #2f5fd0 蓝的色相；暗色地基对齐 #0e1116 / #171b22
+ * agent-compose-ui 设计令牌
+ * - 暖中性「纸面 + 墨色」：页面 / 抬升面 / 下沉面三层背景，层次靠色阶而不是描边
+ * - 主按钮用墨色（foreground），唯一强调色是靛蓝，只用于链接、焦点与选中
+ * - 状态色饱和度克制，只以圆点 + 文字出现，不做填充色块
+ * - 字体用系统栈，不依赖外部字体服务
  */
 :root {
-  --radius: 0.5rem;
+  --radius: 0.4rem;
 
-  --background: oklch(0.985 0.002 255);
-  --foreground: oklch(0.24 0.03 262);
+  --background: oklch(0.985 0.003 85);
+  --foreground: oklch(0.22 0.008 70);
 
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.24 0.03 262);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.24 0.03 262);
+  --card: oklch(0.998 0.001 85);
+  --card-foreground: oklch(0.22 0.008 70);
+  --popover: oklch(0.998 0.001 85);
+  --popover-foreground: oklch(0.22 0.008 70);
 
-  --primary: oklch(0.52 0.17 262);
-  --primary-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.47 0.14 272);
+  --primary-foreground: oklch(0.985 0.003 85);
 
-  --secondary: oklch(0.96 0.006 262);
-  --secondary-foreground: oklch(0.32 0.03 262);
+  --secondary: oklch(0.955 0.004 85);
+  --secondary-foreground: oklch(0.3 0.008 70);
 
-  --muted: oklch(0.965 0.005 262);
-  --muted-foreground: oklch(0.55 0.02 262);
+  --muted: oklch(0.96 0.004 85);
+  --muted-foreground: oklch(0.54 0.008 70);
 
-  --accent: oklch(0.955 0.012 262);
-  --accent-foreground: oklch(0.3 0.04 262);
+  --accent: oklch(0.945 0.005 85);
+  --accent-foreground: oklch(0.22 0.008 70);
 
-  --destructive: oklch(0.58 0.22 27);
-  --destructive-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.55 0.17 28);
+  --destructive-foreground: oklch(0.985 0.003 85);
 
-  --border: oklch(0.915 0.005 262);
-  --input: oklch(0.915 0.005 262);
-  --ring: oklch(0.52 0.17 262);
+  --border: oklch(0.22 0.008 70 / 0.09);
+  --input: oklch(0.22 0.008 70 / 0.14);
+  --ring: oklch(0.47 0.14 272 / 0.55);
 
-  /* 状态色（运行/成功/警告/中性） */
-  --success: oklch(0.6 0.15 150);
-  --success-foreground: oklch(0.985 0 0);
-  --warning: oklch(0.75 0.15 75);
-  --warning-foreground: oklch(0.28 0.05 75);
-  --info: oklch(0.52 0.17 262);
-  --info-foreground: oklch(0.985 0 0);
+  --selected: oklch(0.47 0.14 272 / 0.08);
+  --faint: oklch(0.66 0.006 70);
 
-  /* 侧栏 */
-  --sidebar: oklch(0.99 0.002 255);
-  --sidebar-foreground: oklch(0.3 0.02 262);
-  --sidebar-primary: oklch(0.52 0.17 262);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.955 0.012 262);
-  --sidebar-accent-foreground: oklch(0.3 0.04 262);
-  --sidebar-border: oklch(0.915 0.005 262);
-  --sidebar-ring: oklch(0.52 0.17 262);
+  --success: oklch(0.58 0.12 155);
+  --success-foreground: oklch(0.985 0.003 85);
+  --warning: oklch(0.7 0.13 75);
+  --warning-foreground: oklch(0.3 0.05 75);
+  --info: oklch(0.56 0.13 250);
+  --info-foreground: oklch(0.985 0.003 85);
+
+  --sidebar: oklch(0.975 0.004 85);
+  --sidebar-foreground: oklch(0.36 0.008 70);
+  --sidebar-primary: oklch(0.22 0.008 70);
+  --sidebar-primary-foreground: oklch(0.985 0.003 85);
+  --sidebar-accent: oklch(0.22 0.008 70 / 0.06);
+  --sidebar-accent-foreground: oklch(0.22 0.008 70);
+  --sidebar-border: oklch(0.22 0.008 70 / 0.08);
+  --sidebar-ring: oklch(0.47 0.14 272 / 0.55);
 
   --font-sans:
-    'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans SC',
-    'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
-  --font-mono: 'IBM Plex Mono', SFMono-Regular, 'Fira Code', Consolas, 'Liberation Mono', ui-monospace, monospace;
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    'Noto Sans SC', Roboto, 'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, 'JetBrains Mono', Consolas, 'Liberation Mono', monospace;
 }
 
 .dark {
-  --background: oklch(0.17 0.012 262);
-  --foreground: oklch(0.92 0.006 262);
+  --background: oklch(0.175 0.004 70);
+  --foreground: oklch(0.93 0.004 85);
 
-  --card: oklch(0.205 0.014 262);
-  --card-foreground: oklch(0.92 0.006 262);
-  --popover: oklch(0.205 0.014 262);
-  --popover-foreground: oklch(0.92 0.006 262);
+  --card: oklch(0.205 0.004 70);
+  --card-foreground: oklch(0.93 0.004 85);
+  --popover: oklch(0.215 0.004 70);
+  --popover-foreground: oklch(0.93 0.004 85);
 
-  --primary: oklch(0.64 0.15 262);
-  --primary-foreground: oklch(0.16 0.012 262);
+  --primary: oklch(0.72 0.12 275);
+  --primary-foreground: oklch(0.175 0.004 70);
 
-  --secondary: oklch(0.26 0.014 262);
-  --secondary-foreground: oklch(0.9 0.01 262);
+  --secondary: oklch(0.24 0.004 70);
+  --secondary-foreground: oklch(0.9 0.004 85);
 
-  --muted: oklch(0.26 0.014 262);
-  --muted-foreground: oklch(0.68 0.02 262);
+  --muted: oklch(0.225 0.004 70);
+  --muted-foreground: oklch(0.68 0.006 80);
 
-  --accent: oklch(0.3 0.018 262);
-  --accent-foreground: oklch(0.92 0.01 262);
+  --accent: oklch(0.25 0.005 70);
+  --accent-foreground: oklch(0.93 0.004 85);
 
-  --destructive: oklch(0.62 0.2 25);
-  --destructive-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.66 0.16 28);
+  --destructive-foreground: oklch(0.175 0.004 70);
 
-  --border: oklch(0.29 0.014 262);
-  --input: oklch(0.32 0.014 262);
-  --ring: oklch(0.64 0.15 262);
+  --border: oklch(0.93 0.004 85 / 0.08);
+  --input: oklch(0.93 0.004 85 / 0.13);
+  --ring: oklch(0.72 0.12 275 / 0.55);
 
-  --success: oklch(0.68 0.15 150);
-  --success-foreground: oklch(0.16 0.012 262);
-  --warning: oklch(0.8 0.15 75);
-  --warning-foreground: oklch(0.2 0.03 75);
-  --info: oklch(0.64 0.15 262);
-  --info-foreground: oklch(0.16 0.012 262);
+  --selected: oklch(0.72 0.12 275 / 0.12);
+  --faint: oklch(0.52 0.006 80);
 
-  --sidebar: oklch(0.195 0.013 262);
-  --sidebar-foreground: oklch(0.85 0.01 262);
-  --sidebar-primary: oklch(0.64 0.15 262);
-  --sidebar-primary-foreground: oklch(0.16 0.012 262);
-  --sidebar-accent: oklch(0.3 0.018 262);
-  --sidebar-accent-foreground: oklch(0.92 0.01 262);
-  --sidebar-border: oklch(0.29 0.014 262);
-  --sidebar-ring: oklch(0.64 0.15 262);
+  --success: oklch(0.7 0.12 155);
+  --success-foreground: oklch(0.175 0.004 70);
+  --warning: oklch(0.78 0.12 75);
+  --warning-foreground: oklch(0.22 0.03 75);
+  --info: oklch(0.7 0.11 250);
+  --info-foreground: oklch(0.175 0.004 70);
+
+  --sidebar: oklch(0.16 0.004 70);
+  --sidebar-foreground: oklch(0.78 0.005 85);
+  --sidebar-primary: oklch(0.93 0.004 85);
+  --sidebar-primary-foreground: oklch(0.175 0.004 70);
+  --sidebar-accent: oklch(0.93 0.004 85 / 0.07);
+  --sidebar-accent-foreground: oklch(0.93 0.004 85);
+  --sidebar-border: oklch(0.93 0.004 85 / 0.07);
+  --sidebar-ring: oklch(0.72 0.12 275 / 0.55);
 }
 
 @theme inline {
@@ -135,6 +140,9 @@
   --color-warning-foreground: var(--warning-foreground);
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
+
+  --color-selected: var(--selected);
+  --color-faint: var(--faint);
 
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
@@ -174,6 +182,8 @@
     font-family: var(--font-sans);
     font-variant-numeric: tabular-nums;
     line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
   body:has(> [data-code-editor][data-fullscreen='true']) [data-slot='dialog-overlay'],
@@ -238,4 +248,24 @@
   ::selection {
     background: color-mix(in oklch, var(--primary) 28%, transparent);
   }
+}
+
+/*
+ * 旧页面的表格统一到新风格：表头细字、无底色，行距收紧。
+ * 不放进 @layer，才能压过页面里零散的 p-3 / bg-muted 工具类；新组件用 data-table="dense" 自行排版。
+ */
+[data-scroll-root] table:not([data-table='dense']) > thead {
+  background: var(--background);
+  backdrop-filter: none;
+}
+[data-scroll-root] table:not([data-table='dense']) th {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--faint);
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+[data-scroll-root] table:not([data-table='dense']) td {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
 }

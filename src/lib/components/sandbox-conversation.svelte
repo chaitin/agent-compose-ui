@@ -3,6 +3,7 @@
   import { Button } from '$lib/components/ui/button';
   import ConversationSearch from '$lib/components/conversation-search.svelte';
   import SearchableText from '$lib/components/searchable-text.svelte';
+  import ConversationText from '$lib/components/conversation-text.svelte';
   import CopyableText from '$lib/components/copyable-text.svelte';
   import StatusBadge from '$lib/components/status-badge.svelte';
   import Timestamp from '$lib/components/timestamp.svelte';
@@ -94,7 +95,7 @@
 </script>
 
 <div
-  class="relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[#293244] bg-[#111722] text-[#d8dee9]"
+  class="relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card text-foreground"
 >
   <ConversationSearch
     query={searchQuery}
@@ -120,7 +121,7 @@
     {#each chronologicalRuns as run (run.runId)}
       {@const runTurn = turn(run.runId)}
       <article data-conversation-run data-status={runStatusName(run.status)} class="min-w-0">
-        <div class="mb-3 flex flex-wrap items-center gap-2 border-b border-white/10 pb-2 text-[11px] text-white/45">
+        <div class="mb-3 flex flex-wrap items-center gap-2 border-b border-border pb-2 text-[11px] text-faint">
           <StatusBadge status={runStatusName(run.status)} /><CopyableText
             value={run.runId}
             display={run.runShortId || compactIdentifier(run.runId)}
@@ -132,7 +133,7 @@
         {#if runTurn?.prompt}<div
             data-message-role="user"
             data-message-content
-            class="ml-auto w-fit max-w-[88%] rounded-lg bg-blue-500/20 px-4 py-3 font-mono text-sm text-blue-50"
+            class="ml-auto w-fit max-w-[88%] rounded-lg bg-muted px-4 py-3 font-mono text-sm text-foreground"
           >
             <pre class="whitespace-pre-wrap break-words">› <SearchableText
                 text={runTurn.prompt}
@@ -143,7 +144,7 @@
           </div>{:else}{#each prompts(run.runId) as event (event.id)}<div
               data-message-role="user"
               data-message-content
-              class="ml-auto w-fit max-w-[88%] rounded-lg bg-blue-500/20 px-4 py-3 font-mono text-sm text-blue-50"
+              class="ml-auto w-fit max-w-[88%] rounded-lg bg-muted px-4 py-3 font-mono text-sm text-foreground"
             >
               <pre class="whitespace-pre-wrap break-words">› <SearchableText
                   text={event.text}
@@ -156,10 +157,10 @@
         {#if runTurn?.output}<div
             data-message-role="assistant"
             data-message-content
-            class="mr-auto mt-3 max-w-full border-l-2 border-emerald-300/50 pl-4"
+            class="mr-auto mt-3 max-w-full border-l-2 border-success/50 pl-4"
           >
-            <div class="mb-1 text-[11px] text-emerald-200/70">{t('智能体输出')}</div>
-            <pre class="whitespace-pre-wrap break-words text-sm leading-6 text-white"><SearchableText
+            <div class="mb-1 text-[11px] text-success">{t('智能体输出')}</div>
+            <pre class="whitespace-pre-wrap break-words text-sm leading-6 text-foreground"><ConversationText
                 text={runTurn.output}
                 query={searchQuery}
                 matchOffset={matchOffsets.offsets.get(`${run.runId}:output`) ?? 0}
@@ -169,10 +170,10 @@
             <div
               data-message-role="assistant"
               data-message-content
-              class="mr-auto mt-3 max-w-full border-l-2 border-emerald-300/50 pl-4"
+              class="mr-auto mt-3 max-w-full border-l-2 border-success/50 pl-4"
             >
-              <div class="mb-1 text-[11px] text-emerald-200/70">{t('智能体输出')}</div>
-              <pre class="whitespace-pre-wrap break-words text-sm leading-6 text-white"><SearchableText
+              <div class="mb-1 text-[11px] text-success">{t('智能体输出')}</div>
+              <pre class="whitespace-pre-wrap break-words text-sm leading-6 text-foreground"><ConversationText
                   text={event.text}
                   query={searchQuery}
                   matchOffset={matchOffsets.offsets.get(event.id) ?? 0}
@@ -183,20 +184,21 @@
         {#if activeStream?.runId === run.runId && activeStream.running && activeStream.output}<div
             data-message-role="assistant"
             data-message-content
-            class="mr-auto mt-3 max-w-full border-l-2 border-emerald-300/50 pl-4"
+            class="mr-auto mt-3 max-w-full border-l-2 border-success/50 pl-4"
           >
-            <div class="mb-1 text-[11px] text-emerald-200/70">{t('智能体输出')}</div>
-            <pre class="whitespace-pre-wrap break-words text-sm leading-6 text-white"><SearchableText
+            <div class="mb-1 text-[11px] text-success">{t('智能体输出')}</div>
+            <pre class="whitespace-pre-wrap break-words text-sm leading-6 text-foreground"><ConversationText
                 text={activeStream.output}
                 query={searchQuery}
                 matchOffset={matchOffsets.offsets.get(`${run.runId}:active`) ?? 0}
                 {activeMatch}
+                live
               /></pre>
           </div>{/if}
 
         {#if run.error}<div
             role="alert"
-            class="mt-3 whitespace-pre-wrap rounded-md border border-red-300/20 bg-red-500/10 px-3 py-2 text-sm text-red-100"
+            class="mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 font-mono text-xs text-destructive"
           >
             <SearchableText
               text={run.error}
@@ -207,19 +209,19 @@
           </div>{/if}
         {#if activeStream?.runId === run.runId && activeStream.phase === 'failed' && activeStream.error !== run.error}<div
             role="alert"
-            class="mt-3 whitespace-pre-wrap rounded-md border border-red-300/20 bg-red-500/10 px-3 py-2 text-sm text-red-100"
+            class="mt-3 whitespace-pre-wrap rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
           >
             {activeStream.error || t('回复失败')}
           </div>{/if}
       </article>
-    {:else}<p class="py-10 text-center text-sm text-white/45">{t('暂无对话输出')}</p>{/each}
+    {:else}<p class="py-10 text-center text-sm text-faint">{t('暂无对话输出')}</p>{/each}
 
     {#if activeStream && !runs.some((run) => run.runId === activeStream.runId)}
       <article data-conversation-run data-status={activeStream.phase} aria-live="polite" class="space-y-3">
         <div
           data-message-role="user"
           data-message-content
-          class="ml-auto w-fit max-w-[88%] rounded-lg bg-blue-500/20 px-4 py-3 font-mono text-sm text-blue-50"
+          class="ml-auto w-fit max-w-[88%] rounded-lg bg-muted px-4 py-3 font-mono text-sm text-foreground"
         >
           › <SearchableText
             text={activeStream.prompt}
@@ -230,23 +232,24 @@
         </div>
         <div
           class:border-red-300={activeStream.phase === 'failed'}
-          class:text-red-100={activeStream.phase === 'failed'}
+          class:text-destructive={activeStream.phase === 'failed'}
           role={activeStream.phase === 'failed' ? 'alert' : undefined}
-          class="border-l border-cyan-300/30 pl-3 font-mono text-xs text-white/65"
+          class="border-l border-info/40 pl-3 font-mono text-xs text-muted-foreground"
         >
           {activeStream.statusText}
         </div>
         {#if activeStream.output}<div
             data-message-role="assistant"
             data-message-content
-            class="border-l-2 border-emerald-300/50 pl-4"
+            class="border-l-2 border-success/50 pl-4"
           >
-            <div class="mb-1 text-[11px] text-emerald-200/70">{t('智能体输出')}</div>
-            <pre class="whitespace-pre-wrap break-words text-sm leading-6 text-white"><SearchableText
+            <div class="mb-1 text-[11px] text-success">{t('智能体输出')}</div>
+            <pre class="whitespace-pre-wrap break-words text-sm leading-6 text-foreground"><ConversationText
                 text={activeStream.output}
                 query={searchQuery}
                 matchOffset={matchOffsets.offsets.get(`${activeStream.operationId}:output`) ?? 0}
                 {activeMatch}
+                live={activeStream.running}
               /></pre>
           </div>{/if}
       </article>
