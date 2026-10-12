@@ -27,6 +27,8 @@ const (
 	maxRequestBytes       = 1 << 20
 	maxResponseBytes      = 32 << 20
 	maxLookupItems        = 500
+	// Past this many remembered events the cache starts over.
+	maxCachedEventTasks = 20000
 )
 
 type Handler struct {
@@ -36,6 +38,7 @@ type Handler struct {
 	mux     *http.ServeMux
 	now     func() time.Time
 	list    listCache
+	events  eventTaskCache
 }
 
 func New(backend *url.URL, fields []config.SandboxTaskField) *Handler {

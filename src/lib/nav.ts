@@ -1,7 +1,7 @@
 // 侧栏导航：六个一级入口。「任务」讲发生了什么：一个任务是一组自动化执行。
 // 「Webhook 事件」是收到的事件流水，用来排查事件有没有进来、投出去没有；它是日志，不和配置页并成页签。
-// Sandbox 是执行占用的环境，和镜像、缓存一起放在「资源」里。直接调用智能体的运行（/agent-runs）
-// 不占页签，从 Sandbox 里进入。
+// Sandbox 是执行占用的环境，和镜像、缓存一起放在「资源」里。直接调用智能体的运行列表（/agent-runs）
+// 只保留路由，界面上没有入口：自动化触发的工作不产生这类记录，日常用不到它。
 import type { Component } from 'svelte';
 import Activity from '@lucide/svelte/icons/activity';
 import FolderKanban from '@lucide/svelte/icons/folder-kanban';

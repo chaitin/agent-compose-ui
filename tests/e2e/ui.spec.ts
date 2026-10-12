@@ -534,7 +534,7 @@ test('switches between Chinese and English and persists the locale', async ({ pa
   await login(page);
   await page.getByRole('button', { name: '切换语言' }).click();
   await expect(page.getByRole('button', { name: 'Change language' })).toBeVisible();
-  await expect(page.getByText('Runs', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Tasks', { exact: true }).first()).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('en-US');
 
   await page.reload();
@@ -1231,7 +1231,7 @@ test('opens the live webhook event from the authenticated event center', async (
 
   await navigateInApp(page, '/events?topic=webhook.ui-regression.acceptance');
   await expect(page.getByRole('combobox', { name: '事件主题' })).toHaveValue('webhook.ui-regression.acceptance');
-  const acceptedEvent = page.getByRole('table').getByTitle(retainedLiveWebhookEventId);
+  const acceptedEvent = page.locator(`tr[data-event-id="${retainedLiveWebhookEventId}"]`);
   await expect(acceptedEvent).toBeVisible();
   await acceptedEvent.click();
   await expect(page.getByRole('heading', { name: 'webhook.ui-regression.acceptance' })).toBeVisible();
@@ -3117,7 +3117,7 @@ test('persists system, OctoBus, MCP, Skill, and editor configuration', async ({ 
   const acceptedWebhook = (await webhookResponse.json()) as { event_id: string };
   expect(acceptedWebhook.event_id).toBeTruthy();
   await navigateInApp(page, '/events?topic=webhook.ui-regression.acceptance');
-  const acceptedEvent = page.getByRole('table').getByTitle(acceptedWebhook.event_id);
+  const acceptedEvent = page.locator(`tr[data-event-id="${acceptedWebhook.event_id}"]`);
   await expect(acceptedEvent).toBeVisible();
   await acceptedEvent.click();
   await expect(page.getByRole('heading', { name: 'webhook.ui-regression.acceptance' })).toBeVisible();

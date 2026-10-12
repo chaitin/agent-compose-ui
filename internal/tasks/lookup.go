@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 )
 
 // Task is the part of a trigger payload the browser may see.
@@ -94,6 +95,30 @@ func (h *Handler) projectSandboxTasks(ctx context.Context, projectID string, san
 	return tasks, nil
 }
 
+// eventTaskCache remembers the task of events that were read. An event's
+// payload never changes, so entries do not expire; a nil task records an
+// event without one.
+type eventTaskCache struct {
+	mu    sync.Mutex
+	tasks map[string]*Task
+}
+
+func (c *eventTaskCache) get(eventID string) (*Task, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	task, known := c.tasks[eventID]
+	return task, known
+}
+
+func (c *eventTaskCache) put(eventID string, task *Task) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.tasks == nil || len(c.tasks) >= maxCachedEventTasks {
+		c.tasks = map[string]*Task{}
+	}
+	c.tasks[eventID] = task
+}
+
 // eventTasks resolves the task carried by each event. Events that cannot be
 // read or carry no task are left out.
 func (h *Handler) eventTasks(w http.ResponseWriter, r *http.Request) {
@@ -118,6 +143,12 @@ func (h *Handler) eventTasks(w http.ResponseWriter, r *http.Request) {
 		if eventID == "" {
 			return nil
 		}
+		if task, known := h.events.get(eventID); known {
+			if task != nil {
+				resolved[index] = &eventTask{EventID: eventID, Task: *task}
+			}
+			return nil
+		}
 		var document struct {
 			Event struct {
 				Payload any `json:"payload"`
@@ -129,9 +160,12 @@ func (h *Handler) eventTasks(w http.ResponseWriter, r *http.Request) {
 		// Scheduler runs see an event as {topic, createdAt, payload}; wrap the
 		// event the same way so one set of configured paths serves both.
 		envelope := map[string]any{"payload": document.Event.Payload}
+		var task *Task
 		if title, link, ok := taskFromPayload(envelope, h.fields); ok {
-			resolved[index] = &eventTask{EventID: eventID, Task: Task{Title: title, URL: link}}
+			task = &Task{Title: title, URL: link}
+			resolved[index] = &eventTask{EventID: eventID, Task: *task}
 		}
+		h.events.put(eventID, task)
 		return nil
 	})
 	found := []eventTask{}

@@ -20,10 +20,14 @@ const (
 	runsPerAgent = 50
 	// The assembled list is reused for this long.
 	listCacheTTL = 10 * time.Second
-	// An agent whose recent runs carried no task is not read again for this long.
+	// An agent whose recent runs carried no task is not read again until it
+	// runs again, or for this long at most.
 	tasklessAgentTTL = 10 * time.Minute
-	maxSchedulers    = 500
-	maxListedTasks   = 300
+	// A rebuild serves every waiting request, so it does not end with the
+	// request that happened to start it.
+	listRebuildTimeout = 60 * time.Second
+	maxSchedulers      = 500
+	maxListedTasks     = 300
 	// A failed run can carry a whole stack trace; a list row shows one line.
 	maxErrorRunes   = 300
 	statusRunning   = "running"
@@ -98,6 +102,15 @@ type agentRuns struct {
 	schedulerNames map[string]string
 	runs           []schedulerRun
 	total          int64
+	// runCount is the number of runs the agent's schedulers reported.
+	runCount int64
+}
+
+// tasklessAgent records when an agent's recent runs were found to carry no
+// task, and how many runs it had at the time.
+type tasklessAgent struct {
+	checkedAt time.Time
+	runCount  int64
 }
 
 // listCache holds the last assembled list and what was learned while
@@ -106,8 +119,7 @@ type listCache struct {
 	mu       sync.Mutex
 	response listResponse
 	builtAt  time.Time
-	// taskless maps an agent to when its recent runs were last found to carry no task.
-	taskless map[string]time.Time
+	taskless map[string]tasklessAgent
 }
 
 func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request) {
@@ -117,13 +129,16 @@ func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, h.list.response)
 		return
 	}
-	agents, err := h.recentRuns(r.Context())
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), listRebuildTimeout)
+	defer cancel()
+	agents, err := h.recentRuns(ctx)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	response := listResponse{TitlesEnabled: len(h.fields) > 0, Tasks: groupTasks(agents, h.fields)}
-	taskless := h.rememberTasklessAgents(agents)
+	tasks, carriesTask := groupTasks(agents, h.fields)
+	response := listResponse{TitlesEnabled: len(h.fields) > 0, Tasks: tasks}
+	taskless := h.rememberTasklessAgents(agents, carriesTask)
 	for _, agent := range agents {
 		// Older runs of an agent that carries no task would not be listed anyway.
 		if agent.total > int64(len(agent.runs)) && !taskless[agentKey(agent.projectID, agent.agentName)] {
@@ -143,27 +158,20 @@ func agentKey(projectID, agentName string) string { return projectID + "\x00" + 
 // rememberTasklessAgents notes the agents whose runs carried no task, so the
 // next reads can leave them out, and returns them. Without task fields every
 // run is listed and nothing is skipped.
-func (h *Handler) rememberTasklessAgents(agents []agentRuns) map[string]bool {
+func (h *Handler) rememberTasklessAgents(agents []agentRuns, carriesTask map[string]bool) map[string]bool {
 	found := map[string]bool{}
 	if len(h.fields) == 0 {
 		return found
 	}
 	if h.list.taskless == nil {
-		h.list.taskless = map[string]time.Time{}
+		h.list.taskless = map[string]tasklessAgent{}
 	}
 	for _, agent := range agents {
-		carriesTask := false
-		for _, run := range agent.runs {
-			if _, _, ok := taskFromPayload(parsePayload(run.PayloadJSON), h.fields); ok {
-				carriesTask = true
-				break
-			}
-		}
 		key := agentKey(agent.projectID, agent.agentName)
-		if carriesTask {
+		if carriesTask[key] {
 			delete(h.list.taskless, key)
 		} else {
-			h.list.taskless[key] = h.now()
+			h.list.taskless[key] = tasklessAgent{checkedAt: h.now(), runCount: agent.runCount}
 			found[key] = true
 		}
 	}
@@ -180,20 +188,32 @@ func (h *Handler) recentRuns(ctx context.Context) ([]agentRuns, error) {
 	}
 	// Runs are listed per project and agent, so several schedulers of one
 	// agent share a listing.
-	var agents []agentRuns
-	seen := map[string]bool{}
+	var candidates []agentRuns
+	position := map[string]int{}
 	names := map[string]string{}
 	for _, scheduler := range schedulers.Schedulers {
 		names[scheduler.SchedulerID] = scheduler.DisplayName
+		if scheduler.RunCount == 0 || scheduler.ProjectID == "" {
+			continue
+		}
 		key := agentKey(scheduler.ProjectID, scheduler.AgentName)
-		if scheduler.RunCount == 0 || scheduler.ProjectID == "" || seen[key] {
+		index, known := position[key]
+		if !known {
+			index = len(candidates)
+			position[key] = index
+			candidates = append(candidates, agentRuns{projectID: scheduler.ProjectID, agentName: scheduler.AgentName, schedulerNames: names})
+		}
+		candidates[index].runCount += scheduler.RunCount
+	}
+	var agents []agentRuns
+	for _, agent := range candidates {
+		// A taskless agent that has run since it was checked may have picked
+		// up a task, so it is read again.
+		known, taskless := h.list.taskless[agentKey(agent.projectID, agent.agentName)]
+		if taskless && known.runCount == agent.runCount && h.now().Sub(known.checkedAt) < tasklessAgentTTL {
 			continue
 		}
-		if checkedAt, taskless := h.list.taskless[key]; taskless && h.now().Sub(checkedAt) < tasklessAgentTTL {
-			continue
-		}
-		seen[key] = true
-		agents = append(agents, agentRuns{projectID: scheduler.ProjectID, agentName: scheduler.AgentName, schedulerNames: names})
+		agents = append(agents, agent)
 	}
 	err := forEach(len(agents), func(index int) error {
 		var page struct {
@@ -213,15 +233,20 @@ func (h *Handler) recentRuns(ctx context.Context) ([]agentRuns, error) {
 	return agents, err
 }
 
-// groupTasks turns runs into tasks, newest activity first. With task fields
-// configured, only runs whose payload carries a task are kept.
-func groupTasks(agents []agentRuns, fields []config.SandboxTaskField) []ListedTask {
+// groupTasks turns runs into tasks, newest activity first, and reports which
+// agents had a run carrying a task. With task fields configured, only runs
+// whose payload carries a task are kept.
+func groupTasks(agents []agentRuns, fields []config.SandboxTaskField) ([]ListedTask, map[string]bool) {
 	index := map[string]int{}
 	tasks := []ListedTask{}
+	carriesTask := map[string]bool{}
 	for _, agent := range agents {
 		for _, run := range agent.runs {
 			payload := parsePayload(run.PayloadJSON)
 			title, link, hasTask := taskFromPayload(payload, fields)
+			if hasTask {
+				carriesTask[agentKey(agent.projectID, agent.agentName)] = true
+			}
 			if len(fields) > 0 && !hasTask {
 				continue
 			}
@@ -270,7 +295,7 @@ func groupTasks(agents []agentRuns, fields []config.SandboxTaskField) []ListedTa
 		task.Status = taskStatus(task.Executions)
 	}
 	sort.SliceStable(tasks, func(i, j int) bool { return tasks[i].LatestAt > tasks[j].LatestAt })
-	return tasks
+	return tasks, carriesTask
 }
 
 // taskStatus judges a task by the latest execution of each scheduler, so an

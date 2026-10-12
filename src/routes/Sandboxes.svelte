@@ -349,7 +349,7 @@
           <tr class="h-8 text-left text-[11px] text-faint [&>th]:border-b [&>th]:border-border [&>th]:font-normal">
             <th class="pr-3 pl-4 sm:pl-5 xl:pl-6">Sandbox ID</th>
             <th>{t('智能体 · 项目')}</th>
-            {#if tasksEnabled}<th>{t('任务')}</th>{/if}
+            {#if tasksEnabled}<th>{t('所属任务')}</th>{/if}
             <th>{t('运行')}</th>
             <th class="pr-3">{t('最近活动')}</th>
             <th class="pr-4 sm:pr-5 xl:pr-6">{t('状态')}</th>

@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -259,6 +261,8 @@ func TestListTasksCachesAndSkipsTasklessAgents(t *testing.T) {
 		defer mu.Unlock()
 		return counts[agent]
 	}
+	// Set once the taskless cleaner reports another run.
+	var cleanerRanAgain atomic.Bool
 	inner := listBackend(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/ListSchedulerRuns") {
@@ -271,6 +275,14 @@ func TestListTasksCachesAndSkipsTasklessAgents(t *testing.T) {
 			counts[input.AgentName]++
 			mu.Unlock()
 			r.Body = io.NopCloser(strings.NewReader(string(body)))
+		}
+		if strings.HasSuffix(r.URL.Path, "/ListSchedulers") && cleanerRanAgain.Load() {
+			_, _ = w.Write([]byte(`{"schedulers":[
+				{"schedulerId":"s-router","projectId":"p-1","agentName":"router","displayName":"Ingress","runCount":2},
+				{"schedulerId":"s-worker","projectId":"p-1","agentName":"worker","displayName":"Worker","runCount":3},
+				{"schedulerId":"s-cleaner","projectId":"p-1","agentName":"cleaner","displayName":"Cleaner","runCount":901}
+			]}`))
+			return
 		}
 		inner(w, r)
 	}))
@@ -299,9 +311,63 @@ func TestListTasksCachesAndSkipsTasklessAgents(t *testing.T) {
 	if queried("worker") != 2 || queried("cleaner") != 1 {
 		t.Fatalf("after the cache expired: worker read %d times, cleaner %d; want 2 and 1", queried("worker"), queried("cleaner"))
 	}
-	clock = clock.Add(tasklessAgentTTL)
+	cleanerRanAgain.Store(true)
+	clock = clock.Add(listCacheTTL)
 	list()
 	if queried("cleaner") != 2 {
-		t.Fatalf("taskless agent was not rechecked: cleaner read %d times", queried("cleaner"))
+		t.Fatalf("taskless agent that ran again was not reread: cleaner read %d times", queried("cleaner"))
+	}
+	clock = clock.Add(tasklessAgentTTL)
+	list()
+	if queried("cleaner") != 3 {
+		t.Fatalf("taskless agent was not rechecked after the TTL: cleaner read %d times", queried("cleaner"))
+	}
+}
+
+func TestListTasksSurvivesTheRequestThatStartedIt(t *testing.T) {
+	server := httptest.NewServer(listBackend(t))
+	defer server.Close()
+	backendURL, _ := url.Parse(server.URL)
+	handler := New(backendURL, testFields)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/ui/v1/tasks", nil).WithContext(ctx))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("a rebuild started by a disconnected client returned %d: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestEventTasksReadEachEventOnce(t *testing.T) {
+	var reads atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reads.Add(1)
+		switch r.URL.Path {
+		case "/api/events/evt-1":
+			_, _ = w.Write([]byte(`{"event":{"payload":{"body":{"title":"Fix login"}}}}`))
+		case "/api/events/evt-2":
+			_, _ = w.Write([]byte(`{"event":{"payload":{"body":{"kind":"stop"}}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	backendURL, _ := url.Parse(server.URL)
+	handler := New(backendURL, testFields)
+	lookup := func() string {
+		recorder := httptest.NewRecorder()
+		body := strings.NewReader(`{"event_ids":["evt-1","evt-2","evt-missing"]}`)
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/ui/v1/event-tasks", body))
+		return recorder.Body.String()
+	}
+
+	first := lookup()
+	if again := lookup(); again != first || !strings.Contains(first, "Fix login") {
+		t.Fatalf("lookups differ:\n%s\n%s", first, again)
+	}
+	// The event with a task and the one without are remembered; the one that
+	// could not be read is asked for again.
+	if got := reads.Load(); got != 4 {
+		t.Fatalf("backend was read %d times, want 4", got)
 	}
 }

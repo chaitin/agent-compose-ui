@@ -90,7 +90,7 @@ const english: Record<string, string> = {
   昨天: 'Yesterday',
   '显示 {shown} / {total}': 'Showing {shown} of {total}',
   '智能体 · 项目': 'Agent · Project',
-  任务: 'Task',
+  任务: 'Tasks',
   最后的活动: 'Latest activity',
   没有符合条件的运行: 'No runs match these filters',
   没有记录到活动: 'No activity recorded',

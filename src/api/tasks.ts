@@ -36,30 +36,46 @@ type TaskListResponse = {
   }>;
 };
 
+/** UI server 一次最多接受这么多个查询项，超过的分批发。 */
+const LOOKUP_BATCH = 500;
+
+function batches<Item>(items: Item[]): Item[][] {
+  const result: Item[][] = [];
+  for (let start = 0; start < items.length; start += LOOKUP_BATCH)
+    result.push(items.slice(start, start + LOOKUP_BATCH));
+  return result;
+}
+
 /** enabled 为 false 表示这套部署没有配置任务字段。 */
 export async function listSandboxTasks(
   items: Array<{ sandboxId: string; projectId: string }>,
 ): Promise<{ enabled: boolean; tasks: Map<string, TaskLink> }> {
-  const response = await apiFetchJson<TaskLookupResponse<'sandbox_id'>>('/api/ui/v1/sandbox-tasks', {
-    method: 'POST',
-    body: JSON.stringify({
-      sandboxes: items.map((item) => ({ sandbox_id: item.sandboxId, project_id: item.projectId })),
-    }),
-  });
-  return {
-    enabled: response.enabled ?? false,
-    tasks: new Map((response.tasks ?? []).map((item) => [item.sandbox_id, { title: item.title, url: item.url }])),
-  };
+  const tasks = new Map<string, TaskLink>();
+  let enabled = false;
+  for (const batch of batches(items)) {
+    const response = await apiFetchJson<TaskLookupResponse<'sandbox_id'>>('/api/ui/v1/sandbox-tasks', {
+      method: 'POST',
+      body: JSON.stringify({
+        sandboxes: batch.map((item) => ({ sandbox_id: item.sandboxId, project_id: item.projectId })),
+      }),
+    });
+    enabled = response.enabled ?? false;
+    for (const item of response.tasks ?? []) tasks.set(item.sandbox_id, { title: item.title, url: item.url });
+  }
+  return { enabled, tasks };
 }
 
 /** 只返回带任务的事件；没有任务或读不到的事件不在结果里。 */
 export async function listEventTasks(eventIds: string[]): Promise<Map<string, TaskLink>> {
-  if (eventIds.length === 0) return new Map();
-  const response = await apiFetchJson<TaskLookupResponse<'event_id'>>('/api/ui/v1/event-tasks', {
-    method: 'POST',
-    body: JSON.stringify({ event_ids: eventIds }),
-  });
-  return new Map((response.tasks ?? []).map((item) => [item.event_id, { title: item.title, url: item.url }]));
+  const tasks = new Map<string, TaskLink>();
+  for (const batch of batches(eventIds)) {
+    const response = await apiFetchJson<TaskLookupResponse<'event_id'>>('/api/ui/v1/event-tasks', {
+      method: 'POST',
+      body: JSON.stringify({ event_ids: batch }),
+    });
+    for (const item of response.tasks ?? []) tasks.set(item.event_id, { title: item.title, url: item.url });
+  }
+  return tasks;
 }
 
 /**
