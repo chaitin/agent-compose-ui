@@ -8,7 +8,11 @@
   import { Button } from '$lib/components/ui/button';
   import { navigate, router } from '$lib/router.svelte';
   import { t } from '$lib/i18n.svelte';
+  import ExternalLink from '@lucide/svelte/icons/external-link';
+  import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
   import { getTopicEventTrace, listTopicEvents, type TopicEvent } from '../api/loaders';
+  import { listEventTasks } from '../api/tasks';
+  import type { TaskLink } from '../model/task-list';
   import { dispatchStatus, eventSourceLabel } from '../model/event-status';
   import {
     buildTraceTree,
@@ -27,6 +31,16 @@
   let traceTruncated = $state(false);
   let selectedId = $state('');
   let folded = $state(true);
+  /** 左侧事件栏收起后，右侧的日志占满宽度。 */
+  let traceCollapsed = $state(false);
+  // 左栏宽度占整行的百分比，拖动分隔线调整，记在浏览器里。
+  const TRACE_WIDTH_KEY = 'agent-compose:event-trace-width';
+  const TRACE_WIDTH_DEFAULT = 42;
+  const TRACE_WIDTH_MIN = 20;
+  const TRACE_WIDTH_MAX = 70;
+  let traceWidth = $state(clampTraceWidth(Number(localStorage.getItem(TRACE_WIDTH_KEY)) || TRACE_WIDTH_DEFAULT));
+  let resizing = $state(false);
+  let layout = $state<HTMLElement | null>(null);
   let error = $state('');
   let loading = $state(true);
   let loadedEventId = '';
@@ -57,6 +71,8 @@
   const outcomeLabel = $derived(outcome === 'failed' ? '有执行失败' : (eventStatus?.label ?? ''));
   const summary = $derived(traceSummary(nodes));
   let correlationEvents = $state(0);
+  /** 这串事件所属的任务；这套部署没配置任务字段、或事件不带任务时为 null。 */
+  let task = $state<TaskLink | null>(null);
 
   $effect(() => {
     const target = eventId;
@@ -77,6 +93,8 @@
       folded = nodes.some((node) => node.status !== 'success');
       correlationEvents = 0;
       taskEvents = [];
+      task = null;
+      void loadTask(trace.event.eventId, [trace.event.eventId]);
       // 同一个关联 ID 下的事件（重试的任务会有很多），1 个请求取回，用来画出每次事件扇出了哪些执行。
       if (trace.event.correlationId)
         void listTopicEvents({ correlationId: trace.event.correlationId, limit: 100 })
@@ -84,6 +102,12 @@
             if (event?.eventId !== trace.event.eventId) return;
             correlationEvents = page.total;
             taskEvents = page.items;
+            // 打开的可能是控制类事件，本身不带任务；任务在这串事件里最早的那几个上。
+            const earliest = [...page.items].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+            void loadTask(
+              trace.event.eventId,
+              earliest.slice(0, 3).map((item) => item.eventId),
+            );
           })
           .catch(() => (correlationEvents = 0));
       if (!findTraceNode(nodes, selectedId)) selectedId = defaultSelection(nodes);
@@ -92,6 +116,44 @@
     } finally {
       loading = false;
     }
+  }
+
+  async function loadTask(forEventId: string, candidates: string[]): Promise<void> {
+    if (task) return;
+    try {
+      const found = await listEventTasks(candidates);
+      if (event?.eventId !== forEventId || task) return;
+      task = candidates.map((id) => found.get(id)).find((item) => item !== undefined) ?? null;
+    } catch {
+      // 任务标题只是辅助信息，取不到时标题退回事件主题。
+    }
+  }
+
+  function clampTraceWidth(value: number): number {
+    return Math.min(TRACE_WIDTH_MAX, Math.max(TRACE_WIDTH_MIN, Math.round(value * 10) / 10));
+  }
+
+  function setTraceWidth(value: number): void {
+    traceWidth = clampTraceWidth(value);
+    localStorage.setItem(TRACE_WIDTH_KEY, String(traceWidth));
+  }
+
+  function startResize(event: PointerEvent): void {
+    event.preventDefault();
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    resizing = true;
+  }
+
+  function resize(event: PointerEvent): void {
+    if (!resizing || !layout) return;
+    const bounds = layout.getBoundingClientRect();
+    setTraceWidth(((event.clientX - bounds.left) / bounds.width) * 100);
+  }
+
+  function resizeWithKeyboard(event: KeyboardEvent): void {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    setTraceWidth(traceWidth + (event.key === 'ArrowLeft' ? -2 : 2));
   }
 
   function select(node: TraceNode): void {
@@ -110,10 +172,23 @@
       <div class="min-w-0">
         <h1 class="flex min-w-0 items-center gap-2 text-base font-semibold tracking-tight">
           {#if eventStatus}<StatusBadge status={outcome} label={outcomeLabel} dotOnly />{/if}
-          <span class="truncate font-mono text-[15px] font-medium">{event?.topic || t('Webhook 事件详情')}</span>
+          {#if task}
+            <span class="truncate">{task.title}</span>
+            {#if task.url}<a
+                href={task.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={t('打开任务页面')}
+                aria-label={t('打开任务页面')}
+                class="shrink-0 text-faint transition-colors hover:text-foreground"><ExternalLink class="size-4" /></a
+              >{/if}
+          {:else}
+            <span class="truncate font-mono text-[15px] font-medium">{event?.topic || t('Webhook 事件详情')}</span>
+          {/if}
         </h1>
         {#if event && eventStatus}
           <div class="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            {#if task}<span class="font-mono text-[11px]">{event.topic}</span>{/if}
             <span>{t(eventSourceLabel(event.source))}{event.provider ? ` · ${event.provider}` : ''}</span>
             <span>{t('收到于')} <Timestamp class="text-foreground/80" value={event.createdAt} mode="full" /></span>
             <span>{t(eventStatus.label)}</span>
@@ -155,8 +230,46 @@
   {#if loading && !event}
     <p class="p-6 text-sm text-muted-foreground">{t('正在加载事件详情…')}</p>
   {:else if event}
-    <div class="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-      <div class="flex min-h-0 flex-col border-border lg:border-r">
+    <div
+      bind:this={layout}
+      style="--trace-width: {traceWidth}%"
+      class="grid min-h-0 flex-1 {resizing ? 'cursor-col-resize select-none' : ''} {traceCollapsed
+        ? 'lg:grid-cols-[2.25rem_minmax(0,1fr)]'
+        : 'lg:grid-cols-[minmax(0,var(--trace-width))_minmax(0,1fr)]'}"
+    >
+      {#if traceCollapsed}
+        <div class="hidden border-r border-border pt-2.5 lg:flex lg:justify-center">
+          <button
+            type="button"
+            onclick={() => (traceCollapsed = false)}
+            title={t('展开事件列表')}
+            aria-label={t('展开事件列表')}
+            class="h-fit text-faint transition-colors hover:text-foreground"><PanelLeftOpen class="size-4" /></button
+          >
+        </div>
+      {/if}
+      <div class="relative min-h-0 flex-col border-border lg:border-r {traceCollapsed ? 'flex lg:hidden' : 'flex'}">
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+        <div
+          data-trace-resizer
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t('调整事件列表宽度')}
+          aria-valuemin={TRACE_WIDTH_MIN}
+          aria-valuemax={TRACE_WIDTH_MAX}
+          aria-valuenow={traceWidth}
+          tabindex="0"
+          title={t('拖动调整宽度，双击恢复默认')}
+          class="absolute inset-y-0 -right-1 z-20 hidden w-2 cursor-col-resize transition-colors outline-none hover:bg-ring/30 focus-visible:bg-ring/40 lg:block {resizing
+            ? 'bg-ring/40'
+            : ''}"
+          onpointerdown={startResize}
+          onpointermove={resize}
+          onpointerup={() => (resizing = false)}
+          onpointercancel={() => (resizing = false)}
+          ondblclick={() => setTraceWidth(TRACE_WIDTH_DEFAULT)}
+          onkeydown={resizeWithKeyboard}
+        ></div>
         <EventTraceTree
           {branches}
           {startAt}
@@ -165,6 +278,7 @@
           {folded}
           onSelect={select}
           onToggleFold={(value) => (folded = value)}
+          onCollapse={() => (traceCollapsed = true)}
         />
       </div>
       <div class="min-h-0 min-w-0 bg-card">

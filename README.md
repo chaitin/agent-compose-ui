@@ -40,6 +40,16 @@ Runtime variables:
   Claude JSONL records (default `/data/sandboxes`).
 - `AUDIT_RETENTION_DAYS`: audit retention in days (default `180`, range
   `1`–`3650`).
+- `SANDBOX_TASK_FIELDS`: where a trigger payload carries the task a Sandbox
+  works on. A JSON array of dot-separated paths into the payload, tried in
+  order, for example
+  `[{"title":"payload.body.title","url":"payload.body.metadata.url"}]`. When
+  set, the Tasks page lists only executions that carry a task and labels them
+  with its title, and the Sandboxes list, Webhook events list, and event
+  detail show the task linking to `url`. The UI server resolves these paths
+  itself and sends the browser only the title and link; the rest of the
+  payload stays redacted. Unset by default, in which case the Tasks page lists
+  every automation execution without a title.
 - `AGENT_COMPOSE_BASE`: frontend base path when hosted below `/`.
 
 When the UI server runs in a container, mount the daemon Sandbox directory at

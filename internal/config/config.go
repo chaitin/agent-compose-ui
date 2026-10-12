@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"strconv"
 	"strings"
@@ -18,6 +19,15 @@ type Config struct {
 	DatabasePath      string
 	SandboxRoot       string
 	AuditRetentionDay int
+	SandboxTaskFields []SandboxTaskField
+}
+
+// SandboxTaskField names where a trigger payload carries the task a sandbox
+// works on: dot-separated paths into the payload JSON for the task title and
+// its link.
+type SandboxTaskField struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
 }
 
 func LoadFromEnv() Config {
@@ -33,6 +43,7 @@ func LoadFromEnv() Config {
 			cfg.AuditRetentionDay = value
 		}
 	}
+	cfg.SandboxTaskFields = parseSandboxTaskFields(os.Getenv("SANDBOX_TASK_FIELDS"))
 	if backendURL := strings.TrimSpace(os.Getenv("AGENT_COMPOSE_URL")); backendURL != "" {
 		cfg.BackendURL = backendURL
 	}
@@ -47,4 +58,27 @@ func envOrDefault(name, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// parseSandboxTaskFields reads a JSON array such as
+// [{"title":"payload.body.title","url":"payload.body.metadata.url"}].
+// Entries without a title path are dropped; malformed input yields none.
+func parseSandboxTaskFields(raw string) []SandboxTaskField {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var parsed []SandboxTaskField
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return nil
+	}
+	var fields []SandboxTaskField
+	for _, field := range parsed {
+		field.Title = strings.TrimSpace(field.Title)
+		field.URL = strings.TrimSpace(field.URL)
+		if field.Title != "" {
+			fields = append(fields, field)
+		}
+	}
+	return fields
 }

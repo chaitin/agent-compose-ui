@@ -29,6 +29,7 @@
     type SandboxRunTarget,
   } from '../../api/sessions';
   import { listRuns } from '../../api/runs';
+  import { listProjectSummaries } from '../../api/projects';
   import {
     RunEventKind,
     SandboxWatchEventType,
@@ -58,6 +59,22 @@
 
   let sandbox = $state<SandboxContextDetail | null>(null);
   let runs = $state<RunSummary[]>([]);
+  /** 项目 ID → 项目名。自动化开的 sandbox 里没有智能体运行，项目名只能按 ID 查。 */
+  let projectNames = $state<Record<string, string>>({});
+  const projectName = $derived(runs[0]?.projectName || projectNames[sandbox?.projectId ?? ''] || '');
+  let projectNamesRequested = false;
+
+  $effect(() => {
+    if (!sandbox?.projectId || projectName || projectNamesRequested) return;
+    projectNamesRequested = true;
+    void listProjectSummaries()
+      .then((projects) => {
+        projectNames = Object.fromEntries(projects.map((project) => [project.projectId, project.name]));
+      })
+      .catch(() => {
+        // 项目名只是辅助信息，查不到时这一栏留空。
+      });
+  });
   let conversationRuns = $state<RunSummary[]>([]);
   let events = $state<RunEvent[]>([]);
   let historyEvents = $state<SandboxHistoryEvent[]>([]);
@@ -450,9 +467,9 @@
       <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
         <h2 class="truncate text-sm font-semibold">{sandbox.agentName || sandbox.title || t('Sandbox')}</h2>
         <StatusBadge status={sandbox.status} />
-        <span class="truncate text-xs text-muted-foreground"
-          >{runs[0]?.projectName || (sandbox.projectId ? compactIdentifier(sandbox.projectId) : t('未关联项目'))}</span
-        ><CopyableText
+        {#if projectName || !sandbox.projectId}<span class="truncate text-xs text-muted-foreground"
+            >{projectName || t('未关联项目')}</span
+          >{/if}<CopyableText
           value={sandbox.id}
           display={compactIdentifier(sandbox.id)}
           label="Sandbox ID"
@@ -539,6 +556,7 @@
             {runs}
             {events}
             {activeStream}
+            horizontalScroll={!embedded}
             legacyCells={historyCells.filter((cell) => !cell.runId && !cell.id.endsWith('-legacy-log'))}
             onError={(message) => (error = message)}
           />
@@ -546,6 +564,7 @@
             query={contextLogQuery}
             lines={fallbackLogLines}
             loadedLineCount={fallbackLogLines.length}
+            horizontalScroll={!embedded}
             onQuery={(value) => (contextLogQuery = value)}
             onDownload={downloadContextLog}
           />{/if}

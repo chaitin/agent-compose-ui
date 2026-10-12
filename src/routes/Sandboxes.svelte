@@ -12,9 +12,11 @@
   import { latestAutomationRunsForSandboxes, type AutomationRun } from '../api/loaders';
   import { listProjectSummaries } from '../api/projects';
   import { resolveResource } from '../api/resources';
+  import { listSandboxTasks } from '../api/tasks';
   import { ResourceKind, type RunSummary } from '../gen/agentcompose/v2/agentcompose_pb.js';
   import { compactIdentifier } from '../model/identifiers';
   import { RUN_STATE_LABEL, runStartedAt, runState } from '../model/run-list';
+  import type { TaskLink } from '../model/task-list';
   import { formatBeijingShort, formatBeijingTime } from '../time';
 
   const PAGE_SIZE = 50;
@@ -37,6 +39,10 @@
   let runStats = $state<Record<string, { total: number; latest: RunSummary | undefined }>>({});
   /** 每个 sandbox 最近一次自动化执行（自动化建的 sandbox 没有智能体运行，靠这个说明里面跑得怎么样）。 */
   let automationRuns = $state<Record<string, AutomationRun | null>>({});
+  /** 每个 sandbox 正在处理的任务，由 UI server 给出；这套部署没配置时不显示「任务」列。 */
+  let tasks = $state<Record<string, TaskLink | null>>({});
+  let tasksEnabled = $state(false);
+  const columnCount = $derived(tasksEnabled ? 6 : 5);
   /** 第一页且没有按状态筛选时，运行中的 sandbox 单独查出来放在最上面。 */
   let runningSandboxes = $state<SandboxContext[]>([]);
   const pinnedIds = $derived(new Set(runningSandboxes.map((item) => item.id)));
@@ -75,7 +81,9 @@
       if (background) {
         runStats = {};
         automationRuns = {};
+        tasks = {};
       }
+      void loadTasks([...running, ...response.sessions]);
       void loadStats([...running, ...response.sessions]);
     } catch (cause) {
       error = cause instanceof Error ? cause.message : t('请求失败');
@@ -101,6 +109,18 @@
       };
     }
     await loadRunStats(items.filter((item) => !automationRuns[item.id]));
+  }
+
+  async function loadTasks(items: SandboxContext[]): Promise<void> {
+    const unknown = items.filter((item) => !(item.id in tasks));
+    if (!unknown.length) return;
+    try {
+      const found = await listSandboxTasks(unknown.map((item) => ({ sandboxId: item.id, projectId: item.projectId })));
+      tasksEnabled = found.enabled;
+      tasks = { ...tasks, ...Object.fromEntries(unknown.map((item) => [item.id, found.tasks.get(item.id) ?? null])) };
+    } catch {
+      // 任务只是辅助信息：取不到时这一列留空，不影响列表本身。
+    }
   }
 
   async function loadRunStats(items: SandboxContext[]): Promise<void> {
@@ -193,11 +213,12 @@
   {@const stats = runStats[sandbox.id]}
   {@const latest = stats?.latest}
   {@const automation = automationRuns[sandbox.id]}
+  {@const task = tasks[sandbox.id]}
   <tr
     class="h-8 cursor-pointer border-b border-border transition-colors hover:bg-accent/60"
     onclick={() => navigate(`/sandboxes/${encodeURIComponent(sandbox.id)}`)}
   >
-    <td class="pl-4 sm:pl-5 xl:pl-6">
+    <td class="pr-3 pl-4 sm:pl-5 xl:pl-6">
       <CopyableText
         value={sandbox.id}
         display={compactIdentifier(sandbox.id)}
@@ -209,6 +230,17 @@
       <span class="font-medium">{sandbox.agentName || t('未命名智能体')}</span>
       <span class="text-muted-foreground"> · {projectName(sandbox.projectId)}</span>
     </td>
+    {#if tasksEnabled}
+      <td class="truncate pr-3" title={task?.title}>
+        {#if task?.url}<a
+            href={task.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-foreground/80 underline-offset-2 hover:text-foreground hover:underline"
+            onclick={(event) => event.stopPropagation()}>{task.title}</a
+          >{:else if task}<span class="text-foreground/80">{task.title}</span>{/if}
+      </td>
+    {/if}
     <td class="truncate pr-3 text-muted-foreground">
       {#if automation}
         <span class="text-foreground/80">{t('自动化')}</span>
@@ -225,7 +257,7 @@
         <StatusBadge status={runState(latest.status)} label={`最近${RUN_STATE_LABEL[runState(latest.status)]}`} />
       {/if}
     </td>
-    <td class="text-muted-foreground">
+    <td class="truncate pr-3 text-muted-foreground">
       {#if automation?.startedAt}<time
           datetime={automation.startedAt}
           title={`${t('最近一次自动化执行')} · ${formatBeijingTime(automation.startedAt)}`}
@@ -301,27 +333,32 @@
     {:else if !sandboxes.length}
       <EmptyState title={t('没有匹配的 Sandbox')} />
     {:else}
-      <table data-table="dense" class="w-full min-w-[52rem] table-fixed border-collapse text-[13px]">
+      <table
+        data-table="dense"
+        class="w-full table-fixed border-collapse text-[13px] {tasksEnabled ? 'min-w-[68rem]' : 'min-w-[52rem]'}"
+      >
         <colgroup>
-          <col class="w-52" />
+          <col class="w-44" />
           <col />
+          {#if tasksEnabled}<col class="w-[34%]" />{/if}
           <col class="w-56" />
-          <col class="w-28" />
-          <col class="w-48" />
+          <col class="w-32" />
+          <col class="w-40" />
         </colgroup>
         <thead class="sticky top-0 z-10 bg-background">
           <tr class="h-8 text-left text-[11px] text-faint [&>th]:border-b [&>th]:border-border [&>th]:font-normal">
-            <th class="pl-4 sm:pl-5 xl:pl-6">Sandbox ID</th>
+            <th class="pr-3 pl-4 sm:pl-5 xl:pl-6">Sandbox ID</th>
             <th>{t('智能体 · 项目')}</th>
+            {#if tasksEnabled}<th>{t('任务')}</th>{/if}
             <th>{t('运行')}</th>
-            <th>{t('最近活动')}</th>
+            <th class="pr-3">{t('最近活动')}</th>
             <th class="pr-4 sm:pr-5 xl:pr-6">{t('状态')}</th>
           </tr>
         </thead>
         {#if runningSandboxes.length}
           <tbody>
             <tr>
-              <td colspan="5" class="h-7 pb-1 pl-4 align-bottom text-[11px] text-faint sm:pl-5 xl:pl-6">
+              <td colspan={columnCount} class="pt-3 pb-1 pl-4 text-[11px] text-faint sm:pl-5 xl:pl-6">
                 {t('运行中')} · {runningSandboxes.length}
               </td>
             </tr>
@@ -331,7 +368,7 @@
         <tbody>
           {#if runningSandboxes.length && rest.length}
             <tr>
-              <td colspan="5" class="h-7 pb-1 pl-4 align-bottom text-[11px] text-faint sm:pl-5 xl:pl-6">
+              <td colspan={columnCount} class="pt-3 pb-1 pl-4 text-[11px] text-faint sm:pl-5 xl:pl-6">
                 {t('按最近活动')}
               </td>
             </tr>

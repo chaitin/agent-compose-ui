@@ -1,11 +1,14 @@
-// 侧栏导航：五个一级入口。「运行」是唯一原子，事件与 Sandbox 是它的透镜；
-// 资源、系统把原来的零散页面收进同一入口，用页签切换。
+// 侧栏导航：六个一级入口。「任务」讲发生了什么：一个任务是一组自动化执行。
+// 「Webhook 事件」是收到的事件流水，用来排查事件有没有进来、投出去没有；它是日志，不和配置页并成页签。
+// Sandbox 是执行占用的环境，和镜像、缓存一起放在「资源」里。直接调用智能体的运行（/agent-runs）
+// 不占页签，从 Sandbox 里进入。
 import type { Component } from 'svelte';
 import Activity from '@lucide/svelte/icons/activity';
 import FolderKanban from '@lucide/svelte/icons/folder-kanban';
 import CalendarClock from '@lucide/svelte/icons/calendar-clock';
 import Layers from '@lucide/svelte/icons/layers';
 import Settings from '@lucide/svelte/icons/settings';
+import Webhook from '@lucide/svelte/icons/webhook';
 import UserRound from '@lucide/svelte/icons/user-round';
 import { t } from '$lib/i18n.svelte';
 import { compactIdentifier } from '../model/identifiers';
@@ -33,16 +36,10 @@ const exactly = (target: string) => (path: string) => path === target;
 
 const navDefinitions: NavItem[] = [
   {
-    label: '运行',
+    label: '任务',
     href: '/',
     icon: Activity,
-    match: (path) =>
-      path === '/' || startsWith('/runs')(path) || startsWith('/sandboxes')(path) || startsWith('/events')(path),
-    tabs: [
-      { label: '运行', href: '/', match: exactly('/') },
-      { label: 'Webhook 事件', href: '/events', match: exactly('/events') },
-      { label: 'Sandboxes', href: '/sandboxes', match: exactly('/sandboxes') },
-    ],
+    match: (path) => path === '/' || startsWith('/tasks')(path),
   },
   {
     label: '项目',
@@ -57,12 +54,21 @@ const navDefinitions: NavItem[] = [
     match: (path) => startsWith('/automations')(path) || startsWith('/automation-runs')(path),
   },
   {
+    label: 'Webhook 事件',
+    href: '/events',
+    icon: Webhook,
+    match: startsWith('/events'),
+  },
+  {
     label: '资源',
-    href: '/images',
+    href: '/sandboxes',
     icon: Layers,
     match: (path) =>
-      ['/images', '/capabilities', '/mcp', '/skills', '/settings/caches'].some((prefix) => startsWith(prefix)(path)),
+      ['/sandboxes', '/agent-runs', '/runs', '/images', '/capabilities', '/mcp', '/skills', '/settings/caches'].some(
+        (prefix) => startsWith(prefix)(path),
+      ),
     tabs: [
+      { label: 'Sandboxes', href: '/sandboxes', match: startsWith('/sandboxes') },
       { label: '镜像', href: '/images', match: startsWith('/images') },
       { label: '能力集', href: '/capabilities', match: startsWith('/capabilities') },
       { label: 'MCP 服务', href: '/mcp', match: startsWith('/mcp') },
@@ -123,7 +129,9 @@ export function sectionTabs(path: string): NavTab[] {
 
 /** 面包屑：根据当前路径推导（区段 / 详情两层）。 */
 export function breadcrumbs(path: string): { label: string; href?: string }[] {
-  if (path === '/') return [{ label: t('运行') }];
+  if (path === '/') return [{ label: t('任务') }];
+  // 任务详情和事件详情是同一个页面，从哪边进来就归到哪边。
+  if (startsWith('/tasks')(path)) return [{ label: t('任务'), href: '/' }, { label: t('任务详情') }];
   if (startsWith('/automation-runs')(path)) {
     const runId = path.slice('/automation-runs'.length).split('/').filter(Boolean)[0];
     return [
@@ -141,15 +149,29 @@ export function breadcrumbs(path: string): { label: string; href?: string }[] {
     ];
   }
   const item = activeNavItem(path);
-  if (!item) return [{ label: t('运行'), href: '/' }];
+  if (!item) return [{ label: t('任务'), href: '/' }];
   // 取前缀最长的页签：/account/tokens 应该归到「API 令牌」而不是「登录信息」。
   const tab = item.tabs
     ?.filter((candidate) => candidate.href !== '/' && startsWith(candidate.href)(path))
     .sort((left, right) => right.href.length - left.href.length)[0];
   if (tab && path === tab.href) return [{ label: item.label }];
-  if (startsWith('/runs')(path)) return [{ label: item.label, href: '/' }, { label: t('运行详情') }];
-  if (startsWith('/events')(path)) return [{ label: item.label, href: '/' }, { label: t('事件详情') }];
-  if (startsWith('/sandboxes')(path)) return [{ label: item.label, href: '/' }, { label: t('Sandbox 详情') }];
+  if (path === '/agent-runs') return [{ label: item.label, href: item.href }, { label: t('智能体运行') }];
+  if (startsWith('/runs')(path))
+    return [
+      { label: item.label, href: item.href },
+      { label: t('智能体运行'), href: '/agent-runs' },
+      { label: t('运行详情') },
+    ];
+  if (startsWith('/events')(path))
+    return path === item.href
+      ? [{ label: item.label }]
+      : [{ label: item.label, href: item.href }, { label: t('事件详情') }];
+  if (startsWith('/sandboxes')(path))
+    return [
+      { label: item.label, href: item.href },
+      { label: 'Sandboxes', href: '/sandboxes' },
+      { label: t('Sandbox 详情') },
+    ];
   const base = tab ?? item;
   const crumbs: { label: string; href?: string }[] = [{ label: item.label, href: item.href }];
   if (tab) crumbs.push({ label: tab.label, href: tab.href });

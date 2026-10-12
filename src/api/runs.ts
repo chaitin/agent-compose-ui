@@ -197,7 +197,7 @@ export function runStatusName(status: RunStatus): 'running' | 'success' | 'faile
 
 export function sourceName(source: RunSource): string {
   return source === RunSource.MANUAL
-    ? t('手动')
+    ? t('直接调用')
     : source === RunSource.SCHEDULER
       ? t('自动化')
       : source === RunSource.API

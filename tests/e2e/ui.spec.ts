@@ -285,13 +285,13 @@ test('loads webhook events newest first with offset pagination', async ({ page }
 
   await navigateInApp(page, '/events?topic=webhook.pagination');
   // 事件按天分组，分组标题也是一行；只数带事件 ID 的数据行。
-  const rows = page.locator('tbody tr[title]');
+  const rows = page.locator('tbody tr[data-event-id]');
   await expect(rows).toHaveCount(2);
-  await expect(rows.nth(0)).toContainText('#3');
-  await expect(rows.nth(1)).toContainText('#2');
+  await expect(rows.nth(0)).toHaveAttribute('data-event-id', 'event-3');
+  await expect(rows.nth(1)).toHaveAttribute('data-event-id', 'event-2');
   await page.getByRole('button', { name: '加载更多' }).click();
   await expect(rows).toHaveCount(3);
-  await expect(rows.nth(2)).toContainText('#1');
+  await expect(rows.nth(2)).toHaveAttribute('data-event-id', 'event-1');
   expect(offsets).toEqual([0, 2]);
   expect(topicsRequested).toBe(true);
 });
@@ -631,8 +631,7 @@ test('keeps primary pages within phone and tablet viewports', async ({ page }) =
   await expect(navigationButton).toBeVisible();
   await navigationButton.click();
   await expect(page.getByRole('navigation').first()).toBeVisible();
-  await page.locator('aside').getByRole('button', { name: '运行', exact: true }).click();
-  await page.getByRole('button', { name: 'Webhook 事件', exact: true }).click();
+  await page.locator('aside').getByRole('button', { name: 'Webhook 事件', exact: true }).click();
   await expect(page).toHaveURL(/\/events(?:\?.*)?$/);
 
   for (const viewport of [
@@ -2866,7 +2865,7 @@ test('preserves a Cron timezone through an automation deployment', async ({ page
   expect(result.timezone).toBe('Asia/Shanghai');
 });
 
-test('bounds home run requests without loading project definitions', async ({ page }) => {
+test('bounds agent run list requests without loading project definitions', async ({ page }) => {
   const requests: Array<{ url: string; body?: { limit: number; status: RunStatus } }> = [];
   page.on('request', (request) => {
     if (!request.url().includes('/agentcompose.v2.')) return;
@@ -2880,8 +2879,9 @@ test('bounds home run requests without loading project definitions', async ({ pa
   });
 
   await login(page);
-  await expect(page.getByRole('heading', { name: '运行', exact: true })).toBeAttached();
-  // 首页：一页运行列表、每个状态页签一次只取总数的计数请求，以及检查器里该智能体的最近运行。
+  await navigateInApp(page, '/agent-runs');
+  await expect(page.getByRole('heading', { name: '智能体运行', exact: true })).toBeAttached();
+  // 智能体运行列表：一页运行列表、每个状态页签一次只取总数的计数请求，以及检查器里该智能体的最近运行。
   await expect
     .poll(() => requests.filter((item) => item.url.endsWith('.RunService/ListRuns')).length)
     .toBeGreaterThanOrEqual(6);

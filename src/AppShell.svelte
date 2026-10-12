@@ -10,6 +10,7 @@
   import { i18n, t } from '$lib/i18n.svelte';
 
   import Runs from './routes/Runs.svelte';
+  import Tasks from './routes/Tasks.svelte';
   import Projects from './routes/Projects.svelte';
   import Automations from './routes/Automations.svelte';
   import AutomationRuns from './routes/AutomationRuns.svelte';
@@ -195,6 +196,8 @@
         class="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]"
       >
         {#if p === '/'}
+          <Tasks />
+        {:else if p === '/agent-runs'}
           <Runs />
         {:else if p.startsWith('/projects') || p.startsWith('/agents')}
           <Projects />
@@ -204,7 +207,7 @@
           {#key p}<AutomationRuns />{/key}
         {:else if p.startsWith('/automations')}
           <Automations />
-        {:else if p.startsWith('/events/')}
+        {:else if p.startsWith('/events/') || p.startsWith('/tasks/')}
           <EventDetail />
         {:else if p.startsWith('/events')}
           <Events />
@@ -233,7 +236,7 @@
         {:else if p.startsWith('/skills')}
           <SpecResources kind="skills" />
         {:else}
-          <Runs />
+          <Tasks />
         {/if}
       </main>
     </div>
