@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -250,7 +251,14 @@ func TestSummarizeError(t *testing.T) {
 }
 
 func TestListTasksCachesAndSkipsTasklessAgents(t *testing.T) {
-	queried := map[string]int{}
+	// The handler reads agents concurrently, so the backend counts under a lock.
+	var mu sync.Mutex
+	counts := map[string]int{}
+	queried := func(agent string) int {
+		mu.Lock()
+		defer mu.Unlock()
+		return counts[agent]
+	}
 	inner := listBackend(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/ListSchedulerRuns") {
@@ -259,7 +267,9 @@ func TestListTasksCachesAndSkipsTasklessAgents(t *testing.T) {
 				AgentName string `json:"agentName"`
 			}
 			_ = json.Unmarshal(body, &input)
-			queried[input.AgentName]++
+			mu.Lock()
+			counts[input.AgentName]++
+			mu.Unlock()
 			r.Body = io.NopCloser(strings.NewReader(string(body)))
 		}
 		inner(w, r)
@@ -279,19 +289,19 @@ func TestListTasksCachesAndSkipsTasklessAgents(t *testing.T) {
 	}
 
 	first := list()
-	if again := list(); again != first || queried["worker"] != 1 {
-		t.Fatalf("second request within the cache window read the backend again: %v", queried)
+	if again := list(); again != first || queried("worker") != 1 {
+		t.Fatalf("second request within the cache window read the backend again: worker read %d times", queried("worker"))
 	}
 	clock = clock.Add(listCacheTTL)
 	if rebuilt := list(); rebuilt != first {
 		t.Fatalf("list changed after leaving out the taskless agent:\n%s\n%s", first, rebuilt)
 	}
-	if queried["worker"] != 2 || queried["cleaner"] != 1 {
-		t.Fatalf("after the cache expired: %v, want worker read twice and the taskless cleaner once", queried)
+	if queried("worker") != 2 || queried("cleaner") != 1 {
+		t.Fatalf("after the cache expired: worker read %d times, cleaner %d; want 2 and 1", queried("worker"), queried("cleaner"))
 	}
 	clock = clock.Add(tasklessAgentTTL)
 	list()
-	if queried["cleaner"] != 2 {
-		t.Fatalf("taskless agent was not rechecked: %v", queried)
+	if queried("cleaner") != 2 {
+		t.Fatalf("taskless agent was not rechecked: cleaner read %d times", queried("cleaner"))
 	}
 }
