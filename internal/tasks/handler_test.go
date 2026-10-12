@@ -77,7 +77,7 @@ func TestSandboxTasksReturnOnlyConfiguredFields(t *testing.T) {
 		body, _ := io.ReadAll(r.Body)
 		requests = append(requests, string(body))
 		_, _ = w.Write([]byte(`{"results":[
-			{"sandboxId":"sb-1","run":{"payloadJson":"{\"payload\":{\"body\":{\"title\":\"Fix login\",\"callback\":{\"url\":\"https://tracker.example/cb?sig=secret\"},\"metadata\":{\"url\":\"https://tracker.example/issues/1\"}}}}"}},
+			{"sandboxId":"sb-1","run":{"runId":"run-1","schedulerId":"sch-1","status":"SCHEDULER_RUN_STATUS_FAILED","triggerKind":"TRIGGER_KIND_EVENT","startedAt":"2026-08-01T10:00:00Z","completedAt":"2026-08-01T10:00:05Z","durationMs":"5000","error":"boom","resultJson":"{\"sig\":\"secret\"}","payloadJson":"{\"payload\":{\"body\":{\"title\":\"Fix login\",\"callback\":{\"url\":\"https://tracker.example/cb?sig=secret\"},\"metadata\":{\"url\":\"https://tracker.example/issues/1\"}}}}"}},
 			{"sandboxId":"sb-2","run":{"payloadJson":"{\"payload\":{\"body\":{\"commit_sha\":\"abc\"}}}"}},
 			{"sandboxId":"sb-3"}
 		]}`))
@@ -90,7 +90,10 @@ func TestSandboxTasksReturnOnlyConfiguredFields(t *testing.T) {
 	if strings.Contains(recorder.Body.String(), "secret") {
 		t.Fatalf("response leaked payload content: %s", recorder.Body.String())
 	}
-	want := `{"enabled":true,"tasks":[{"sandbox_id":"sb-1","title":"Fix login","url":"https://tracker.example/issues/1"}]}`
+	want := `{"enabled":true,"executions":[` +
+		`{"sandbox_id":"sb-1","run_id":"run-1","scheduler_id":"sch-1","status":"failed","trigger_kind":"event","started_at":"2026-08-01T10:00:00Z","completed_at":"2026-08-01T10:00:05Z","duration_ms":5000,"error":"boom"},` +
+		`{"sandbox_id":"sb-2","run_id":"","scheduler_id":"","status":"","trigger_kind":"","started_at":"","completed_at":"","duration_ms":0,"error":""}],` +
+		`"tasks":[{"sandbox_id":"sb-1","title":"Fix login","url":"https://tracker.example/issues/1"}]}`
 	if got := strings.TrimSpace(recorder.Body.String()); got != want {
 		t.Fatalf("response = %s, want %s", got, want)
 	}
@@ -99,17 +102,22 @@ func TestSandboxTasksReturnOnlyConfiguredFields(t *testing.T) {
 	}
 }
 
-func TestLookupsDisabledWithoutFields(t *testing.T) {
-	for path, body := range map[string]string{
-		"/api/ui/v1/sandbox-tasks": `{"sandboxes":[{"sandbox_id":"sb-1","project_id":"p-1"}]}`,
-		"/api/ui/v1/event-tasks":   `{"event_ids":["evt-1"]}`,
-	} {
-		recorder := serve(t, nil, func(http.ResponseWriter, *http.Request) {
-			t.Error("backend must not be called when no task fields are configured")
-		}, http.MethodPost, path, body)
-		if got := strings.TrimSpace(recorder.Body.String()); recorder.Code != http.StatusOK || got != `{"enabled":false,"tasks":[]}` {
-			t.Fatalf("%s response = %d %s", path, recorder.Code, got)
-		}
+func TestEventTasksDisabledWithoutFields(t *testing.T) {
+	recorder := serve(t, nil, func(http.ResponseWriter, *http.Request) {
+		t.Error("backend must not be called when no task fields are configured")
+	}, http.MethodPost, "/api/ui/v1/event-tasks", `{"event_ids":["evt-1"]}`)
+	if got := strings.TrimSpace(recorder.Body.String()); recorder.Code != http.StatusOK || got != `{"enabled":false,"tasks":[]}` {
+		t.Fatalf("response = %d %s", recorder.Code, got)
+	}
+}
+
+func TestSandboxTasksReportExecutionsWithoutFields(t *testing.T) {
+	recorder := serve(t, nil, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"results":[{"sandboxId":"sb-1","run":{"runId":"run-1","status":"SCHEDULER_RUN_STATUS_RUNNING","triggerKind":"TRIGGER_KIND_CRON","payloadJson":"{\"payload\":{\"body\":{\"title\":\"Fix login\"}}}"}}]}`))
+	}, http.MethodPost, "/api/ui/v1/sandbox-tasks", `{"sandboxes":[{"sandbox_id":"sb-1","project_id":"p-1"}]}`)
+	want := `{"enabled":false,"executions":[{"sandbox_id":"sb-1","run_id":"run-1","scheduler_id":"","status":"running","trigger_kind":"cron","started_at":"","completed_at":"","duration_ms":0,"error":""}],"tasks":[]}`
+	if got := strings.TrimSpace(recorder.Body.String()); recorder.Code != http.StatusOK || got != want {
+		t.Fatalf("response = %d %s, want %s", recorder.Code, got, want)
 	}
 }
 

@@ -10,7 +10,6 @@
   import { i18n, t } from '$lib/i18n.svelte';
 
   import Runs from './routes/Runs.svelte';
-  import Tasks from './routes/Tasks.svelte';
   import Projects from './routes/Projects.svelte';
   import Automations from './routes/Automations.svelte';
   import AutomationRuns from './routes/AutomationRuns.svelte';
@@ -195,9 +194,7 @@
         data-scroll-root
         class="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]"
       >
-        {#if p === '/'}
-          <Tasks />
-        {:else if p === '/agent-runs'}
+        {#if p === '/agent-runs'}
           <Runs />
         {:else if p.startsWith('/projects') || p.startsWith('/agents')}
           <Projects />
@@ -213,8 +210,6 @@
           <Events />
         {:else if sandboxDetailId}
           <SandboxDetail />
-        {:else if p.startsWith('/sandboxes')}
-          <Sandboxes />
         {:else if runDetailId}
           <RunDetail />
         {:else if p.startsWith('/settings/caches')}
@@ -236,7 +231,8 @@
         {:else if p.startsWith('/skills')}
           <SpecResources kind="skills" />
         {:else}
-          <Tasks />
+          <!-- 首页就是活动页；它把地址栏同步成 /sandboxes。 -->
+          <Sandboxes />
         {/if}
       </main>
     </div>

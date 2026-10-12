@@ -24,22 +24,31 @@ type eventTask struct {
 	Task
 }
 
+// sandboxExecution is a Sandbox's latest scheduler run without its payload
+// and result, which the list does not show and which can be large.
+type sandboxExecution struct {
+	SandboxID   string `json:"sandbox_id"`
+	RunID       string `json:"run_id"`
+	SchedulerID string `json:"scheduler_id"`
+	Status      string `json:"status"`
+	TriggerKind string `json:"trigger_kind"`
+	StartedAt   string `json:"started_at"`
+	CompletedAt string `json:"completed_at"`
+	DurationMs  int64  `json:"duration_ms"`
+	Error       string `json:"error"`
+}
+
 type latestRunsResponse struct {
 	Results []struct {
-		SandboxID string `json:"sandboxId"`
-		Run       struct {
-			PayloadJSON string `json:"payloadJson"`
-		} `json:"run"`
+		SandboxID string        `json:"sandboxId"`
+		Run       *schedulerRun `json:"run"`
 	} `json:"results"`
 }
 
-// sandboxTasks resolves the task behind each Sandbox's latest scheduler run.
-// Enabled is false when no task fields are configured for this deployment.
+// sandboxTasks reports each Sandbox's latest scheduler run and the task
+// behind it. Enabled is false when no task fields are configured for this
+// deployment; executions are reported either way.
 func (h *Handler) sandboxTasks(w http.ResponseWriter, r *http.Request) {
-	if len(h.fields) == 0 {
-		writeJSON(w, http.StatusOK, map[string]any{"enabled": false, "tasks": []sandboxTask{}})
-		return
-	}
 	var input struct {
 		Sandboxes []struct {
 			SandboxID string `json:"sandbox_id"`
@@ -66,33 +75,48 @@ func (h *Handler) sandboxTasks(w http.ResponseWriter, r *http.Request) {
 		}
 		sandboxesByProject[projectID] = append(sandboxesByProject[projectID], sandboxID)
 	}
-	found := []sandboxTask{}
+	tasks, executions := []sandboxTask{}, []sandboxExecution{}
 	for _, projectID := range projects {
-		tasks, err := h.projectSandboxTasks(r.Context(), projectID, sandboxesByProject[projectID])
+		projectTasks, projectExecutions, err := h.projectSandboxActivity(r.Context(), projectID, sandboxesByProject[projectID])
 		if err != nil {
 			writeError(w, http.StatusBadGateway, err.Error())
 			return
 		}
-		found = append(found, tasks...)
+		tasks, executions = append(tasks, projectTasks...), append(executions, projectExecutions...)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"enabled": true, "tasks": found})
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": len(h.fields) > 0, "tasks": tasks, "executions": executions})
 }
 
-func (h *Handler) projectSandboxTasks(ctx context.Context, projectID string, sandboxIDs []string) ([]sandboxTask, error) {
+func (h *Handler) projectSandboxActivity(ctx context.Context, projectID string, sandboxIDs []string) ([]sandboxTask, []sandboxExecution, error) {
 	var runs latestRunsResponse
 	if err := h.connect(ctx, "BatchGetLatestSchedulerRuns", map[string]any{
 		"project":    map[string]any{"projectId": projectID},
 		"sandboxIds": sandboxIDs,
 	}, &runs); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var tasks []sandboxTask
+	var executions []sandboxExecution
 	for _, item := range runs.Results {
+		if item.Run == nil {
+			continue
+		}
+		executions = append(executions, sandboxExecution{
+			SandboxID:   item.SandboxID,
+			RunID:       item.Run.RunID,
+			SchedulerID: item.Run.SchedulerID,
+			Status:      runStatus(item.Run.Status),
+			TriggerKind: strings.ToLower(strings.TrimPrefix(item.Run.TriggerKind, "TRIGGER_KIND_")),
+			StartedAt:   item.Run.StartedAt,
+			CompletedAt: item.Run.CompletedAt,
+			DurationMs:  durationMs(*item.Run),
+			Error:       summarizeError(item.Run.Error),
+		})
 		if title, link, ok := taskFromPayload(parsePayload(item.Run.PayloadJSON), h.fields); ok {
 			tasks = append(tasks, sandboxTask{SandboxID: item.SandboxID, Task: Task{Title: title, URL: link}})
 		}
 	}
-	return tasks, nil
+	return tasks, executions, nil
 }
 
 // eventTaskCache remembers the task of events that were read. An event's

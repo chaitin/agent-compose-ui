@@ -44,12 +44,12 @@ Runtime variables:
   works on. A JSON array of dot-separated paths into the payload, tried in
   order, for example
   `[{"title":"payload.body.title","url":"payload.body.metadata.url"}]`. When
-  set, the Tasks page lists only executions that carry a task and labels them
-  with its title, and the Sandboxes list, Webhook events list, and event
-  detail show the task linking to `url`. The UI server resolves these paths
-  itself and sends the browser only the title and link; the rest of the
-  payload stays redacted. Unset by default, in which case the Tasks page lists
-  every automation execution without a title.
+  set, the Activity page labels each Sandbox with the task it is working on,
+  and the Webhook events list and event detail show the task linking to
+  `url`. The UI server resolves these paths itself and sends the browser only
+  the title and link; the rest of the payload stays redacted. Unset by
+  default, in which case Activity rows are labelled with what triggered the
+  execution.
 - `AGENT_COMPOSE_BASE`: frontend base path when hosted below `/`.
 
 When the UI server runs in a container, mount the daemon Sandbox directory at

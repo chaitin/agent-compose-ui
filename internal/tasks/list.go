@@ -88,6 +88,7 @@ type schedulerRun struct {
 	ProjectID   string      `json:"projectId"`
 	AgentName   string      `json:"agentName"`
 	Status      string      `json:"status"`
+	TriggerKind string      `json:"triggerKind"`
 	StartedAt   string      `json:"startedAt"`
 	CompletedAt string      `json:"completedAt"`
 	DurationMs  json.Number `json:"durationMs"`
@@ -265,7 +266,6 @@ func groupTasks(agents []agentRuns, fields []config.SandboxTaskField) ([]ListedT
 			if task.Title == "" {
 				task.Title, task.URL = title, link
 			}
-			duration, _ := strconv.ParseInt(run.DurationMs.String(), 10, 64)
 			task.Executions = append(task.Executions, Execution{
 				RunID:         run.RunID,
 				SchedulerID:   run.SchedulerID,
@@ -275,7 +275,7 @@ func groupTasks(agents []agentRuns, fields []config.SandboxTaskField) ([]ListedT
 				Status:        runStatus(run.Status),
 				StartedAt:     run.StartedAt,
 				CompletedAt:   run.CompletedAt,
-				DurationMs:    duration,
+				DurationMs:    durationMs(run),
 				Error:         summarizeError(run.Error),
 				EventID:       textAt(payload, "payload.eventId"),
 				SandboxIDs:    append([]string{}, run.SandboxIDs...),
@@ -331,6 +331,11 @@ func summarizeError(value string) string {
 		return string(runes)
 	}
 	return string(runes[:maxErrorRunes]) + "…"
+}
+
+func durationMs(run schedulerRun) int64 {
+	duration, _ := strconv.ParseInt(run.DurationMs.String(), 10, 64)
+	return duration
 }
 
 // runStatus maps SCHEDULER_RUN_STATUS_FAILED to "failed".

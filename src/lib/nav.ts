@@ -1,7 +1,7 @@
-// 侧栏导航：六个一级入口。「任务」讲发生了什么：一个任务是一组自动化执行。
+// 侧栏导航：六个一级入口。「活动」讲正在发生和发生过什么：一行是一个 sandbox，正在执行的排最前。
 // 「Webhook 事件」是收到的事件流水，用来排查事件有没有进来、投出去没有；它是日志，不和配置页并成页签。
-// Sandbox 是执行占用的环境，和镜像、缓存一起放在「资源」里。直接调用智能体的运行列表（/agent-runs）
-// 只保留路由，界面上没有入口：自动化触发的工作不产生这类记录，日常用不到它。
+// 「资源」只放配置好反复用的东西（镜像、能力集等）；sandbox 是运行时的活动，不在里面。
+// 直接调用智能体的运行列表（/agent-runs）只保留路由，界面上没有入口。
 import type { Component } from 'svelte';
 import Activity from '@lucide/svelte/icons/activity';
 import FolderKanban from '@lucide/svelte/icons/folder-kanban';
@@ -36,10 +36,10 @@ const exactly = (target: string) => (path: string) => path === target;
 
 const navDefinitions: NavItem[] = [
   {
-    label: '任务',
-    href: '/',
+    label: '活动',
+    href: '/sandboxes',
     icon: Activity,
-    match: (path) => path === '/' || startsWith('/tasks')(path),
+    match: (path) => path === '/' || startsWith('/sandboxes')(path) || startsWith('/tasks')(path),
   },
   {
     label: '项目',
@@ -61,14 +61,13 @@ const navDefinitions: NavItem[] = [
   },
   {
     label: '资源',
-    href: '/sandboxes',
+    href: '/images',
     icon: Layers,
     match: (path) =>
-      ['/sandboxes', '/agent-runs', '/runs', '/images', '/capabilities', '/mcp', '/skills', '/settings/caches'].some(
-        (prefix) => startsWith(prefix)(path),
+      ['/agent-runs', '/runs', '/images', '/capabilities', '/mcp', '/skills', '/settings/caches'].some((prefix) =>
+        startsWith(prefix)(path),
       ),
     tabs: [
-      { label: 'Sandboxes', href: '/sandboxes', match: startsWith('/sandboxes') },
       { label: '镜像', href: '/images', match: startsWith('/images') },
       { label: '能力集', href: '/capabilities', match: startsWith('/capabilities') },
       { label: 'MCP 服务', href: '/mcp', match: startsWith('/mcp') },
@@ -129,9 +128,10 @@ export function sectionTabs(path: string): NavTab[] {
 
 /** 面包屑：根据当前路径推导（区段 / 详情两层）。 */
 export function breadcrumbs(path: string): { label: string; href?: string }[] {
-  if (path === '/') return [{ label: t('任务') }];
+  if (path === '/' || path === '/sandboxes') return [{ label: t('活动') }];
   // 任务详情和事件详情是同一个页面，从哪边进来就归到哪边。
-  if (startsWith('/tasks')(path)) return [{ label: t('任务'), href: '/' }, { label: t('任务详情') }];
+  if (startsWith('/tasks')(path)) return [{ label: t('活动'), href: '/sandboxes' }, { label: t('任务详情') }];
+  if (startsWith('/sandboxes')(path)) return [{ label: t('活动'), href: '/sandboxes' }, { label: t('Sandbox 详情') }];
   if (startsWith('/automation-runs')(path)) {
     const runId = path.slice('/automation-runs'.length).split('/').filter(Boolean)[0];
     return [
@@ -149,7 +149,7 @@ export function breadcrumbs(path: string): { label: string; href?: string }[] {
     ];
   }
   const item = activeNavItem(path);
-  if (!item) return [{ label: t('任务'), href: '/' }];
+  if (!item) return [{ label: t('活动'), href: '/sandboxes' }];
   // 取前缀最长的页签：/account/tokens 应该归到「API 令牌」而不是「登录信息」。
   const tab = item.tabs
     ?.filter((candidate) => candidate.href !== '/' && startsWith(candidate.href)(path))
@@ -166,12 +166,6 @@ export function breadcrumbs(path: string): { label: string; href?: string }[] {
     return path === item.href
       ? [{ label: item.label }]
       : [{ label: item.label, href: item.href }, { label: t('事件详情') }];
-  if (startsWith('/sandboxes')(path))
-    return [
-      { label: item.label, href: item.href },
-      { label: 'Sandboxes', href: '/sandboxes' },
-      { label: t('Sandbox 详情') },
-    ];
   const base = tab ?? item;
   const crumbs: { label: string; href?: string }[] = [{ label: item.label, href: item.href }];
   if (tab) crumbs.push({ label: tab.label, href: tab.href });

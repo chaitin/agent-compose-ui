@@ -519,9 +519,10 @@ test('authenticates and loads every primary route without browser errors', async
     await page.waitForTimeout(500);
   }
 
-  await navigateInApp(page, '/sandboxes');
-  // Sandbox 列表以 sandbox 本身为主体，第一列是 Sandbox ID。
+  await navigateInApp(page, '/sandboxes?projectId=all&status=all');
+  // 活动页一行一个 sandbox：第一列是 Sandbox ID，后面是它在做什么。
   await expect(page.locator('thead th').first()).toContainText('Sandbox ID');
+  await expect(page.locator('thead th', { hasText: '在做什么' })).toBeVisible();
 
   await page.reload();
   await expect(page.locator('main[data-scroll-root]')).toBeVisible();
@@ -534,7 +535,7 @@ test('switches between Chinese and English and persists the locale', async ({ pa
   await login(page);
   await page.getByRole('button', { name: '切换语言' }).click();
   await expect(page.getByRole('button', { name: 'Change language' })).toBeVisible();
-  await expect(page.getByText('Tasks', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Activity', { exact: true }).first()).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('en-US');
 
   await page.reload();
@@ -669,7 +670,7 @@ test('keeps run and event headers compact on desktop', async ({ page }) => {
     return (await header.first().boundingBox())?.height ?? 0;
   };
 
-  await navigateInApp(page, '/sandboxes');
+  await navigateInApp(page, '/sandboxes?projectId=all&status=all');
   await expect(page.locator('[data-route-scroll="sandboxes"]:visible')).toBeVisible();
   expect(await headerHeight()).toBeLessThanOrEqual(56);
 
@@ -696,7 +697,7 @@ test('selects the first project and opens the first execution environment', asyn
   await expect(projectFrame.locator('main h2')).not.toHaveText('');
   await expect(page).toHaveURL(/\/projects$/);
 
-  await navigateInApp(page, '/sandboxes');
+  await navigateInApp(page, '/sandboxes?projectId=all&status=all');
   const firstSandbox = page.locator('tbody tr').first();
   await expect(firstSandbox).toBeVisible();
   await firstSandbox.click();
@@ -1132,7 +1133,7 @@ test('distinguishes semantic statuses and the selected tab', async ({ page }) =>
     'requires retained event and execution environment resources',
   );
   await login(page);
-  await navigateInApp(page, '/sandboxes');
+  await navigateInApp(page, '/sandboxes?projectId=all&status=all');
   const failedStatus = page.locator('table [data-semantic-status="failed"]').first();
   await expect(failedStatus).toBeVisible();
   const failedColor = await failedStatus.evaluate((element) => getComputedStyle(element).color);
@@ -1161,15 +1162,15 @@ test('distinguishes semantic statuses and the selected tab', async ({ page }) =>
 
 test('filters execution environments and restores the filtered view', async ({ page }) => {
   await login(page);
-  await navigateInApp(page, '/sandboxes');
-  await expect(page.getByRole('heading', { name: 'Sandboxes' })).toBeAttached();
+  await navigateInApp(page, '/sandboxes?projectId=all&status=all');
+  await expect(page.getByRole('heading', { name: '活动' })).toBeAttached();
   await expect(page.getByPlaceholder('输入 Sandbox ID')).toBeVisible();
   await expect(page.getByRole('button', { name: '查找', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '直达', exact: true })).toHaveCount(0);
 
   await page.getByLabel('按状态筛选').selectOption('failed');
-  await expect(page).toHaveURL(/\/sandboxes\?status=failed$/);
-  // 只看 sandbox 自身状态列；「运行」列里的最近运行结果是另一种状态。
+  await expect(page).toHaveURL(/\/sandboxes\?projectId=all&status=failed$/);
+  // 只看 sandbox 自身状态列；行首圆点是最近一次执行的结果，是另一种状态。
   await expect(page.locator('tbody [data-sandbox-status] [data-semantic-status="failed"]').first()).toBeVisible();
   await expect(
     page.locator('tbody [data-sandbox-status] [data-semantic-status]:not([data-semantic-status="failed"])'),
@@ -1178,11 +1179,11 @@ test('filters execution environments and restores the filtered view', async ({ p
   await page.locator('tbody tr').first().click();
   await expect(page).toHaveURL(/\/sandboxes\/[a-f0-9]+$/);
   await page.goBack();
-  await expect(page).toHaveURL(/\/sandboxes\?status=failed$/);
+  await expect(page).toHaveURL(/\/sandboxes\?projectId=all&status=failed$/);
   await expect(page.getByLabel('按状态筛选')).toHaveValue('failed');
 
   await page.getByLabel('按状态筛选').selectOption('');
-  await expect(page).toHaveURL(/\/sandboxes$/);
+  await expect(page).toHaveURL(/\/sandboxes\?projectId=all&status=all$/);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByLabel('按项目筛选')).toBeVisible();
   await expect(page.getByLabel('按状态筛选')).toBeVisible();
@@ -1191,10 +1192,10 @@ test('filters execution environments and restores the filtered view', async ({ p
 
 test('keeps execution actions sticky and restores list scroll on browser history', async ({ page }) => {
   await login(page);
-  await navigateInApp(page, '/sandboxes');
+  await navigateInApp(page, '/sandboxes?projectId=all&status=all');
   const header = page.locator('[data-page-header]');
   const list = page.locator('[data-route-scroll="sandboxes"]:visible');
-  await expect(page.getByRole('heading', { name: 'Sandboxes', exact: true })).toBeAttached();
+  await expect(page.getByRole('heading', { name: '活动', exact: true })).toBeAttached();
   await expect.poll(() => page.getByRole('row').count()).toBeGreaterThan(1);
   await page.addStyleTag({ content: '[data-route-scroll="sandboxes"] table { min-height: calc(100% + 48rem); }' });
   const headerTop = await header.evaluate((element) => element.getBoundingClientRect().top);
@@ -1208,7 +1209,7 @@ test('keeps execution actions sticky and restores list scroll on browser history
     .evaluate((element) => (element as HTMLElement).click());
   await expect(page).toHaveURL(/\/sandboxes\/[a-f0-9]+$/);
   await page.goBack();
-  await expect(page).toHaveURL(/\/sandboxes$/);
+  await expect(page).toHaveURL(/\/sandboxes\?projectId=all&status=all$/);
   await expect
     .poll(() =>
       list.evaluate((element) => {
@@ -1288,14 +1289,14 @@ test('copies full resource identifiers and deep links without navigating rows', 
   await login(page);
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
 
-  await navigateInApp(page, '/sandboxes');
+  await navigateInApp(page, '/sandboxes?projectId=all&status=all');
   const sandboxCopy = page.getByRole('button', { name: '复制 Sandbox ID' }).first();
   const fullSandboxId = await sandboxCopy.locator('..').locator('span[title]').getAttribute('title');
   expect(fullSandboxId).toBeTruthy();
   await sandboxCopy.click();
   await expect(page.getByRole('status').filter({ hasText: '已复制' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(fullSandboxId);
-  await expect(page).toHaveURL(/\/sandboxes$/);
+  await expect(page).toHaveURL(/\/sandboxes\?projectId=all&status=all$/);
 
   await navigateInApp(page, `/runs/${retainedRunId}`);
   await page.locator('[data-page-header]').getByRole('button', { name: '复制 运行 ID' }).click();
@@ -1316,7 +1317,7 @@ test('copies full resource identifiers and deep links without navigating rows', 
   await expect(detailTime).toHaveAttribute('datetime', /T/);
   await expect(detailTime).toHaveAttribute('title', /Asia\/Shanghai/);
 
-  await navigateInApp(page, '/sandboxes');
+  await navigateInApp(page, '/sandboxes?projectId=all&status=all');
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -1801,7 +1802,7 @@ test('automatically connects a real terminal and accepts input', async ({ page }
     await terminalInput.press('Enter');
     await expect(page.locator('.xterm-rows')).toContainText('TERMINAL_INPUT_OK');
   } finally {
-    await navigateInApp(page, '/sandboxes');
+    await navigateInApp(page, '/sandboxes?projectId=all&status=all');
     await page.evaluate(
       async ({ prepared, sandboxId }) => {
         const { projectClient, sandboxClient } = await import('/src/api/client.ts');
