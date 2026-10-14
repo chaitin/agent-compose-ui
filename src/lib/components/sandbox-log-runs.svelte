@@ -22,7 +22,6 @@
     events,
     activeStream,
     legacyCells = [],
-    horizontalScroll = true,
     onError,
   }: {
     sandboxId: string;
@@ -30,7 +29,6 @@
     events: RunEvent[];
     activeStream?: AgentStreamState;
     legacyCells?: SandboxHistoryCell[];
-    horizontalScroll?: boolean;
     onError?: (message: string) => void;
   } = $props();
 
@@ -293,7 +291,6 @@
     {loadingEarlier}
     {downloading}
     {preserveLine}
-    {horizontalScroll}
     onViewportLine={(line) => (anchorBeforeLine = line)}
     onQuery={(value) => (query = value)}
     onDownload={() => void download()}

@@ -556,7 +556,6 @@
             {runs}
             {events}
             {activeStream}
-            horizontalScroll={!embedded}
             legacyCells={historyCells.filter((cell) => !cell.runId && !cell.id.endsWith('-legacy-log'))}
             onError={(message) => (error = message)}
           />
@@ -564,7 +563,6 @@
             query={contextLogQuery}
             lines={fallbackLogLines}
             loadedLineCount={fallbackLogLines.length}
-            horizontalScroll={!embedded}
             onQuery={(value) => (contextLogQuery = value)}
             onDownload={downloadContextLog}
           />{/if}
