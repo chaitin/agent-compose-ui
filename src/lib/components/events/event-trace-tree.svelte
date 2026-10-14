@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
   import StatusBadge from '$lib/components/status-badge.svelte';
   import { t } from '$lib/i18n.svelte';
   import { dispatchStatus } from '../../../model/event-status';
@@ -10,10 +11,12 @@
     type TraceNode,
     type TraceTimeline,
   } from '../../../model/event-trace';
+  import { compactIdentifier } from '../../../model/identifiers';
   import { formatBeijingTime } from '../../../time';
 
-  // 三层：事件 → 它扇出的自动化执行 → 执行开的 sandbox。
-  // 同一个任务的多次事件（重试）各占一组，没有触发执行的事件（无订阅方）也列出来。
+  // 固定两层：事件是分组标题，它触发的自动化执行平铺在下面，执行开的 sandbox 并在执行那一行里。
+  // 链式触发（一次执行又发出事件）不往右缩进：新事件是下一个并列分组，用「由 … 发出」标明来历。
+  // 没有触发执行的事件（无订阅方）也列出来。
   let {
     branches,
     startAt,
@@ -22,6 +25,7 @@
     folded,
     onSelect,
     onToggleFold,
+    onCollapse,
   }: {
     branches: TraceBranch[];
     startAt: string;
@@ -30,6 +34,8 @@
     folded: boolean;
     onSelect: (node: TraceNode) => void;
     onToggleFold: (folded: boolean) => void;
+    /** 把整栏收起，给右侧的日志让出宽度。 */
+    onCollapse: () => void;
   } = $props();
 
   const executions = $derived(branches.flatMap((branch) => branch.executions));
@@ -37,31 +43,26 @@
   const succeededCount = $derived(executions.filter((node) => node.status === 'success').length);
   const tone: Record<string, string> = { failed: 'bg-destructive/80', running: 'bg-info/60', success: 'bg-success/50' };
   const grid = 'grid-cols-[minmax(0,1fr)_3.25rem_7rem_3.75rem]';
-  const row = `grid h-8 w-full ${grid} items-center gap-2 border-b border-border px-4 text-left text-[13px] transition-colors sm:px-5`;
 
   function shown(branch: TraceBranch): TraceNode[] {
     return folded ? branch.executions.filter((node) => node.status !== 'success') : branch.executions;
   }
 
-  function eventMarker(at: string): number | null {
-    const value = Date.parse(at);
-    if (!Number.isFinite(value) || !Number.isFinite(timeline.from)) return null;
-    return Math.max(0, Math.min(100, ((value - timeline.from) / (timeline.to - timeline.from)) * 100));
+  function selectedWithin(node: TraceNode): boolean {
+    return selectedId === node.id || node.children.some((child) => child.id === selectedId);
   }
 </script>
 
-{#snippet bar(node: TraceNode, dim = false)}
-  {@const position = barPosition(node, timeline)}
-  <span class="relative h-2 rounded-sm bg-muted"
-    >{#if position}<i
-        class="absolute inset-y-0 rounded-sm {dim ? 'opacity-70' : ''} {tone[node.status] ?? 'bg-faint/50'}"
-        style="left:{position.left}%;width:{position.width}%"
-      ></i>{/if}</span
-  >
-{/snippet}
-
 <div class="flex min-h-0 flex-col">
-  <div class="flex shrink-0 items-center gap-3 px-4 py-2.5 text-xs sm:px-5">
+  <div class="flex shrink-0 items-center gap-3 border-b border-border px-4 py-2.5 text-xs sm:px-5">
+    <button
+      type="button"
+      onclick={onCollapse}
+      title={t('收起事件列表')}
+      aria-label={t('收起事件列表')}
+      class="-ml-1 hidden text-faint transition-colors hover:text-foreground lg:block"
+      ><PanelLeftClose class="size-4" /></button
+    >
     <span class={failedCount ? 'text-destructive' : 'text-muted-foreground'}>{failedCount} {t('失败')}</span>
     <span class="text-faint">·</span>
     <span class="text-muted-foreground">{succeededCount} {t('成功')}</span>
@@ -75,93 +76,104 @@
       {t('折叠成功的执行')}
     </label>
   </div>
-  <div class="grid h-7 shrink-0 {grid} items-center gap-2 border-y border-border px-4 text-[11px] text-faint sm:px-5">
-    <span>{t('事件 → 扇出的自动化执行 → Sandbox')}</span><span class="text-right">{t('开始')}</span><span
-      class="flex justify-between"
-      ><span>0</span><span>{spanLabel(startAt, new Date(timeline.to).toISOString())}</span></span
-    ><span class="text-right">{t('耗时')}</span>
-  </div>
-  <div data-scroll-surface class="min-h-0 flex-1 overflow-y-auto">
+  <div data-scroll-surface class="min-h-0 flex-1 overflow-y-auto pb-4">
     {#each branches as branch (branch.eventId)}
       {@const visible = shown(branch)}
       {@const hidden = branch.executions.length - visible.length}
-      {@const marker = eventMarker(branch.receivedAt)}
       {@const delivery = branch.dispatchStatus ? dispatchStatus(branch.dispatchStatus) : null}
-      <div data-trace-event class="{row} cursor-default bg-background">
-        <span class="flex min-w-0 items-center gap-2">
-          {#if branch.status}<StatusBadge status={branch.status} dotOnly />{:else}<span
-              class="size-1.5 shrink-0 rounded-full border border-faint"
-            ></span>{/if}
-          <span class="truncate" title={branch.eventId}>
-            {#if branches.length > 1}<span class="text-muted-foreground"
-                >{t('第 {order} 个事件', { order: branch.order })}</span
-              ><span class="px-1 text-faint">·</span>{/if}<span class="font-mono text-[12px]"
+      <section data-trace-event class="border-b border-border">
+        <header class="bg-muted/40 px-4 py-2 sm:px-5">
+          <div class="flex min-w-0 items-baseline gap-2">
+            <span class="truncate font-mono text-[12.5px] font-medium" title={branch.eventId}
               >{branch.topic || t('事件')}</span
             >
-            <span class="ml-1.5 text-[11px] text-faint" title={formatBeijingTime(branch.receivedAt)}
-              >{#if branch.executions.length}→ {t('扇出 {count} 个执行', {
-                  count: branch.executions.length,
-                })}{:else}{t(delivery?.label ?? '没有触发执行')}{/if}</span
+            <span class="ml-auto shrink-0 font-mono text-[11px] text-faint" title={formatBeijingTime(branch.receivedAt)}
+              >{offsetLabel(branch.receivedAt, startAt)}</span
             >
-          </span>
-        </span>
-        <span class="text-right font-mono text-[11px] text-faint">{offsetLabel(branch.receivedAt, startAt)}</span>
-        <span class="relative h-2"
-          >{#if marker !== null}<i
-              class="absolute top-0 bottom-0 w-px bg-foreground/50"
-              style="left:{marker}%"
-              title={t('收到事件')}
-            ></i>{/if}</span
-        >
-        <span></span>
-      </div>
-      {#each visible as node (node.id)}
-        <button
-          type="button"
-          onclick={() => onSelect(node)}
-          aria-current={selectedId === node.id}
-          class="{row} {selectedId === node.id ? 'bg-selected' : 'hover:bg-accent/60'}"
-        >
-          <span class="flex min-w-0 items-center gap-2 pl-4">
-            <StatusBadge status={node.status} label={node.statusLabel} dotOnly />
-            <span class="truncate font-medium">{node.name}</span>
-          </span>
-          <span class="text-right font-mono text-[11px] text-faint">{offsetLabel(node.startedAt, startAt)}</span>
-          {@render bar(node)}
-          <span class="text-right text-xs tabular-nums text-muted-foreground"
-            >{spanLabel(node.startedAt, node.endedAt)}</span
+          </div>
+          <div class="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-[11px] text-muted-foreground">
+            {#if delivery}<StatusBadge status={delivery.semantic} label={delivery.label} class="text-[11px]" /><span
+                class="text-faint">·</span
+              >{/if}
+            <span
+              >{branch.executions.length
+                ? t('触发 {count} 个执行', { count: branch.executions.length })
+                : t('没有触发执行')}</span
+            >
+            {#if branch.publishedBy}<span class="text-faint">·</span><span
+                >↳ {t('由 {name} 发出', { name: branch.publishedBy })}</span
+              >{/if}
+          </div>
+        </header>
+        {#each visible as node (node.id)}
+          {@const position = barPosition(node, timeline)}
+          <div
+            data-trace-execution
+            class="border-t border-border transition-colors {selectedWithin(node)
+              ? 'bg-selected'
+              : 'hover:bg-accent/60'}"
           >
-        </button>
-        {#each node.children as child (child.id)}
+            <button
+              type="button"
+              onclick={() => onSelect(node)}
+              aria-current={selectedId === node.id}
+              class="grid h-8 w-full {grid} items-center gap-2 pr-4 pl-7 text-left text-[13px] sm:pr-5 sm:pl-8"
+            >
+              <span class="flex min-w-0 items-center gap-2">
+                <StatusBadge status={node.status} label={node.statusLabel} dotOnly />
+                <span class="truncate font-medium">{node.name}</span>
+              </span>
+              <span class="text-right font-mono text-[11px] text-faint">{offsetLabel(node.startedAt, startAt)}</span>
+              <span class="relative h-2 rounded-sm bg-muted"
+                >{#if position}<i
+                    class="absolute inset-y-0 rounded-sm {tone[node.status] ?? 'bg-faint/50'}"
+                    style="left:{position.left}%;width:{position.width}%"
+                  ></i>{/if}</span
+              >
+              <span class="text-right text-xs tabular-nums text-muted-foreground"
+                >{spanLabel(node.startedAt, node.endedAt)}</span
+              >
+            </button>
+            {#if node.status === 'failed' && node.error}
+              <p
+                class="truncate pr-4 pb-1.5 pl-[2.9rem] font-mono text-[11.5px] text-destructive sm:pl-[3.15rem]"
+                title={node.error}
+              >
+                {node.error}
+              </p>
+            {/if}
+            {#if node.children.length}
+              <div class="flex flex-wrap gap-1.5 pr-4 pb-2 pl-[2.9rem] sm:pl-[3.15rem]">
+                {#each node.children as child (child.id)}
+                  <button
+                    type="button"
+                    onclick={() => onSelect(child)}
+                    aria-current={selectedId === child.id}
+                    title={child.detail || child.name}
+                    class="flex h-6 items-center gap-1.5 rounded-md border px-2 text-[11px] transition-colors {selectedId ===
+                    child.id
+                      ? 'border-ring bg-card text-foreground'
+                      : 'border-border bg-card/60 text-muted-foreground hover:text-foreground'}"
+                  >
+                    <span>Sandbox</span>
+                    <span class="font-mono text-faint">{compactIdentifier(child.sandboxId)}</span>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/each}
+        {#if hidden}
           <button
             type="button"
-            onclick={() => onSelect(child)}
-            aria-current={selectedId === child.id}
-            class="{row} {selectedId === child.id ? 'bg-selected' : 'hover:bg-accent/60'}"
+            onclick={() => onToggleFold(false)}
+            class="flex h-8 w-full items-center gap-2 border-t border-border pr-4 pl-7 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/60 sm:pl-8"
           >
-            <span class="truncate pl-10 text-muted-foreground">
-              <span class="mr-1 text-faint">└</span>{child.name || t('Sandbox')}
-              {#if child.detail && child.detail !== child.name}<span class="text-faint"> · {child.detail}</span>{/if}
-            </span>
-            <span class="text-right font-mono text-[11px] text-faint">{offsetLabel(child.startedAt, startAt)}</span>
-            {@render bar(child, true)}
-            <span></span>
-          </button>
-        {/each}
-      {/each}
-      {#if hidden}
-        <button
-          type="button"
-          onclick={() => onToggleFold(false)}
-          class="{row} text-muted-foreground hover:bg-accent/60"
-        >
-          <span class="flex min-w-0 items-center gap-2 pl-4">
             <StatusBadge status="success" dotOnly />
-            <span class="truncate text-xs">{t('{count} 个成功的执行', { count: hidden })}</span>
-          </span>
-          <span></span><span></span><span></span>
-        </button>
-      {/if}
+            {t('{count} 个成功的执行', { count: hidden })}
+          </button>
+        {/if}
+      </section>
     {/each}
     {#if !branches.length}
       <p class="px-5 py-10 text-center text-sm text-muted-foreground">{t('暂无自动化执行')}</p>

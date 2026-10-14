@@ -15,6 +15,7 @@
     loadingEarlier = false,
     downloading = false,
     preserveLine = 0,
+    horizontalScroll = true,
     onQuery,
     onDownload,
     onLoadEarlier,
@@ -31,6 +32,8 @@
      * Callers must not count rows inserted below that anchor.
      */
     preserveLine?: number;
+    /** Keep long lines scrollable in the full-page viewer; embedded event logs fit their pane. */
+    horizontalScroll?: boolean;
     onQuery: (value: string) => void;
     onDownload: () => void;
     onLoadEarlier?: () => void;
@@ -174,10 +177,17 @@
     data-scroll-surface
     data-log-viewport
     onscroll={trackScroll}
-    class="min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-muted font-mono text-xs leading-5 text-foreground"
+    class="min-h-0 min-w-0 flex-1 overflow-y-auto rounded-lg border border-border bg-muted font-mono text-xs leading-5 text-foreground"
+    style:overflow-x={horizontalScroll ? 'auto' : 'hidden'}
   >
     {#if lines.length}
-      <div class="w-max min-w-full" style:height="{totalHeight}px">
+      <div
+        class:min-w-full={!horizontalScroll}
+        class:w-max={horizontalScroll}
+        class:max-w-full={!horizontalScroll}
+        class:overflow-hidden={!horizontalScroll}
+        style:height="{totalHeight}px"
+      >
         <div style:transform="translateY({startIndex * LINE_HEIGHT}px)">
           {#each visibleLines as line, offset (startIndex + offset)}
             {@const index = startIndex + offset}
@@ -188,7 +198,11 @@
                   ? 'active'
                   : 'true'
                 : undefined}
-              class="h-5 w-max min-w-full px-4 whitespace-pre data-[log-match=true]:bg-amber-300/25 data-[log-match=active]:bg-orange-500/40"
+              class:min-w-full={!horizontalScroll}
+              class:w-max={horizontalScroll}
+              class:max-w-full={!horizontalScroll}
+              class:overflow-hidden={!horizontalScroll}
+              class="h-5 px-4 whitespace-pre data-[log-match=true]:bg-amber-300/25 data-[log-match=active]:bg-orange-500/40"
               style:height="{LINE_HEIGHT}px"
               style:line-height="{LINE_HEIGHT}px"
             >

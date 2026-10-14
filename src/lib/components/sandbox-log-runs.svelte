@@ -22,6 +22,7 @@
     events,
     activeStream,
     legacyCells = [],
+    horizontalScroll = true,
     onError,
   }: {
     sandboxId: string;
@@ -29,6 +30,7 @@
     events: RunEvent[];
     activeStream?: AgentStreamState;
     legacyCells?: SandboxHistoryCell[];
+    horizontalScroll?: boolean;
     onError?: (message: string) => void;
   } = $props();
 
@@ -277,7 +279,7 @@
   }
 </script>
 
-<div data-sandbox-log-stream class="flex h-full min-h-0 flex-col">
+<div data-sandbox-log-stream class="flex h-full min-h-0 min-w-0 flex-col">
   <div class="hidden" aria-hidden="true">
     {#each chronologicalRuns as run (run.runId)}
       <span data-log-section={run.runId}>{headingFor(run)}</span>
@@ -291,6 +293,7 @@
     {loadingEarlier}
     {downloading}
     {preserveLine}
+    {horizontalScroll}
     onViewportLine={(line) => (anchorBeforeLine = line)}
     onQuery={(value) => (query = value)}
     onDownload={() => void download()}

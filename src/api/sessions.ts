@@ -97,6 +97,22 @@ export async function listWorkSessions(
     totalCount: response.total,
   };
 }
+/**
+ * ListSandboxes 不能按智能体筛选：需要这种筛选时把符合其它条件的 sandbox 全部读回来，由调用方自己筛。
+ * 最多读 maxItems 个；truncated 表示后面还有没读的。
+ */
+export async function listAllSandboxContexts(
+  filter: { projectId?: string; status?: string[] } = {},
+  maxItems = 2000,
+): Promise<{ sessions: WorkSession[]; truncated: boolean }> {
+  const sessions: WorkSession[] = [];
+  for (;;) {
+    const page = await listWorkSessions(500, sessions.length, filter);
+    sessions.push(...page.sessions);
+    if (!page.hasMore || !page.sessions.length) return { sessions, truncated: false };
+    if (sessions.length >= maxItems) return { sessions, truncated: true };
+  }
+}
 export async function getWorkSession(
   id: string,
   _options: { includeProxy?: boolean } = {},

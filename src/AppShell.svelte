@@ -194,7 +194,7 @@
         data-scroll-root
         class="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]"
       >
-        {#if p === '/'}
+        {#if p === '/agent-runs'}
           <Runs />
         {:else if p.startsWith('/projects') || p.startsWith('/agents')}
           <Projects />
@@ -204,14 +204,12 @@
           {#key p}<AutomationRuns />{/key}
         {:else if p.startsWith('/automations')}
           <Automations />
-        {:else if p.startsWith('/events/')}
+        {:else if p.startsWith('/events/') || p.startsWith('/tasks/')}
           <EventDetail />
         {:else if p.startsWith('/events')}
           <Events />
         {:else if sandboxDetailId}
           <SandboxDetail />
-        {:else if p.startsWith('/sandboxes')}
-          <Sandboxes />
         {:else if runDetailId}
           <RunDetail />
         {:else if p.startsWith('/settings/caches')}
@@ -233,7 +231,8 @@
         {:else if p.startsWith('/skills')}
           <SpecResources kind="skills" />
         {:else}
-          <Runs />
+          <!-- 首页就是活动页；它把地址栏同步成 /sandboxes。 -->
+          <Sandboxes />
         {/if}
       </main>
     </div>

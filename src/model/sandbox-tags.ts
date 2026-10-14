@@ -56,7 +56,7 @@ export function presentSandboxTags(tags: SandboxTag[]): {
 
 function sourceLabel(value: string): string {
   const normalized = value.toLowerCase();
-  if (normalized === 'manual') return '手动';
+  if (normalized === 'manual') return '直接调用';
   if (normalized === 'scheduler') return '自动化';
   if (normalized === 'api') return 'API';
   return value;

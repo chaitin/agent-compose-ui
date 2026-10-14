@@ -1,4 +1,4 @@
-// 事件追踪树：一个事件 → 若干自动化执行 → 每次执行启动的 Sandbox。
+// 事件追踪：一个事件 → 若干自动化执行，每次执行带着它启动的 Sandbox。
 // 结构、状态和时间都来自 trace 接口的结构化字段；排序、折叠只看状态。
 import type { TopicEventTrace, TopicEventTraceRun } from '../api/loaders';
 import { deliveryStatus, type EventSemanticStatus } from './event-status';
@@ -182,9 +182,17 @@ export type TraceBranch = {
   executions: TraceNode[];
   /** 这组里最需要注意的执行状态：失败 > 运行中 > 其它；没有执行时为 null。 */
   status: EventSemanticStatus | null;
+  /** 发出这个事件的那次执行的名称；事件不是由本次追踪里的执行发出时为空。 */
+  publishedBy: string;
 };
 
-type BranchEvent = { eventId: string; topic: string; createdAt: string; dispatchStatus: string };
+type BranchEvent = {
+  eventId: string;
+  topic: string;
+  createdAt: string;
+  dispatchStatus: string;
+  publisherRunId?: string;
+};
 
 /**
  * 按触发事件分组。events 是这个任务的全部事件（含没有触发执行的）；
@@ -217,6 +225,9 @@ export function traceBranches(nodes: TraceNode[], events: BranchEvent[]): TraceB
         order: index + 1,
         executions,
         status,
+        publishedBy: item.publisherRunId
+          ? (nodes.find((node) => node.schedulerRunId === item.publisherRunId)?.name ?? '')
+          : '',
       };
     });
   return branches;

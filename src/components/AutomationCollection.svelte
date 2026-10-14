@@ -112,15 +112,15 @@
   </div>
 
   <div class="hidden overflow-hidden border-t border-border min-[1400px]:block">
-    <table class="w-full table-fixed text-sm">
+    <table class="w-full min-w-[72rem] table-fixed text-sm">
       <thead class="border-b border-border bg-muted/40 text-left text-xs text-muted-foreground">
         <tr>
-          <th class="w-[26%] px-4 py-3 font-medium">{t('项目 / 智能体')}</th>
-          <th class="w-[24%] px-4 py-3 font-medium">{t('自动化')}</th>
-          <th class="w-[10%] px-4 py-3 font-medium">{t('状态')}</th>
-          <th class="w-[10%] px-4 py-3 font-medium">{t('触发条件')}</th>
-          <th class="w-[16%] px-4 py-3 font-medium">{t('最近运行')}</th>
-          <th class="px-4 py-3 text-right font-medium">{t('操作')}</th>
+          <th class="w-[23%] px-4 py-3 font-medium">{t('项目 / 智能体')}</th>
+          <th class="w-[20%] px-4 py-3 font-medium">{t('自动化')}</th>
+          <th class="w-[9%] px-4 py-3 font-medium">{t('状态')}</th>
+          <th class="w-[9%] px-4 py-3 font-medium">{t('触发条件')}</th>
+          <th class="w-[15%] px-4 py-3 font-medium">{t('最近运行')}</th>
+          <th class="w-[24%] px-4 py-3 text-right font-medium">{t('操作')}</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-border">
@@ -160,7 +160,7 @@
               <div class="mt-1 text-xs text-muted-foreground">{task.runCount} {t('次运行')}</div>
             </td>
             <td class="px-4 py-3">
-              <div class="flex justify-end gap-1">
+              <div class="flex flex-wrap justify-end gap-1">
                 <Button size="sm" onclick={() => onRun(task)}><Play class="size-3.5" />{t('运行')}</Button>
                 <Button size="sm" variant="outline" onclick={() => onHistory(task)}>{t('执行历史')}</Button>
                 <Button

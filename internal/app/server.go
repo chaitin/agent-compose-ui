@@ -20,6 +20,7 @@ import (
 	"agent-compose-ui/internal/config"
 	"agent-compose-ui/internal/projectdeploy"
 	"agent-compose-ui/internal/proxy"
+	"agent-compose-ui/internal/tasks"
 	"agent-compose-ui/internal/terminal"
 	"agent-compose-ui/internal/tokenproxy"
 
@@ -78,6 +79,7 @@ func Register(di do.Injector) {
 	do.Provide(di, NewBackendProxy)
 	do.Provide(di, NewProjectDeployHandler)
 	do.Provide(di, NewAgentRecordsHandler)
+	do.Provide(di, NewTasksHandler)
 	do.Provide(di, NewAuditRuntime)
 	do.Provide(di, NewTokenRuntime)
 	do.Provide(di, NewTerminalBridge)
@@ -120,6 +122,7 @@ func NewEcho(di do.Injector) (*echo.Echo, error) {
 		do.MustInvoke[*agentrecords.Handler](di),
 		do.MustInvoke[*TokenRuntime](di).Management,
 		do.MustInvoke[*AuditRuntime](di),
+		do.MustInvoke[*tasks.Handler](di),
 	)
 	return app, nil
 }
@@ -144,6 +147,10 @@ type AuditRuntime struct {
 	Management http.Handler
 	Middleware *audit.Middleware
 	Store      *audit.Store
+}
+
+func NewTasksHandler(di do.Injector) (*tasks.Handler, error) {
+	return tasks.New(do.MustInvoke[*url.URL](di), do.MustInvoke[config.Config](di).SandboxTaskFields), nil
 }
 
 func NewAuditRuntime(di do.Injector) (*AuditRuntime, error) {
@@ -235,6 +242,7 @@ func registerRoutes(
 	agentRecords http.Handler,
 	tokenManagement http.Handler,
 	audits *AuditRuntime,
+	taskLookups http.Handler,
 ) {
 	app.GET("/api/auth/status", authManager.HandleStatus)
 	app.HEAD("/api/auth/status", authManager.HandleStatus)
@@ -255,6 +263,9 @@ func registerRoutes(
 	app.GET("/api/ui/v1/sandboxes/:sandboxID/agent-records/*", authManager.Protect(echo.WrapHandler(agentRecords)))
 	app.Any("/api/ui/v1/tokens", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(tokenManagement))))
 	app.Any("/api/ui/v1/tokens/*", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(tokenManagement))))
+	app.GET("/api/ui/v1/tasks", authManager.Protect(echo.WrapHandler(taskLookups)))
+	app.POST("/api/ui/v1/sandbox-tasks", authManager.Protect(echo.WrapHandler(taskLookups)))
+	app.POST("/api/ui/v1/event-tasks", authManager.Protect(echo.WrapHandler(taskLookups)))
 	app.GET(terminal.AttachPath, authManager.Protect(echo.WrapHandler(terminalBridge)))
 	app.Any("/*", authManager.Protect(echo.WrapHandler(audits.Middleware.Wrap(backend))))
 }

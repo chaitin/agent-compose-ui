@@ -120,3 +120,24 @@ func TestTokenManagementRouteUsesBrowserAuthentication(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
 	}
 }
+
+func TestTaskRoutesRequireAuthentication(t *testing.T) {
+	t.Setenv("AUTH_PASSWORD", "password")
+	t.Setenv("AUTH_SECRET", "secret")
+	t.Setenv("UI_DATABASE_PATH", "")
+	di := do.New()
+	Register(di)
+	t.Cleanup(func() { _ = do.MustInvoke[*TokenRuntime](di).Close() })
+
+	for _, route := range []struct{ method, path string }{
+		{http.MethodGet, "/api/ui/v1/tasks"},
+		{http.MethodPost, "/api/ui/v1/sandbox-tasks"},
+		{http.MethodPost, "/api/ui/v1/event-tasks"},
+	} {
+		response := httptest.NewRecorder()
+		do.MustInvoke[*http.Server](di).Handler.ServeHTTP(response, httptest.NewRequest(route.method, route.path, strings.NewReader(`{}`)))
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("%s %s status = %d, want %d", route.method, route.path, response.Code, http.StatusUnauthorized)
+		}
+	}
+}

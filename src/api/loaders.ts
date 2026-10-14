@@ -621,29 +621,6 @@ function triggerFromResolved(item: ResolvedTrigger): AutomationTrigger {
     prompt: spec?.prompt ?? '',
   };
 }
-/**
- * 每个 sandbox 最近一次自动化执行。后端按项目批量查询（BatchGetLatestSchedulerRuns），
- * 这里按项目分组，每个项目一个请求；某个项目查询失败时只缺它的结果，不影响其它项目。
- */
-export async function latestAutomationRunsForSandboxes(
-  items: Array<{ sandboxId: string; projectId: string }>,
-): Promise<Map<string, AutomationRun>> {
-  const byProject = new Map<string, string[]>();
-  for (const item of items) {
-    if (!item.projectId || !item.sandboxId) continue;
-    byProject.set(item.projectId, [...(byProject.get(item.projectId) ?? []), item.sandboxId]);
-  }
-  const responses = await Promise.all(
-    [...byProject].map(([projectId, sandboxIds]) =>
-      projectClient.batchGetLatestSchedulerRuns({ project: projectById(projectId), sandboxIds }).catch(() => null),
-    ),
-  );
-  const result = new Map<string, AutomationRun>();
-  for (const response of responses)
-    for (const item of response?.results ?? []) if (item.run) result.set(item.sandboxId, runFromScheduler(item.run));
-  return result;
-}
-
 function runFromScheduler(item: SchedulerRun): AutomationRun {
   return {
     id: item.runId,

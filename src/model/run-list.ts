@@ -43,7 +43,7 @@ export const RUN_STATUS_FILTERS: Array<{ value: RunStatusFilter; label: string }
 export const RUN_SOURCE_FILTERS: Array<{ value: RunSourceFilter; label: string }> = [
   { value: 'all', label: '全部来源' },
   { value: 'scheduler', label: '自动化' },
-  { value: 'manual', label: '手动' },
+  { value: 'manual', label: '直接调用' },
   { value: 'api', label: 'API' },
 ];
 
@@ -134,7 +134,7 @@ export function runStartedAt(run: RunSummary): string {
 
 export function runSourceLabel(source: RunSource): string {
   if (source === RunSource.SCHEDULER) return t('自动化');
-  if (source === RunSource.MANUAL) return t('手动');
+  if (source === RunSource.MANUAL) return t('直接调用');
   if (source === RunSource.API) return 'API';
   return t('未知');
 }

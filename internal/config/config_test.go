@@ -63,3 +63,29 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		t.Fatalf("LoadFromEnv() = %#v, want environment overrides", got)
 	}
 }
+
+func TestLoadFromEnvSandboxTaskFields(t *testing.T) {
+	t.Setenv("SANDBOX_TASK_FIELDS", ` [{"title":" payload.body.title ","url":"payload.body.metadata.url"},{"title":"payload.body.event.payload.body.title"},{"url":"no.title"}] `)
+	got := LoadFromEnv().SandboxTaskFields
+	want := []SandboxTaskField{
+		{Title: "payload.body.title", URL: "payload.body.metadata.url"},
+		{Title: "payload.body.event.payload.body.title"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("SandboxTaskFields = %#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("SandboxTaskFields[%d] = %#v, want %#v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestLoadFromEnvSandboxTaskFieldsIgnoresInvalid(t *testing.T) {
+	for _, raw := range []string{"", "payload.body.title", `{"title":"a"}`} {
+		t.Setenv("SANDBOX_TASK_FIELDS", raw)
+		if got := LoadFromEnv().SandboxTaskFields; len(got) != 0 {
+			t.Fatalf("SANDBOX_TASK_FIELDS=%q gave %#v, want none", raw, got)
+		}
+	}
+}
