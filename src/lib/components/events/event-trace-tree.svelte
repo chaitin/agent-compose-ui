@@ -53,27 +53,30 @@
   }
 </script>
 
-<div class="flex min-h-0 flex-col">
-  <div class="flex shrink-0 items-center gap-3 border-b border-border px-4 py-2.5 text-xs sm:px-5">
+<div class="flex min-h-0 min-w-0 flex-col overflow-hidden">
+  <div class="flex shrink-0 items-center gap-3 whitespace-nowrap border-b border-border px-4 py-2.5 text-xs sm:px-5">
     <button
       type="button"
       onclick={onCollapse}
       title={t('收起事件列表')}
       aria-label={t('收起事件列表')}
-      class="-ml-1 hidden text-faint transition-colors hover:text-foreground lg:block"
+      class="-ml-1 hidden shrink-0 text-faint transition-colors hover:text-foreground lg:block"
       ><PanelLeftClose class="size-4" /></button
     >
     <span class={failedCount ? 'text-destructive' : 'text-muted-foreground'}>{failedCount} {t('失败')}</span>
     <span class="text-faint">·</span>
     <span class="text-muted-foreground">{succeededCount} {t('成功')}</span>
-    <label class="ml-auto flex cursor-pointer items-center gap-1.5 text-muted-foreground">
+    <label
+      class="ml-auto flex min-w-0 cursor-pointer items-center gap-1.5 text-muted-foreground"
+      title={t('折叠成功的执行')}
+    >
       <input
         type="checkbox"
         checked={folded}
         onchange={(event) => onToggleFold(event.currentTarget.checked)}
-        class="accent-foreground"
+        class="shrink-0 accent-foreground"
       />
-      {t('折叠成功的执行')}
+      <span class="truncate">{t('折叠成功的执行')}</span>
     </label>
   </div>
   <div data-scroll-surface class="min-h-0 flex-1 overflow-y-auto pb-4">

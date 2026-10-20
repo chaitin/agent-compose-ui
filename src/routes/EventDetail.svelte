@@ -34,8 +34,9 @@
   /** 左侧事件栏收起后，右侧的日志占满宽度。 */
   let traceCollapsed = $state(false);
   // 左栏宽度占整行的百分比，拖动分隔线调整，记在浏览器里。
-  const TRACE_WIDTH_KEY = 'agent-compose:event-trace-width';
-  const TRACE_WIDTH_DEFAULT = 42;
+  // 改默认宽度时换一个 key，让旧的记忆值失效。
+  const TRACE_WIDTH_KEY = 'agent-compose:event-trace-width:v3';
+  const TRACE_WIDTH_DEFAULT = 28;
   const TRACE_WIDTH_MIN = 20;
   const TRACE_WIDTH_MAX = 70;
   let traceWidth = $state(clampTraceWidth(Number(localStorage.getItem(TRACE_WIDTH_KEY)) || TRACE_WIDTH_DEFAULT));
@@ -248,7 +249,9 @@
           >
         </div>
       {/if}
-      <div class="relative min-h-0 flex-col border-border lg:border-r {traceCollapsed ? 'flex lg:hidden' : 'flex'}">
+      <div
+        class="relative min-h-0 min-w-0 flex-col border-border lg:border-r {traceCollapsed ? 'flex lg:hidden' : 'flex'}"
+      >
         <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
         <div
           data-trace-resizer
