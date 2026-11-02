@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
+  import ArrowUpDown from '@lucide/svelte/icons/arrow-up-down';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import ExternalLink from '@lucide/svelte/icons/external-link';
@@ -54,6 +55,9 @@
   let status = $state(initialStatus === ALL_STATUSES ? '' : initialStatus);
   let idQuery = $state('');
   let offset = $state(Number(initial.get('offset') ?? 0) || 0);
+  /** 「最近活动」表头点击切换方向；默认最近活动在前，和列表一直以来的顺序一致。 */
+  type SortDirection = 'asc' | 'desc';
+  let sortDirection = $state<SortDirection>(initial.get('sort') === 'asc' ? 'asc' : 'desc');
   let total = $state(0);
   let loading = $state(true);
   let refreshing = $state(false);
@@ -72,11 +76,34 @@
   const pinned = $derived(status === 'running' ? sandboxes : runningSandboxes);
   const pinnedIds = $derived(new Set(pinned.map((item) => item.id)));
   const rest = $derived(sandboxes.filter((item) => !pinnedIds.has(item.id)));
+  /** 行上「最近活动」那一列的时间：最近一次执行的开始时间，没有执行记录时用 sandbox 的更新时间。 */
+  function activityTimestamp(sandbox: SandboxContext): number {
+    const execution = executionOf(sandbox.id);
+    const value = execution?.startedAt || sandbox.updatedAt;
+    const time = value ? Date.parse(value) : Number.NaN;
+    return Number.isFinite(time) ? time : 0;
+  }
+  /** 按当前方向排时间；不知道时间的行无论升序降序都排在最后。 */
+  function sortByActivity(items: SandboxContext[]): SandboxContext[] {
+    const direction = sortDirection === 'asc' ? 1 : -1;
+    // 每行只取一次时间，比较时不再查执行记录，排序是 O(n log n) 次比较、O(n) 次取值。
+    return items
+      .map((sandbox) => ({ sandbox, time: activityTimestamp(sandbox) }))
+      .sort((a, b) => {
+        if (!a.time || !b.time) return a.time === b.time ? 0 : a.time ? -1 : 1;
+        return (a.time - b.time) * direction;
+      })
+      .map((entry) => entry.sandbox);
+  }
   /** 最近一次执行还没查完时，只知道这些 sandbox 活着，不知道它们是不是在执行。 */
   const executionsPending = $derived(pinned.some((item) => executionOf(item.id) === undefined));
   /** 运行中的 sandbox 里，正在执行的排前面；活着但没有在执行的（常驻 sandbox）单独一组。 */
   const executing = $derived(executionsPending ? pinned : pinned.filter((item) => executionOf(item.id)?.running));
   const idle = $derived(executionsPending ? [] : pinned.filter((item) => !executionOf(item.id)?.running));
+  /** 执行中 / 空闲 / 其余三段各自按时间排序；执行中的仍然置顶。 */
+  const executingRows = $derived(sortByActivity(executing));
+  const idleRows = $derived(sortByActivity(idle));
+  const restRows = $derived(sortByActivity(rest));
 
   onMount(() => {
     void start();
@@ -228,9 +255,16 @@
     if (projectId !== defaultProjectId) query.set('projectId', projectId || ALL_PROJECTS);
     if (agentName) query.set('agent', agentName);
     if (status !== DEFAULT_STATUS) query.set('status', status || ALL_STATUSES);
+    if (sortDirection !== 'desc') query.set('sort', sortDirection);
     if (offset) query.set('offset', String(offset));
     const value = query.toString();
     router.replace(`/sandboxes${value ? `?${value}` : ''}`);
+  }
+
+  /** 排序只重排已经读回来的一页，不需要重新请求；地址栏记下来，刷新后保持。 */
+  function toggleSort(): void {
+    sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+    syncURL();
   }
 
   async function openResource(): Promise<void> {
@@ -465,25 +499,37 @@
             <th>{t('在做什么')}</th>
             <th>{t('智能体 · 项目')}</th>
             <th class="pr-3 text-right">{t('耗时')}</th>
-            <th class="pr-3">{t('最近活动')}</th>
+            <th class="pr-3" aria-sort={sortDirection === 'asc' ? 'ascending' : 'descending'}>
+              <button
+                type="button"
+                class="-mx-1 inline-flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 transition-colors hover:text-foreground"
+                title={t(sortDirection === 'asc' ? '切换为最近活动在前' : '切换为最早活动在前')}
+                onclick={toggleSort}
+              >
+                {t('最近活动')}
+                <ArrowUpDown class="size-3.5" />
+              </button>
+            </th>
             <th class="pr-4 sm:pr-5 xl:pr-6">{t('状态')}</th>
           </tr>
         </thead>
-        {#if executing.length}
+        {#if executingRows.length}
           <tbody>
-            {@render groupHeading(`${t(executionsPending ? '运行中' : '执行中')} · ${executing.length}`)}
-            {#each executing as sandbox (sandbox.id)}{@render sandboxRow(sandbox)}{/each}
+            {@render groupHeading(`${t(executionsPending ? '运行中' : '执行中')} · ${executingRows.length}`)}
+            {#each executingRows as sandbox (sandbox.id)}{@render sandboxRow(sandbox)}{/each}
           </tbody>
         {/if}
-        {#if idle.length}
+        {#if idleRows.length}
           <tbody>
-            {@render groupHeading(`${t('空闲')} · ${idle.length}`)}
-            {#each idle as sandbox (sandbox.id)}{@render sandboxRow(sandbox)}{/each}
+            {@render groupHeading(`${t('空闲')} · ${idleRows.length}`)}
+            {#each idleRows as sandbox (sandbox.id)}{@render sandboxRow(sandbox)}{/each}
           </tbody>
         {/if}
         <tbody>
-          {#if pinned.length && rest.length}{@render groupHeading(t('按最近活动'))}{/if}
-          {#each rest as sandbox (sandbox.id)}{@render sandboxRow(sandbox)}{/each}
+          {#if pinned.length && restRows.length}{@render groupHeading(
+              t(sortDirection === 'asc' ? '按最早活动' : '按最近活动'),
+            )}{/if}
+          {#each restRows as sandbox (sandbox.id)}{@render sandboxRow(sandbox)}{/each}
         </tbody>
       </table>
     {/if}

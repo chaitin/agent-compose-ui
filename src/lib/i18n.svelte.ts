@@ -29,6 +29,9 @@ const english: Record<string, string> = {
   '这个 Sandbox 还被本任务的另外 {count} 次执行使用，下方日志包含它们全部的内容':
     'This sandbox was also used by {count} other executions of this task; the logs below include all of them',
   按最近活动: 'By recent activity',
+  按最早活动: 'By oldest activity',
+  切换为最近活动在前: 'Sort by most recent activity first',
+  切换为最早活动在前: 'Sort by oldest activity first',
   最近跳过: 'latest skipped',
   最近等待中: 'latest pending',
   '任务（关联 ID）· 事件主题': 'Task (correlation ID) · Event topics',

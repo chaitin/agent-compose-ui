@@ -524,6 +524,16 @@ test('authenticates and loads every primary route without browser errors', async
   await expect(page.locator('thead th').first()).toContainText('Sandbox ID');
   await expect(page.locator('thead th', { hasText: '在做什么' })).toBeVisible();
 
+  // 「最近活动」表头点一下在最近/最早之间切换，方向记进地址栏。
+  const activityHeader = page.locator('thead th', { hasText: '最近活动' });
+  await expect(activityHeader).toHaveAttribute('aria-sort', 'descending');
+  await activityHeader.getByRole('button').click();
+  await expect(activityHeader).toHaveAttribute('aria-sort', 'ascending');
+  await expect(page).toHaveURL(/sort=asc/);
+  await activityHeader.getByRole('button').click();
+  await expect(activityHeader).toHaveAttribute('aria-sort', 'descending');
+  await expect(page).not.toHaveURL(/sort=asc/);
+
   await page.reload();
   await expect(page.locator('main[data-scroll-root]')).toBeVisible();
 
