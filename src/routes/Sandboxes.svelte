@@ -376,7 +376,11 @@
     <td class="pr-3 text-right align-top leading-8 tabular-nums text-muted-foreground">
       {#if execution}{executionDuration(execution, now)}{/if}
     </td>
-    <td class="truncate pr-3 align-top leading-8 text-muted-foreground">
+    <td data-sandbox-status class="truncate pr-3 align-top leading-8">
+      <StatusBadge status={sandbox.status} label={statusLabel(sandbox.status)} />
+      {#if sandbox.driver}<span class="ml-1 text-[11px] text-faint">{sandbox.driver}</span>{/if}
+    </td>
+    <td class="truncate pr-4 text-right align-top leading-8 text-muted-foreground sm:pr-5 xl:pr-6">
       {#if execution?.startedAt}<time
           datetime={execution.startedAt}
           title={`${t('最近一次执行')} · ${formatBeijingTime(execution.startedAt)}`}
@@ -386,10 +390,6 @@
           title={`${t('没有执行记录，显示 Sandbox 最近更新时间')} · ${formatBeijingTime(sandbox.updatedAt)}`}
           class="text-faint tabular-nums">{formatBeijingShort(sandbox.updatedAt)}</time
         >{:else}<span class="text-faint">—</span>{/if}
-    </td>
-    <td data-sandbox-status class="truncate pr-4 align-top leading-8 sm:pr-5 xl:pr-6">
-      <StatusBadge status={sandbox.status} label={statusLabel(sandbox.status)} />
-      {#if sandbox.driver}<span class="ml-1 text-[11px] text-faint">{sandbox.driver}</span>{/if}
     </td>
   </tr>
 {/snippet}
@@ -490,8 +490,8 @@
           <col />
           <col class="w-[22%]" />
           <col class="w-20" />
-          <col class="w-28" />
           <col class="w-44" />
+          <col class="w-36" />
         </colgroup>
         <thead class="sticky top-0 z-10 bg-background">
           <tr class="h-8 text-left text-[11px] text-faint [&>th]:border-b [&>th]:border-border [&>th]:font-normal">
@@ -499,10 +499,14 @@
             <th>{t('在做什么')}</th>
             <th>{t('智能体 · 项目')}</th>
             <th class="pr-3 text-right">{t('耗时')}</th>
-            <th class="pr-3" aria-sort={sortDirection === 'asc' ? 'ascending' : 'descending'}>
+            <th class="pr-3">{t('状态')}</th>
+            <th
+              class="pr-4 text-right sm:pr-5 xl:pr-6"
+              aria-sort={sortDirection === 'asc' ? 'ascending' : 'descending'}
+            >
               <button
                 type="button"
-                class="-mx-1 inline-flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 transition-colors hover:text-foreground"
+                class="inline-flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 whitespace-nowrap transition-colors hover:text-foreground"
                 title={t(sortDirection === 'asc' ? '切换为最近活动在前' : '切换为最早活动在前')}
                 onclick={toggleSort}
               >
@@ -510,7 +514,6 @@
                 <ArrowUpDown class="size-3.5" />
               </button>
             </th>
-            <th class="pr-4 sm:pr-5 xl:pr-6">{t('状态')}</th>
           </tr>
         </thead>
         {#if executingRows.length}
