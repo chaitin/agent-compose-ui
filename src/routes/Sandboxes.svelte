@@ -6,6 +6,7 @@
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import ExternalLink from '@lucide/svelte/icons/external-link';
   import Search from '@lucide/svelte/icons/search';
+  import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import EmptyState from '$lib/components/empty-state.svelte';
   import CopyableText from '$lib/components/copyable-text.svelte';
   import StatusBadge from '$lib/components/status-badge.svelte';
@@ -364,8 +365,9 @@
           >{/if}
       </div>
       {#if execution?.status === 'failed' && execution.error}
-        <div class="truncate pl-3.5 font-mono text-[11.5px] leading-5 text-destructive" title={execution.error}>
-          {execution.error}
+        <div class="mt-0.5 flex min-w-0 items-start gap-1 pl-3.5 text-[11.5px] leading-5" title={execution.error}>
+          <TriangleAlert class="mt-1 size-3 shrink-0 text-destructive" />
+          <span class="truncate text-muted-foreground">{execution.error}</span>
         </div>
       {/if}
     </td>
@@ -376,11 +378,7 @@
     <td class="pr-3 text-right align-top leading-8 tabular-nums text-muted-foreground">
       {#if execution}{executionDuration(execution, now)}{/if}
     </td>
-    <td data-sandbox-status class="truncate pr-3 align-top leading-8">
-      <StatusBadge status={sandbox.status} label={statusLabel(sandbox.status)} />
-      {#if sandbox.driver}<span class="ml-1 text-[11px] text-faint">{sandbox.driver}</span>{/if}
-    </td>
-    <td class="truncate pr-4 text-right align-top leading-8 text-muted-foreground sm:pr-5 xl:pr-6">
+    <td class="truncate pr-3 align-top leading-8 text-muted-foreground">
       {#if execution?.startedAt}<time
           datetime={execution.startedAt}
           title={`${t('最近一次执行')} · ${formatBeijingTime(execution.startedAt)}`}
@@ -390,6 +388,10 @@
           title={`${t('没有执行记录，显示 Sandbox 最近更新时间')} · ${formatBeijingTime(sandbox.updatedAt)}`}
           class="text-faint tabular-nums">{formatBeijingShort(sandbox.updatedAt)}</time
         >{:else}<span class="text-faint">—</span>{/if}
+    </td>
+    <td data-sandbox-status class="truncate pr-4 align-top leading-8 sm:pr-5 xl:pr-6">
+      <StatusBadge status={sandbox.status} label={statusLabel(sandbox.status)} />
+      {#if sandbox.driver}<span class="ml-1 text-[11px] text-faint">{sandbox.driver}</span>{/if}
     </td>
   </tr>
 {/snippet}
@@ -486,12 +488,12 @@
     {:else}
       <table data-table="dense" class="w-full min-w-[68rem] table-fixed border-collapse text-[13px]">
         <colgroup>
-          <col class="w-48" />
-          <col />
+          <col class="w-[13%]" />
+          <col class="w-[37%]" />
           <col class="w-[22%]" />
-          <col class="w-20" />
-          <col class="w-44" />
-          <col class="w-36" />
+          <col class="w-[7%]" />
+          <col class="w-[10%]" />
+          <col class="w-[11%]" />
         </colgroup>
         <thead class="sticky top-0 z-10 bg-background">
           <tr class="h-8 text-left text-[11px] text-faint [&>th]:border-b [&>th]:border-border [&>th]:font-normal">
@@ -499,11 +501,7 @@
             <th>{t('在做什么')}</th>
             <th>{t('智能体 · 项目')}</th>
             <th class="pr-3 text-right">{t('耗时')}</th>
-            <th class="pr-3">{t('状态')}</th>
-            <th
-              class="pr-4 text-right sm:pr-5 xl:pr-6"
-              aria-sort={sortDirection === 'asc' ? 'ascending' : 'descending'}
-            >
+            <th class="pr-3" aria-sort={sortDirection === 'asc' ? 'ascending' : 'descending'}>
               <button
                 type="button"
                 class="inline-flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 whitespace-nowrap transition-colors hover:text-foreground"
@@ -514,6 +512,7 @@
                 <ArrowUpDown class="size-3.5" />
               </button>
             </th>
+            <th class="pr-4 sm:pr-5 xl:pr-6">{t('状态')}</th>
           </tr>
         </thead>
         {#if executingRows.length}
